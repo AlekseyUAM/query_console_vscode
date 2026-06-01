@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MetaDataObject xmlns="http://v8.1c.ru/8.3/MDClasses"
+  xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config"
+  xmlns:v8="http://v8.1c.ru/8.1/data/core"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Catalog uuid="aaa-111">
+    <Properties>
+      <Name>Тест</Name>
+    </Properties>
+    <ChildObjects>
+      <Attribute uuid="bbb-222">
+        <Properties>
+          <Name>Активен</Name>
+          <Type>
+            <v8:Type>xs:boolean</v8:Type>
+          </Type>
+        </Properties>
+      </Attribute>
+      <Attribute uuid="ccc-333">
+        <Properties>
+          <Name>Валюта</Name>
+          <Type>
+            <v8:Type>cfg:CatalogRef.Валюты</v8:Type>
+          </Type>
+        </Properties>
+      </Attribute>
+    </ChildObjects>
+  </Catalog>
+</MetaDataObject>

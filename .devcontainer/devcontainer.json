@@ -1,0 +1,33 @@
+{
+  "name": "1C Query Constructor (Claude bypass)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/workspaces/query_console_vscode",
+  "remoteUser": "node",
+
+  // Linux: make host.docker.internal resolve to the host so the 1C MCP servers
+  // (running on the host) are reachable from inside the container.
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
+
+  // Runs on the HOST before the container is created: copies the sibling repos
+  // into ./tmp so they travel into the workspace (tmp/ is gitignored).
+  "initializeCommand": "bash .devcontainer/copy-sibling-repos.sh",
+
+  // Runs inside the container after creation: enables Claude "allow all actions".
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // Forward an API key if one is set on the host (optional; you can also `claude login` inside).
+  "containerEnv": {
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+out/
+test-results/
+playwright-report/
+test/e2e/harness/main.js
+tmp/
+src/cf/
+.claude/worktrees/
+.claire/

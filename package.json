@@ -1,0 +1,60 @@
+{
+  "name": "query-console-1c",
+  "displayName": "1C: Query Constructor",
+  "description": "Visual query constructor for 1C",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "1c.queryConstructor",
+        "title": "1С: Конструктор запроса"
+      }
+    ],
+    "configuration": {
+      "title": "Query Console 1C",
+      "properties": {
+        "queryConsole.metadataPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to src/cf directory (leave empty to auto-detect)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "npm run build:extension && npm run build:webview",
+    "build:extension": "esbuild src/extension/extension.ts --bundle --outfile=out/extension/extension.js --platform=node --format=cjs --external:vscode --sourcemap",
+    "build:webview": "esbuild src/webview/main.tsx --bundle --outfile=out/webview/main.js --platform=browser --format=iife --loader:.tsx=tsx --loader:.ts=ts",
+    "watch:extension": "tsc -p tsconfig.json --watch",
+    "watch:webview": "npm run build:webview -- --watch",
+    "test:unit": "vitest run",
+    "pretest:e2e": "npm run build:webview && cp out/webview/main.js test/e2e/harness/main.js",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit",
+    "dev": "npm run build && code --extensionDevelopmentPath=/workspaces/query_console_vscode"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.90.0",
+    "@xmldom/xmldom": "^0.9.5",
+    "esbuild": "^0.21.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "serve": "^14.2.6",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0",
+    "web-tree-sitter": "^0.22.6"
+  }
+}

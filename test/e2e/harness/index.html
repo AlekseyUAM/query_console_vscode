@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Webview Harness</title>
+  <style>
+    body { margin: 0; background: #1e1e1e; color: #ccc; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root" style="height:100vh;"></div>
+  <script>
+    // Capture all outgoing messages from the webview
+    window.__webviewMessages = [];
+
+    // Mock acquireVsCodeApi — must be defined BEFORE the bundle loads
+    window.acquireVsCodeApi = function() {
+      return {
+        postMessage: function(msg) {
+          window.__webviewMessages.push(msg);
+          // Simulate host responses
+          if (msg.type === 'ready') {
+            setTimeout(function() {
+              window.dispatchEvent(new MessageEvent('message', {
+                data: {
+                  type: 'metadataTree',
+                  tables: [
+                    {
+                      kind: 'Справочник',
+                      name: 'Валюты',
+                      fullName: 'Справочник.Валюты',
+                      fields: [
+                        { name: 'Ссылка', kind: 'standard', types: [] },
+                        { name: 'Код', kind: 'standard', types: [{ primitive: 'Строка' }] },
+                        { name: 'Наименование', kind: 'standard', types: [{ primitive: 'Строка' }] },
+                        { name: 'ЗагружаетсяИзИнтернета', kind: 'attribute', types: [{ primitive: 'Булево' }] }
+                      ]
+                    }
+                  ]
+                }
+              }));
+            }, 50);
+          } else if (msg.type === 'generate') {
+            // Simulate SDBL generation in harness (simplified)
+            var tables = msg.model.tables;
+            var fields = msg.model.fields;
+            if (!tables.length || !fields.length) return;
+            var alias = tables[0].fullName.split('.')[1];
+            var fieldLines = fields.map(function(f, i) {
+              return '\t' + alias + '.' + f.path + (i < fields.length - 1 ? ',' : '');
+            });
+            var text = 'ВЫБРАТЬ\n' + fieldLines.join('\n') + '\nИЗ\n\t' + tables[0].fullName + ' КАК ' + alias;
+            window.__generatedText = text;
+            setTimeout(function() {
+              window.dispatchEvent(new MessageEvent('message', {
+                data: { type: 'generatedText', text: text }
+              }));
+            }, 10);
+          }
+        }
+      };
+    };
+  </script>
+  <script src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+.vscode/**
+src/**
+test/**
+scripts/**
+tmp/**
+docs/**
+node_modules/**
+out/webview/**/*.map
+tsconfig*.json
+vitest.config.ts
+playwright.config.ts
+*.vsix

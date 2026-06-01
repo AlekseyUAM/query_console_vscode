@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "1c-platform": {
+      "type": "sse",
+      "url": "http://host.docker.internal:9001/sse"
+    },
+    "1c-copilot-proxy": {
+      "type": "http",
+      "url": "http://host.docker.internal:8000/mcp"
+    },
+    "1c-md": {
+      "type": "http",
+      "url": "http://host.docker.internal/ssl_plus/hs/mcp"
+    }
+  }
+}
