@@ -89,7 +89,9 @@ function parseObjectXml(xml: string, kind: TableKind): MetaTable | null {
     const parser = new DOMParser({
       onError: () => {},
     } as any);
-    doc = parser.parseFromString(xml, 'text/xml');
+    // Strip a leading UTF-8 BOM: @xmldom/xmldom treats it as content before the
+    // <?xml?> declaration and throws a fatal ParseError. 1C exports XML with a BOM.
+    doc = parser.parseFromString(xml.replace(/^﻿/, ''), 'text/xml');
     // Detect parse errors: @xmldom/xmldom may insert <parsererror> on invalid XML
     if (doc.getElementsByTagName('parsererror').length) return null;
   } catch {

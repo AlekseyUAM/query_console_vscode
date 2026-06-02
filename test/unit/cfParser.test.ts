@@ -46,6 +46,14 @@ describe('parseCatalogXml', () => {
   it('returns null for malformed XML', () => {
     expect(parseCatalogXml('<broken xml<<')).toBeNull();
   });
+
+  it('parses XML with a leading UTF-8 BOM', () => {
+    const xml = require('fs').readFileSync(
+      path.join(FIXTURES_CF, 'Catalogs', 'Тест.xml'), 'utf8'
+    );
+    const table = parseCatalogXml('﻿' + xml);
+    expect(table?.name).toBe('Тест');
+  });
 });
 
 describe('parseDocumentXml', () => {

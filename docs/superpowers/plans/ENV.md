@@ -33,10 +33,12 @@ Extension Development Host на машине пользователя.
 
 | Что тестируется | Команда | Кто запускает |
 |---|---|---|
-| Типы, парсер, кэш, генератор | `npm test` | ИИ |
+| Типы, парсер, кэш, генератор | `npm test` (= `npm run test:unit`) | ИИ |
 | Webview UI (Playwright, headless) | `npm run test:e2e` | ИИ |
 
-Эти тесты работают в контейнере без VS Code и без пользователя.
+Это **две отдельные команды**: `npm test` запускает только unit (vitest),
+webview E2E запускается отдельно через `npm run test:e2e`. Обе работают
+в контейнере без VS Code и без пользователя.
 
 ### Уровень 2: Extension Development Host (ИИ запускает, пользователь видит)
 
@@ -69,12 +71,13 @@ npm run test:integration   # TODO: добавить
 
 ```
 1. Редактирование исходников в контейнере
-2. npm test                         ← unit + webview E2E (pass/fail)
-3. npm run build                    ← сборка extension host + webview
-4. code --extensionDevelopmentPath=/workspaces/query_console_vscode
+2. npm run test:unit                ← unit (vitest, pass/fail)
+3. npm run test:e2e                 ← webview E2E (Playwright, headless)
+4. npm run build                    ← сборка extension host + webview
+5. code --extensionDevelopmentPath=/workspaces/query_console_vscode
                                     ← Extension Dev Host открывается на хосте
-5. Пользователь тестирует           ← даёт feedback ИИ
-6. Goto 1
+6. Пользователь тестирует           ← даёт feedback ИИ
+7. Goto 1
 ```
 
 Не нужно упаковывать .vsix при разработке — Extension Development Host

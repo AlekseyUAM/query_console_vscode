@@ -12,6 +12,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/extension/**/*", "src/core/**/*", "src/shared/**/*"],
+  "include": ["src/extension/**/*", "src/core/**/*", "src/shared/**/*", "src/cli/**/*"],
   "exclude": ["src/webview/**/*", "node_modules"]
 }
