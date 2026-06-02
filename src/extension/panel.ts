@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { parseCf } from '../core/metadata/cfParser';
 import { buildCachePath, writeCache } from '../core/metadata/cacheBuilder';
 import { isCacheValid, readCache } from '../core/metadata/cacheLoader';
+import { loadMetadataFromYaml } from '../core/metadata/yamlLoader';
 import { generate } from '../core/query/sdblGenerator';
 import { insertResult } from './insertResult';
 import type { HostMsg, WebviewMsg } from '../shared/messages';
@@ -34,6 +36,22 @@ async function loadMetadata(
   cfPath: string,
   channel: vscode.OutputChannel
 ): Promise<MetadataModel> {
+  // Try YAML path first
+  const config = vscode.workspace.getConfiguration('queryConsole');
+  const outSetting = config.get<string>('parserOutputPath') || 'tmp/parser_data';
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const outPath = path.isAbsolute(outSetting) ? outSetting : path.join(root, outSetting);
+  const cfYamlDir = path.join(outPath, 'cf');
+  const configYaml = path.join(cfYamlDir, 'configuration.yaml');
+
+  if (fs.existsSync(configYaml)) {
+    channel.appendLine(`[1C Query] Loading metadata from YAML: ${cfYamlDir}`);
+    const model = loadMetadataFromYaml(cfYamlDir);
+    channel.appendLine(`[1C Query] YAML: loaded ${model.tables.length} tables`);
+    return model;
+  }
+
+  // Fallback: XML parsing + cache
   if (!cfPath) return { version: 1, tables: [] };
   const cachePath = buildCachePath(context.globalStorageUri.fsPath, cfPath);
   if (isCacheValid(cachePath, cfPath)) {
@@ -43,17 +61,15 @@ async function loadMetadata(
       return cached;
     }
   }
-  channel.appendLine(`[1C Query] Parsing metadata from: ${cfPath}`);
-  const fs2 = require('fs') as typeof import('fs');
-  const path2 = require('path') as typeof import('path');
+  channel.appendLine(`[1C Query] Parsing metadata from XML: ${cfPath}`);
   for (const sub of ['Catalogs', 'Documents']) {
-    const dir = path2.join(cfPath, sub);
-    if (fs2.existsSync(dir)) {
-      const files = (fs2.readdirSync(dir) as string[]).filter(f => f.endsWith('.xml'));
+    const dir = path.join(cfPath, sub);
+    if (fs.existsSync(dir)) {
+      const files = (fs.readdirSync(dir) as string[]).filter(f => f.endsWith('.xml'));
       channel.appendLine(`[1C Query] ${sub}/: ${files.length} XML files`);
       if (files.length > 0) {
-        const firstPath = path2.join(dir, files[0]);
-        const firstXml: string = fs2.readFileSync(firstPath, 'utf8');
+        const firstPath = path.join(dir, files[0]);
+        const firstXml: string = fs.readFileSync(firstPath, 'utf8');
         channel.appendLine(`[1C Query] First file: ${files[0]}`);
         channel.appendLine(`[1C Query] First 300 chars: ${firstXml.slice(0, 300).replace(/\n/g, '↵')}`);
       }
