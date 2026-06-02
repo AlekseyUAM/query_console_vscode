@@ -11,4 +11,5 @@ export type HostMsg =
 export type WebviewMsg =
   | { type: 'ready' }
   | { type: 'expandRef'; ref: RefId }
-  | { type: 'generate'; model: QueryModel };
+  | { type: 'generate'; model: QueryModel }
+  | { type: 'insertText'; text: string };

@@ -115,6 +115,7 @@ export function createPanel(
         vscode.window.showWarningMessage('Не найдена выгрузка конфигурации. Укажите путь в настройке queryConsole.metadataPath');
       }
     } else if (msg.type === 'expandRef') {
+      await metadataReady;
       const ref = msg.ref;
       const table = metadataModel.tables.find(t => t.kind === ref.kind && t.name === ref.name);
       const reply: HostMsg = { type: 'refFields', ref, fields: table?.fields ?? [] };
@@ -127,7 +128,8 @@ export function createPanel(
       }
       const reply: HostMsg = { type: 'generatedText', text };
       panel.webview.postMessage(reply);
-      await insertResult(text);
+    } else if (msg.type === 'insertText') {
+      await insertResult(msg.text);
     }
   });
 

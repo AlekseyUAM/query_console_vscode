@@ -33,6 +33,10 @@ export function App(): React.ReactElement {
     postToHost({ type: 'generate', model });
   }
 
+  function handleInsert(text: string) {
+    postToHost({ type: 'insertText', text });
+  }
+
   const panelStyle: React.CSSProperties = {
     flex: 1,
     minWidth: 0,
@@ -55,13 +59,17 @@ export function App(): React.ReactElement {
             onFocusTable={fullName => dispatch({ type: 'FOCUS_DB_TABLE', fullName })}
             onFocusField={(tableFullName, fieldPath) => dispatch({ type: 'FOCUS_DB_FIELD', tableFullName, fieldPath })}
             onExpandRef={ref => postToHost({ type: 'expandRef', ref })}
+            onAddTable={table => dispatch({ type: 'ADD_TABLE', table })}
+            onAddField={(tableFullName, fieldPath) => {
+              const tableInQuery = state.selectedTables.find(t => t.fullName === tableFullName);
+              if (tableInQuery) dispatch({ type: 'ADD_FIELD', tableId: tableInQuery.id, fieldPath });
+            }}
           />
         </div>
         <div style={panelStyle}>
           <TablesPanel
             metaTables={state.tables}
             selectedTables={state.selectedTables}
-            focusedDbTableFullName={state.focusedDbTableFullName}
             focusedSelectedTableId={state.focusedSelectedTableId}
             onAddTable={table => dispatch({ type: 'ADD_TABLE', table })}
             onRemoveTable={tableId => dispatch({ type: 'REMOVE_TABLE', tableId })}
@@ -73,13 +81,13 @@ export function App(): React.ReactElement {
             metaTables={state.tables}
             selectedTables={state.selectedTables}
             selectedFields={state.selectedFields}
-            focusedDbTableFullName={state.focusedDbTableFullName}
-            focusedDbFieldPath={state.focusedDbFieldPath}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
+            generatedText={state.generatedText}
             onAddField={(tableId, fieldPath) => dispatch({ type: 'ADD_FIELD', tableId, fieldPath })}
             onRemoveField={idx => dispatch({ type: 'REMOVE_FIELD', fieldIdx: idx })}
             onFocusField={idx => dispatch({ type: 'FOCUS_SELECTED_FIELD', idx })}
             onGenerate={handleGenerate}
+            onInsert={handleInsert}
           />
         </div>
       </div>
