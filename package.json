@@ -16,6 +16,10 @@
       {
         "command": "1c.queryConstructor",
         "title": "1С: Конструктор запроса"
+      },
+      {
+        "command": "1c.parseMetadata",
+        "title": "1С: Распарсить метаданные в YAML"
       }
     ],
     "configuration": {
@@ -25,6 +29,11 @@
           "type": "string",
           "default": "",
           "description": "Absolute path to src/cf directory (leave empty to auto-detect)"
+        },
+        "queryConsole.parserOutputPath": {
+          "type": "string",
+          "default": "tmp/parser_data",
+          "description": "Каталог для результата парсинга метаданных (YAML). Относительный путь резолвится от корня workspace."
         }
       }
     }
@@ -33,6 +42,8 @@
     "vscode:prepublish": "npm run build",
     "build": "npm run build:extension && npm run build:webview",
     "build:extension": "esbuild src/extension/extension.ts --bundle --outfile=out/extension/extension.js --platform=node --format=cjs --external:vscode --sourcemap",
+    "build:cli": "esbuild src/cli/parseMetadata.ts --bundle --outfile=out/cli/parseMetadata.js --platform=node --format=cjs",
+    "parse": "npm run build:cli && node out/cli/parseMetadata.js",
     "build:webview": "esbuild src/webview/main.tsx --bundle --outfile=out/webview/main.js --platform=browser --format=iife --loader:.tsx=tsx --loader:.ts=ts",
     "watch:extension": "tsc -p tsconfig.json --watch",
     "watch:webview": "npm run build:webview -- --watch",
@@ -49,6 +60,7 @@
     "@types/react-dom": "^18.3.0",
     "@types/vscode": "^1.90.0",
     "@xmldom/xmldom": "^0.9.5",
+    "yaml": "^2.4.5",
     "esbuild": "^0.21.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
