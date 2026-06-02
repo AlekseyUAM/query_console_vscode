@@ -49,9 +49,9 @@ export function nodeText(el: any | null): string {
   return el?.textContent?.trim() ?? '';
 }
 
-export function clean<T extends Record<string, unknown>>(o: T): T {
+export function clean<T extends object>(o: T): T {
   for (const k of Object.keys(o)) {
-    if (o[k] === undefined) delete (o as Record<string, unknown>)[k];
+    if ((o as Record<string, unknown>)[k] === undefined) delete (o as Record<string, unknown>)[k];
   }
   return o;
 }
