@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { MetaTable } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
+import { defaultTableAlias } from '../../core/query/queryModel';
 import { generate, formatAsBslString } from '../../core/query/sdblGenerator';
 
 interface Props {
@@ -144,7 +145,7 @@ export function FieldsPanel({
           const table = selectedTables.find(t => t.id === f.tableId);
           const label = f.expression
             ? (f.alias ?? f.expression)
-            : (table ? `${table.fullName.split('.')[1]}.${f.path}` : f.path);
+            : (table ? `${defaultTableAlias(table)}.${f.path}` : f.path);
           return (
             <div
               key={f.expression ? `${f.tableId}:expr:${i}` : `${f.tableId}:${f.path}`}
