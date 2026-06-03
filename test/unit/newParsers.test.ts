@@ -13,6 +13,9 @@ import { parseInformationRegister } from '../../src/core/metadata/parser/informa
 import { parseAccumulationRegister } from '../../src/core/metadata/parser/accumulationRegister';
 import { parseAccountingRegister } from '../../src/core/metadata/parser/accountingRegister';
 import { parseCalculationRegister } from '../../src/core/metadata/parser/calculationRegister';
+import { parseSequence } from '../../src/core/metadata/parser/sequence';
+import { parseDocumentJournal } from '../../src/core/metadata/parser/documentJournal';
+import { parseFilterCriteria } from '../../src/core/metadata/parser/filterCriteria';
 
 const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
 
@@ -371,5 +374,83 @@ describe('parseCalculationRegister', () => {
     expect(stdNames).toContain('Период');
     expect(stdNames).toContain('Регистратор');
     expect(stdNames).toContain('ВидРасчета');
+  });
+});
+
+describe('parseSequence', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('Sequences', 'ПоследовательностьТест.xml');
+    const result = parseSequence(el);
+    expect(result?.name).toBe('ПоследовательностьТест');
+    expect(result?.fullName).toBe('Последовательность.ПоследовательностьТест');
+    expect(result?.kind).toBe('Последовательность');
+  });
+
+  it('includes НомерСтроки, Период, Регистратор standard fields', () => {
+    const el = readObjectEl('Sequences', 'ПоследовательностьТест.xml');
+    const result = parseSequence(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('НомерСтроки');
+    expect(stdNames).toContain('Период');
+    expect(stdNames).toContain('Регистратор');
+  });
+
+  it('includes dimension fields from ChildObjects', () => {
+    const el = readObjectEl('Sequences', 'ПоследовательностьТест.xml');
+    const result = parseSequence(el)!;
+    const dim = result.fields.find(f => f.name === 'Измерение1');
+    expect(dim?.category).toBe('dimension');
+  });
+
+  it('has no tabularSections', () => {
+    const el = readObjectEl('Sequences', 'ПоследовательностьТест.xml');
+    const result = parseSequence(el)!;
+    expect(result.tabularSections).toBeUndefined();
+  });
+});
+
+describe('parseDocumentJournal', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('DocumentJournals', 'Взаимодействия.xml');
+    const result = parseDocumentJournal(el);
+    expect(result?.name).toBe('Взаимодействия');
+    expect(result?.fullName).toBe('ЖурналДокументов.Взаимодействия');
+    expect(result?.kind).toBe('ЖурналДокументов');
+  });
+
+  it('includes standard fields Ссылка, Дата, Номер, ТипДокумента', () => {
+    const el = readObjectEl('DocumentJournals', 'Взаимодействия.xml');
+    const result = parseDocumentJournal(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('Ссылка');
+    expect(stdNames).toContain('Дата');
+    expect(stdNames).toContain('Номер');
+    expect(stdNames).toContain('ТипДокумента');
+  });
+
+  it('includes Column fields as attribute', () => {
+    const el = readObjectEl('DocumentJournals', 'Взаимодействия.xml');
+    const result = parseDocumentJournal(el)!;
+    const colNames = result.fields.filter(f => f.category === 'attribute').map(f => f.name);
+    expect(colNames).toContain('Автор');
+    expect(colNames).toContain('Ответственный');
+  });
+});
+
+describe('parseFilterCriteria', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('FilterCriteria', 'СвязанныеДокументы.xml');
+    const result = parseFilterCriteria(el);
+    expect(result?.name).toBe('СвязанныеДокументы');
+    expect(result?.fullName).toBe('КритерийОтбора.СвязанныеДокументы');
+    expect(result?.kind).toBe('КритерийОтбора');
+  });
+
+  it('includes only Ссылка field', () => {
+    const el = readObjectEl('FilterCriteria', 'СвязанныеДокументы.xml');
+    const result = parseFilterCriteria(el)!;
+    expect(result.fields).toHaveLength(1);
+    expect(result.fields[0].name).toBe('Ссылка');
+    expect(result.fields[0].category).toBe('standard');
   });
 });
