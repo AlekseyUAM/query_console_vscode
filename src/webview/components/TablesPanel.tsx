@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { MetaTable, MetaField } from '../../core/metadata/types';
 import type { SelectedTable } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
+import { accumPeriodFields } from '../../core/query/accumVirtualFields';
 
 interface Props {
   metaTables: MetaTable[];
@@ -202,7 +203,11 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
               </div>
               {isExpanded && meta && (
                 <>
-                  {meta.fields.map(field => (
+                  {(
+                    meta.virtual && (meta.virtual.slice === 'Обороты' || meta.virtual.slice === 'ОстаткиИОбороты')
+                      ? [...accumPeriodFields(t.virtual?.periodicity), ...meta.fields]
+                      : meta.fields
+                  ).map(field => (
                     <FieldRow
                       key={field.name}
                       tableFullName={t.fullName}
