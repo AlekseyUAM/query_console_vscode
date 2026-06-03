@@ -15,7 +15,7 @@ export interface ParsedType {
 
 export interface ParsedField {
   name: string;
-  category: 'standard' | 'attribute';
+  category: 'standard' | 'attribute' | 'dimension' | 'resource';
   types: ParsedType[];
 }
 
@@ -27,7 +27,12 @@ export interface ParsedTabularSection {
 
 export interface ParsedObject {
   version: 1;
-  kind: 'Справочник' | 'Документ' | 'Константа' | 'Перечисление';
+  kind:
+    | 'Справочник' | 'Документ' | 'Константа' | 'Перечисление'
+    | 'ПланОбмена' | 'ПланВидовХарактеристик' | 'ПланСчетов' | 'ПланВидовРасчета'
+    | 'БизнесПроцесс' | 'Задача'
+    | 'РегистрСведений' | 'РегистрНакопления' | 'РегистрБухгалтерии' | 'РегистрРасчета'
+    | 'Последовательность' | 'ЖурналДокументов' | 'КритерийОтбора';
   name: string;
   fullName: string;
   uuid: string;
