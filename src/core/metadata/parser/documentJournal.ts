@@ -16,6 +16,7 @@ export function parseDocumentJournal(objectEl: any): ParsedObject | null {
 
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
   std('ВерсияДанных', [{ kind: 'timestamp' }]);
+  std('ПометкаУдаления', [{ kind: 'Булево' }]);
   std('Дата', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   std('Номер', [{ kind: 'Строка', length: 11 }]);
   std('ТипДокумента', [{ kind: 'unknown' }]);
