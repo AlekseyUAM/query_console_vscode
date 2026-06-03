@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import { parseXml, firstElementChild } from '../../src/core/metadata/parser/dom';
 import { parseChildObjects } from '../../src/core/metadata/parser/attribute';
 import { parseExchangePlan } from '../../src/core/metadata/parser/exchangePlan';
+import { parseChartOfCharacteristicTypes } from '../../src/core/metadata/parser/chartOfCharacteristicTypes';
+import { parseChartOfAccounts } from '../../src/core/metadata/parser/chartOfAccounts';
 
 const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
 
@@ -72,5 +74,58 @@ describe('parseExchangePlan', () => {
     const result = parseExchangePlan(el)!;
     const attrNames = result.fields.filter(f => f.category === 'attribute').map(f => f.name);
     expect(attrNames).toContain('Очередь');
+  });
+});
+
+describe('parseChartOfCharacteristicTypes', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('ChartsOfCharacteristicTypes', 'ДополнительныеРеквизитыИСведения.xml');
+    const result = parseChartOfCharacteristicTypes(el);
+    expect(result?.name).toBe('ДополнительныеРеквизитыИСведения');
+    expect(result?.fullName).toBe('ПланВидовХарактеристик.ДополнительныеРеквизитыИСведения');
+    expect(result?.kind).toBe('ПланВидовХарактеристик');
+  });
+
+  it('includes ТипЗначения standard field and Ссылка', () => {
+    const el = readObjectEl('ChartsOfCharacteristicTypes', 'ДополнительныеРеквизитыИСведения.xml');
+    const result = parseChartOfCharacteristicTypes(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('ТипЗначения');
+    expect(stdNames).toContain('Ссылка');
+  });
+
+  it('omits Код when CodeLength=0 and includes Наименование when DescriptionLength>0', () => {
+    const el = readObjectEl('ChartsOfCharacteristicTypes', 'ДополнительныеРеквизитыИСведения.xml');
+    const result = parseChartOfCharacteristicTypes(el)!;
+    const names = result.fields.map(f => f.name);
+    expect(names).not.toContain('Код');
+    expect(names).toContain('Наименование');
+  });
+
+  it('omits ЭтоГруппа/Родитель when not hierarchical', () => {
+    const el = readObjectEl('ChartsOfCharacteristicTypes', 'ДополнительныеРеквизитыИСведения.xml');
+    const result = parseChartOfCharacteristicTypes(el)!;
+    const names = result.fields.map(f => f.name);
+    expect(names).not.toContain('ЭтоГруппа');
+    expect(names).not.toContain('Родитель');
+  });
+});
+
+describe('parseChartOfAccounts', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('ChartsOfAccounts', 'ПланСчетов1.xml');
+    const result = parseChartOfAccounts(el);
+    expect(result?.name).toBe('ПланСчетов1');
+    expect(result?.fullName).toBe('ПланСчетов.ПланСчетов1');
+    expect(result?.kind).toBe('ПланСчетов');
+  });
+
+  it('includes ВидСчета and ПризнакАктивности standard fields', () => {
+    const el = readObjectEl('ChartsOfAccounts', 'ПланСчетов1.xml');
+    const result = parseChartOfAccounts(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('ВидСчета');
+    expect(stdNames).toContain('ПризнакАктивности');
+    expect(stdNames).toContain('Ссылка');
   });
 });
