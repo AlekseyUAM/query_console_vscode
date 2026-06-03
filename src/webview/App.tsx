@@ -9,6 +9,7 @@ import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
 import { defaultTableAlias } from '../core/query/queryModel';
 import type { MetaField, MetaTable } from '../core/metadata/types';
+import { accumPeriodFields } from '../core/query/accumVirtualFields';
 import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer } from './state/queryStore';
 import { generate } from '../core/query/sdblGenerator';
@@ -80,7 +81,11 @@ export function App(): React.ReactElement {
     const meta: MetaTable | undefined = state.tables.find(m => m.fullName === sel.fullName);
     if (!meta) return [];
     const alias = defaultTableAlias(sel);
-    return meta.fields.map((f: MetaField) => qualified ? `${alias}.${f.name}` : f.name);
+    const periodFields: MetaField[] =
+      meta.virtual && (meta.virtual.slice === 'Обороты' || meta.virtual.slice === 'ОстаткиИОбороты')
+        ? accumPeriodFields(sel.virtual?.periodicity)
+        : [];
+    return [...periodFields, ...meta.fields].map((f: MetaField) => qualified ? `${alias}.${f.name}` : f.name);
   }
 
   // Выбранная таблица для окна «Параметры виртуальной таблицы» (null, если строка
@@ -88,6 +93,8 @@ export function App(): React.ReactElement {
   const vtSel = vtDialogTableId !== null
     ? state.selectedTables.find(t => t.id === vtDialogTableId) ?? null
     : null;
+  const vtMeta = vtSel ? state.tables.find(m => m.fullName === vtSel.fullName) : undefined;
+  const vtSlice = vtMeta?.virtual?.slice ?? 'СрезПоследних';
 
   const panelStyle: React.CSSProperties = {
     flex: 1,
@@ -186,6 +193,7 @@ export function App(): React.ReactElement {
       {/* Virtual table params modal */}
       {vtDialogTableId !== null && vtSel && (
         <VirtualTableParamsDialog
+          slice={vtSlice}
           initial={vtSel.virtual ?? {}}
           onOpenConditionBuilder={(current, apply) => {
             setExprBuilder({
