@@ -481,4 +481,14 @@ describe('parseAccumulationRegister — registerType property', () => {
     const result = parseAccumulationRegister(el)!;
     expect(result.properties?.registerType).toBe('Turnovers');
   });
+
+  it('defaults registerType to Balance when RegisterType node is absent', () => {
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<MetaDataObject xmlns="http://v8.1c.ru/8.3/MDClasses">' +
+      '<AccumulationRegister uuid="x"><Properties><Name>БезВида</Name></Properties></AccumulationRegister>' +
+      '</MetaDataObject>';
+    const el = firstElementChild(parseXml(xml)!.documentElement);
+    const result = parseAccumulationRegister(el)!;
+    expect(result.properties?.registerType).toBe('Balance');
+  });
 });
