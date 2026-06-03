@@ -135,9 +135,12 @@ properties:                         # отобранные свойства, в�
   descriptionLength: 10
 fields:                             # стандартные + реквизиты
   - { name: Ссылка,             category: standard,  types: [{ kind: ref, ref: Справочник.Валюты }] }
+  - { name: ВерсияДанных,       category: standard,  types: [{ kind: timestamp }] }
+  - { name: ПометкаУдаления,    category: standard,  types: [{ kind: Булево }] }
+  - { name: Предопределённый,   category: standard,  types: [{ kind: Булево }] }
+  - { name: ИмяПредопределённыхДанных, category: standard, types: [{ kind: Строка, length: 255 }] }
   - { name: Код,                category: standard,  types: [{ kind: Строка, length: 3, allowedLength: Variable }] }
   - { name: Наименование,       category: standard,  types: [{ kind: Строка, length: 10 }] }
-  - { name: ПометкаУдаления,    category: standard,  types: [{ kind: Булево }] }
   - { name: НаименованиеПолное, category: attribute, types: [{ kind: Строка, length: 50, allowedLength: Variable }] }
   - { name: Наценка,            category: attribute, types: [{ kind: Число, digits: 10, fractionDigits: 2, allowedSign: Any }] }
   - { name: ОсновнаяВалюта,     category: attribute, types: [{ kind: ref, ref: Справочник.Валюты }] }
@@ -146,7 +149,7 @@ tabularSections:
   - name: Представления
     uuid: f3ae1a2c-...
     fields:
-      - { name: НомерСтроки, category: standard, types: [{ kind: Число }] }
+      - { name: НомерСтроки, category: standard, types: [{ kind: Число, digits: 5, fractionDigits: 0 }] }
       - { name: КодЯзыка,    category: attribute, types: [{ kind: Строка, length: 10, allowedLength: Variable }] }
 ```
 
@@ -188,6 +191,8 @@ values:                             # члены перечисления (Child
   - Дата: `dateFractions` (`DateQualifiers`, напр. `Date` / `Time` / `DateTime`).
 - Ссылки: `kind: ref, ref: <Тип>.<Имя>`. Маппинг: `CatalogRef`→Справочник,
   `DocumentRef`→Документ, `EnumRef`→Перечисление (и далее по мере добавления типов).
+- `kind: timestamp` — служебный платформенный тип `ВерсияДанных` (на уровне СУБД —
+  `timestamp`/rowversion). В XML квалификаторов нет, тип фиксирован парсером.
 - Неизвестный/непримитивный XS-тип → `kind: unknown, raw: <строка>` — данные не теряем,
   пробелы парсера видны глазами.
 
@@ -200,10 +205,10 @@ values:                             # члены перечисления (Child
 | Поле | Тип | Условие |
 |---|---|---|
 | `Ссылка` | ref → Справочник.X | всегда |
-| `ВерсияДанных` | Строка | всегда |
+| `ВерсияДанных` | timestamp | всегда |
 | `ПометкаУдаления` | Булево | всегда |
 | `Предопределённый` | Булево | всегда |
-| `ИмяПредопределённыхДанных` | Строка | всегда |
+| `ИмяПредопределённыхДанных` | Строка(255) | всегда |
 | `Код` | `CodeType=String`→Строка(`CodeLength`, allowedLength=`CodeAllowedLength`); `Number`→Число(`CodeLength`) | `CodeLength` > 0 |
 | `Наименование` | Строка(`DescriptionLength`) | `DescriptionLength` > 0 |
 | `Родитель` | ref → Справочник.X | `Hierarchical=true` |
@@ -215,7 +220,7 @@ values:                             # члены перечисления (Child
 | Поле | Тип | Условие |
 |---|---|---|
 | `Ссылка` | ref → Документ.X | всегда |
-| `ВерсияДанных` | Строка | всегда |
+| `ВерсияДанных` | timestamp | всегда |
 | `ПометкаУдаления` | Булево | всегда |
 | `Дата` | Дата (dateFractions=DateTime) | всегда |
 | `Номер` | `NumberType=String`→Строка(`NumberLength`); `Number`→Число(`NumberLength`) | `NumberLength` > 0 |
@@ -236,7 +241,8 @@ values:                             # члены перечисления (Child
 
 ### Табличные части (Справочник/Документ)
 
-Стандартное поле `НомерСтроки` (Число) — всегда, плюс реквизиты ТЧ из XML.
+Стандартное поле `НомерСтроки` (Число, `digits` = `LineNumberLength` из свойств ТЧ,
+по умолчанию 5; `fractionDigits` всегда 0) — всегда, плюс реквизиты ТЧ из XML.
 
 ### Заметки
 

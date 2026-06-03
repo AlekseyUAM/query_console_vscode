@@ -1,6 +1,6 @@
 # Парсер метаданных → YAML: план реализации
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Построить standalone-парсер метаданных 1С, который читает XML-выгрузку конфигурации и пишет дерево YAML-файлов (`cf/<Тип>/<Имя>.yaml` + `cf/configuration.yaml`), запускаемый CLI-командой и тонкой VS Code командой.
 
@@ -49,7 +49,7 @@
 - Create: `src/core/metadata/parser/model.ts`
 - Create: `src/core/metadata/parser/dom.ts`
 
-- [ ] **Step 1: Добавить зависимость `yaml` и npm-скрипты в `package.json`**
+- [x] **Step 1: Добавить зависимость `yaml` и npm-скрипты в `package.json`**
 
 В блок `devDependencies` (рядом с `@xmldom/xmldom`, который тоже бандлится esbuild'ом) добавить:
 
@@ -64,7 +64,7 @@
     "parse": "npm run build:cli && node out/cli/parseMetadata.js",
 ```
 
-- [ ] **Step 2: Добавить `src/cli` в `tsconfig.json`**
+- [x] **Step 2: Добавить `src/cli` в `tsconfig.json`**
 
 Заменить строку `include`:
 
@@ -72,16 +72,16 @@
   "include": ["src/extension/**/*", "src/core/**/*", "src/shared/**/*", "src/cli/**/*"],
 ```
 
-- [ ] **Step 3: Установить зависимость**
+- [x] **Step 3: Установить зависимость**
 
 Run: `npm install`
 Expected: установка завершается без ошибок, `yaml` появляется в `node_modules`.
 
-- [ ] **Step 4: Создать `src/core/metadata/parser/model.ts`**
+- [x] **Step 4: Создать `src/core/metadata/parser/model.ts`**
 
 ```typescript
 export type Primitive = 'Строка' | 'Число' | 'Дата' | 'Булево';
-export type TypeKind = Primitive | 'ref' | 'unknown';
+export type TypeKind = Primitive | 'timestamp' | 'ref' | 'unknown';
 
 export interface ParsedType {
   kind: TypeKind;
@@ -127,7 +127,7 @@ export interface ParsedObject {
 }
 ```
 
-- [ ] **Step 5: Создать `src/core/metadata/parser/dom.ts`**
+- [x] **Step 5: Создать `src/core/metadata/parser/dom.ts`**
 
 ```typescript
 import { DOMParser } from '@xmldom/xmldom';
@@ -190,12 +190,12 @@ export function clean<T extends Record<string, unknown>>(o: T): T {
 }
 ```
 
-- [ ] **Step 6: Проверить компиляцию**
+- [x] **Step 6: Проверить компиляцию**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add package.json package-lock.json tsconfig.json src/core/metadata/parser/model.ts src/core/metadata/parser/dom.ts
@@ -212,7 +212,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `src/core/metadata/parser/typeParser.ts`
 - Test: `test/unit/typeParser.test.ts`
 
-- [ ] **Step 1: Написать падающий тест**
+- [x] **Step 1: Написать падающий тест**
 
 `test/unit/typeParser.test.ts`:
 
@@ -299,12 +299,12 @@ describe('parseTypeBlock', () => {
 });
 ```
 
-- [ ] **Step 2: Запустить тест — убедиться, что падает**
+- [x] **Step 2: Запустить тест — убедиться, что падает**
 
 Run: `npx vitest run test/unit/typeParser.test.ts`
 Expected: FAIL — модуль `typeParser` не найден / `parseTypeBlock is not a function`.
 
-- [ ] **Step 3: Реализовать `src/core/metadata/parser/typeParser.ts`**
+- [x] **Step 3: Реализовать `src/core/metadata/parser/typeParser.ts`**
 
 ```typescript
 import { childByLocalName, childrenByLocalName, nodeText, clean } from './dom';
@@ -392,12 +392,12 @@ export function mapMdObjectRef(s: string): ParsedType {
 }
 ```
 
-- [ ] **Step 4: Запустить тест — убедиться, что проходит**
+- [x] **Step 4: Запустить тест — убедиться, что проходит**
 
 Run: `npx vitest run test/unit/typeParser.test.ts`
 Expected: PASS, все 8 тестов зелёные.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/metadata/parser/typeParser.ts test/unit/typeParser.test.ts
@@ -413,7 +413,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Files:**
 - Create: `src/core/metadata/parser/attribute.ts`
 
-- [ ] **Step 1: Создать `src/core/metadata/parser/attribute.ts`**
+- [x] **Step 1: Создать `src/core/metadata/parser/attribute.ts`**
 
 ```typescript
 import { childByLocalName, childrenByLocalName, nodeText } from './dom';
@@ -437,8 +437,13 @@ export function parseTabularSection(tsEl: any): ParsedTabularSection | null {
   const name = nodeText(childByLocalName(props, 'Name'));
   if (!name) return null;
   const uuid = tsEl.getAttribute('uuid') || '';
+  const lineNumberLength = Number(nodeText(childByLocalName(props, 'LineNumberLength')) || '5');
   const fields: ParsedField[] = [
-    { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
+    {
+      name: 'НомерСтроки',
+      category: 'standard',
+      types: [{ kind: 'Число', digits: lineNumberLength, fractionDigits: 0 }],
+    },
   ];
   const child = childByLocalName(tsEl, 'ChildObjects');
   if (child) {
@@ -472,12 +477,12 @@ export function parseChildObjects(objectEl: any): {
 }
 ```
 
-- [ ] **Step 2: Проверить компиляцию**
+- [x] **Step 2: Проверить компиляцию**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/core/metadata/parser/attribute.ts
@@ -493,7 +498,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Files:**
 - Create: `src/core/metadata/parser/catalog.ts`
 
-- [ ] **Step 1: Создать `src/core/metadata/parser/catalog.ts`**
+- [x] **Step 1: Создать `src/core/metadata/parser/catalog.ts`**
 
 ```typescript
 import { childByLocalName, childrenByLocalName, nodeText, clean } from './dom';
@@ -525,10 +530,10 @@ export function parseCatalog(objectEl: any): ParsedObject | null {
     fields.push({ name: n, category: 'standard', types });
 
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
-  std('ВерсияДанных', [{ kind: 'Строка' }]);
+  std('ВерсияДанных', [{ kind: 'timestamp' }]);
   std('ПометкаУдаления', [{ kind: 'Булево' }]);
   std('Предопределённый', [{ kind: 'Булево' }]);
-  std('ИмяПредопределённыхДанных', [{ kind: 'Строка' }]);
+  std('ИмяПредопределённыхДанных', [{ kind: 'Строка', length: 255 }]);
   if (codeLength > 0) {
     const codeStr: ParsedType = { kind: 'Строка', length: codeLength, allowedLength: codeAllowedLength };
     const code: ParsedType =
@@ -564,12 +569,12 @@ export function parseCatalog(objectEl: any): ParsedObject | null {
 }
 ```
 
-- [ ] **Step 2: Проверить компиляцию**
+- [x] **Step 2: Проверить компиляцию**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/core/metadata/parser/catalog.ts
@@ -587,7 +592,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `src/core/metadata/parser/parseConfiguration.ts`
 - Create: `src/cli/parseMetadata.ts`
 
-- [ ] **Step 1: Создать `src/core/metadata/parser/yamlWriter.ts`**
+- [x] **Step 1: Создать `src/core/metadata/parser/yamlWriter.ts`**
 
 ```typescript
 import * as fs from 'fs';
@@ -601,7 +606,7 @@ export function writeYaml(filePath: string, data: unknown): void {
 }
 ```
 
-- [ ] **Step 2: Создать `src/core/metadata/parser/parseConfiguration.ts` (пока только Справочники)**
+- [x] **Step 2: Создать `src/core/metadata/parser/parseConfiguration.ts` (пока только Справочники)**
 
 ```typescript
 import * as fs from 'fs';
@@ -695,7 +700,7 @@ function writeConfigurationIndex(cfPath: string, outCfDir: string, objects: Inde
 }
 ```
 
-- [ ] **Step 3: Создать `src/cli/parseMetadata.ts`**
+- [x] **Step 3: Создать `src/cli/parseMetadata.ts`**
 
 ```typescript
 import * as fs from 'fs';
@@ -735,17 +740,17 @@ function main(): void {
 main();
 ```
 
-- [ ] **Step 4: Проверить компиляцию**
+- [x] **Step 4: Проверить компиляцию**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
 
-- [ ] **Step 5: Прогнать CLI на реальной выгрузке**
+- [x] **Step 5: Прогнать CLI на реальной выгрузке**
 
 Run: `npm run parse`
 Expected: сводка вида `Справочники: <N>  Документы: 0  Константы: 0  Перечисления: 0`, `Пропущено ...`, `→ .../tmp/parser_data/cf`. Exit code 0, N > 0.
 
-- [ ] **Step 6: Проверить вывод глазами**
+- [x] **Step 6: Проверить вывод глазами**
 
 Run: `cat tmp/parser_data/cf/Catalogs/Валюты.yaml`
 Expected: видно `kind: Справочник`, `fullName: Справочник.Валюты`, `source: Catalogs/Валюты.xml`, блок `properties` (codeLength: 3, codeType: String, descriptionLength: 10, hierarchical: false), стандартные поля (Ссылка, ВерсияДанных, ПометкаУдаления, Предопределённый, ИмяПредопределённыхДанных, Код со `length: 3` и `allowedLength: Variable`, Наименование со `length: 10`), реквизиты (например, Наценка с `digits: 10`, `fractionDigits: 2`; ОсновнаяВалюта с `ref: Справочник.Валюты`; СпособУстановкиКурса с `ref: Перечисление.СпособыУстановкиКурсаВалюты`) и табличная часть `Представления` с полем `НомерСтроки` и реквизитами.
@@ -753,7 +758,7 @@ Expected: видно `kind: Справочник`, `fullName: Справочни
 Run: `cat tmp/parser_data/cf/configuration.yaml`
 Expected: `name: БиблиотекаСтандартныхПодсистем`, список `objects` со справочниками (поля type/name/fullName/file).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/core/metadata/parser/yamlWriter.ts src/core/metadata/parser/parseConfiguration.ts src/cli/parseMetadata.ts
@@ -770,7 +775,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `src/core/metadata/parser/document.ts`
 - Modify: `src/core/metadata/parser/parseConfiguration.ts`
 
-- [ ] **Step 1: Создать `src/core/metadata/parser/document.ts`**
+- [x] **Step 1: Создать `src/core/metadata/parser/document.ts`**
 
 ```typescript
 import { childByLocalName, nodeText, clean } from './dom';
@@ -795,7 +800,7 @@ export function parseDocument(objectEl: any): ParsedObject | null {
     fields.push({ name: n, category: 'standard', types });
 
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
-  std('ВерсияДанных', [{ kind: 'Строка' }]);
+  std('ВерсияДанных', [{ kind: 'timestamp' }]);
   std('ПометкаУдаления', [{ kind: 'Булево' }]);
   std('Дата', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   if (numberLength > 0) {
@@ -824,7 +829,7 @@ export function parseDocument(objectEl: any): ParsedObject | null {
 }
 ```
 
-- [ ] **Step 2: Зарегистрировать Документ в оркестраторе**
+- [x] **Step 2: Зарегистрировать Документ в оркестраторе**
 
 В `src/core/metadata/parser/parseConfiguration.ts` добавить импорт после строки `import { parseCatalog } from './catalog';`:
 
@@ -841,12 +846,12 @@ const HANDLERS: TypeHandler[] = [
 ];
 ```
 
-- [ ] **Step 3: Проверить компиляцию**
+- [x] **Step 3: Проверить компиляцию**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
 
-- [ ] **Step 4: Прогнать и проверить глазами**
+- [x] **Step 4: Прогнать и проверить глазами**
 
 Run: `npm run parse`
 Expected: в сводке `Документы` теперь > 0.
@@ -854,7 +859,7 @@ Expected: в сводке `Документы` теперь > 0.
 Run: `cat tmp/parser_data/cf/Documents/АктОбУничтоженииПерсональныхДанных.yaml`
 Expected: `kind: Документ`, стандартные поля (Ссылка, ВерсияДанных, ПометкаУдаления, Дата с `dateFractions: DateTime`, Номер со `length: 11` и `allowedLength: Variable`, Проведён — т.к. `Posting=Allow`), реквизиты и (при наличии) табличные части.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/metadata/parser/document.ts src/core/metadata/parser/parseConfiguration.ts
@@ -871,7 +876,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `src/core/metadata/parser/constant.ts`
 - Modify: `src/core/metadata/parser/parseConfiguration.ts`
 
-- [ ] **Step 1: Создать `src/core/metadata/parser/constant.ts`**
+- [x] **Step 1: Создать `src/core/metadata/parser/constant.ts`**
 
 ```typescript
 import { childByLocalName, nodeText } from './dom';
@@ -897,7 +902,7 @@ export function parseConstant(objectEl: any): ParsedObject | null {
 }
 ```
 
-- [ ] **Step 2: Зарегистрировать Константу в оркестраторе**
+- [x] **Step 2: Зарегистрировать Константу в оркестраторе**
 
 В `src/core/metadata/parser/parseConfiguration.ts` добавить импорт:
 
@@ -913,12 +918,12 @@ import { parseConstant } from './constant';
 
 (Массив `HANDLERS` теперь: Catalogs, Documents, Constants.)
 
-- [ ] **Step 3: Проверить компиляцию**
+- [x] **Step 3: Проверить компиляцию**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
 
-- [ ] **Step 4: Прогнать и проверить глазами**
+- [x] **Step 4: Прогнать и проверить глазами**
 
 Run: `npm run parse`
 Expected: в сводке `Константы` > 0.
@@ -926,7 +931,7 @@ Expected: в сводке `Константы` > 0.
 Run: `cat tmp/parser_data/cf/Constants/АвтоматическиНастраиватьРазрешенияВПрофиляхБезопасности.yaml`
 Expected: `kind: Константа`, `fullName: Константа.АвтоматическиНастраиватьРазрешенияВПрофиляхБезопасности`, `source: Constants/...xml`, `types` с одним элементом `kind: Булево`. Полей и табличных частей нет.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/metadata/parser/constant.ts src/core/metadata/parser/parseConfiguration.ts
@@ -943,7 +948,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `src/core/metadata/parser/enum.ts`
 - Modify: `src/core/metadata/parser/parseConfiguration.ts`
 
-- [ ] **Step 1: Создать `src/core/metadata/parser/enum.ts`**
+- [x] **Step 1: Создать `src/core/metadata/parser/enum.ts`**
 
 ```typescript
 import { childByLocalName, childrenByLocalName, nodeText } from './dom';
@@ -984,7 +989,7 @@ export function parseEnum(objectEl: any): ParsedObject | null {
 }
 ```
 
-- [ ] **Step 2: Зарегистрировать Перечисление в оркестраторе**
+- [x] **Step 2: Зарегистрировать Перечисление в оркестраторе**
 
 В `src/core/metadata/parser/parseConfiguration.ts` добавить импорт:
 
@@ -1000,12 +1005,12 @@ import { parseEnum } from './enum';
 
 (Массив `HANDLERS` теперь: Catalogs, Documents, Constants, Enums.)
 
-- [ ] **Step 3: Проверить компиляцию**
+- [x] **Step 3: Проверить компиляцию**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
 
-- [ ] **Step 4: Прогнать и проверить глазами**
+- [x] **Step 4: Прогнать и проверить глазами**
 
 Run: `npm run parse`
 Expected: в сводке все четыре счётчика > 0.
@@ -1013,7 +1018,7 @@ Expected: в сводке все четыре счётчика > 0.
 Run: `cat tmp/parser_data/cf/Enums/ВажностьПроблемыУчета.yaml`
 Expected: `kind: Перечисление`, поля Ссылка (`ref: Перечисление.ВажностьПроблемыУчета`) и Порядок (Число), блок `values` с членами (Ошибка, Предупреждение, ВажнаяИнформация, Информация, ПолезныйСовет).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/metadata/parser/enum.ts src/core/metadata/parser/parseConfiguration.ts
@@ -1032,7 +1037,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Modify: `src/extension/extension.ts`
 - Modify: `package.json`
 
-- [ ] **Step 1: Вынести `resolveCfPath` в отдельный модуль**
+- [x] **Step 1: Вынести `resolveCfPath` в отдельный модуль**
 
 Создать `src/extension/resolveCfPath.ts`:
 
@@ -1054,7 +1059,7 @@ export function resolveCfPath(): string {
 }
 ```
 
-- [ ] **Step 2: Создать `src/extension/parseCommand.ts`**
+- [x] **Step 2: Создать `src/extension/parseCommand.ts`**
 
 ```typescript
 import * as vscode from 'vscode';
@@ -1095,7 +1100,7 @@ export function registerParseCommand(channel: vscode.OutputChannel): vscode.Disp
 }
 ```
 
-- [ ] **Step 3: Подключить команду в `extension.ts`**
+- [x] **Step 3: Подключить команду в `extension.ts`**
 
 В `src/extension/extension.ts` заменить локальную `resolveCfPath` на импорт и зарегистрировать команду.
 
@@ -1120,7 +1125,7 @@ import { registerParseCommand } from './parseCommand';
   context.subscriptions.push(cmd, registerParseCommand(outputChannel), outputChannel);
 ```
 
-- [ ] **Step 4: Добавить команду и настройку в `package.json`**
+- [x] **Step 4: Добавить команду и настройку в `package.json`**
 
 В `contributes.commands` добавить второй элемент массива:
 
@@ -1141,7 +1146,7 @@ import { registerParseCommand } from './parseCommand';
         }
 ```
 
-- [ ] **Step 5: Проверить компиляцию и сборку расширения**
+- [x] **Step 5: Проверить компиляцию и сборку расширения**
 
 Run: `npx tsc -p tsconfig.json --noEmit`
 Expected: нет вывода, exit code 0.
@@ -1149,12 +1154,12 @@ Expected: нет вывода, exit code 0.
 Run: `npm run build:extension`
 Expected: esbuild собирает `out/extension/extension.js` без ошибок.
 
-- [ ] **Step 6: Проверить, что юнит-тесты по-прежнему зелёные**
+- [x] **Step 6: Проверить, что юнит-тесты по-прежнему зелёные**
 
 Run: `npx vitest run`
 Expected: все тесты проходят (включая `test/unit/typeParser.test.ts` и существующий `test/unit/cfParser.test.ts`).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/extension/resolveCfPath.ts src/extension/parseCommand.ts src/extension/extension.ts package.json
@@ -1167,11 +1172,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Финальная проверка
 
-- [ ] **Полный прогон CLI**
+- [x] **Полный прогон CLI**
 
 Run: `npm run parse`
 Expected: все четыре счётчика > 0, разумное число пропущенных (0 или небольшое), дерево `tmp/parser_data/cf/` содержит `configuration.yaml` и подкаталоги `Catalogs/`, `Documents/`, `Constants/`, `Enums/` с YAML-файлами.
 
-- [ ] **Проверка пропущенных (если skipped > 0)**
+- [x] **Проверка пропущенных (если skipped > 0)**
 
 Если число пропущенных заметное — открыть несколько `.xml`, на которых парсер вернул null, понять причину (новый вид типа → попадёт в `unknown`, это норма; либо реально иная структура). Зафиксировать наблюдение для следующих задач, код в этом плане не расширять.
