@@ -6,6 +6,19 @@ import { parseCatalog } from './catalog';
 import { parseDocument } from './document';
 import { parseConstant } from './constant';
 import { parseEnum } from './enum';
+import { parseExchangePlan } from './exchangePlan';
+import { parseChartOfCharacteristicTypes } from './chartOfCharacteristicTypes';
+import { parseChartOfAccounts } from './chartOfAccounts';
+import { parseChartOfCalculationTypes } from './chartOfCalculationTypes';
+import { parseBusinessProcess } from './businessProcess';
+import { parseTask } from './task';
+import { parseInformationRegister } from './informationRegister';
+import { parseAccumulationRegister } from './accumulationRegister';
+import { parseAccountingRegister } from './accountingRegister';
+import { parseCalculationRegister } from './calculationRegister';
+import { parseSequence } from './sequence';
+import { parseDocumentJournal } from './documentJournal';
+import { parseFilterCriteria } from './filterCriteria';
 import type { ParsedObject } from './model';
 
 interface TypeHandler {
@@ -14,10 +27,23 @@ interface TypeHandler {
 }
 
 const HANDLERS: TypeHandler[] = [
-  { subdir: 'Catalogs', parse: parseCatalog },
-  { subdir: 'Documents', parse: parseDocument },
-  { subdir: 'Constants', parse: parseConstant },
-  { subdir: 'Enums', parse: parseEnum },
+  { subdir: 'Catalogs',                    parse: parseCatalog },
+  { subdir: 'Documents',                   parse: parseDocument },
+  { subdir: 'Constants',                   parse: parseConstant },
+  { subdir: 'Enums',                       parse: parseEnum },
+  { subdir: 'ExchangePlans',               parse: parseExchangePlan },
+  { subdir: 'ChartsOfCharacteristicTypes', parse: parseChartOfCharacteristicTypes },
+  { subdir: 'ChartsOfAccounts',            parse: parseChartOfAccounts },
+  { subdir: 'ChartsOfCalculationTypes',    parse: parseChartOfCalculationTypes },
+  { subdir: 'BusinessProcesses',           parse: parseBusinessProcess },
+  { subdir: 'Tasks',                       parse: parseTask },
+  { subdir: 'InformationRegisters',        parse: parseInformationRegister },
+  { subdir: 'AccumulationRegisters',       parse: parseAccumulationRegister },
+  { subdir: 'AccountingRegisters',         parse: parseAccountingRegister },
+  { subdir: 'CalculationRegisters',        parse: parseCalculationRegister },
+  { subdir: 'Sequences',                   parse: parseSequence },
+  { subdir: 'DocumentJournals',            parse: parseDocumentJournal },
+  { subdir: 'FilterCriteria',              parse: parseFilterCriteria },
 ];
 
 export interface ParseSummary {
