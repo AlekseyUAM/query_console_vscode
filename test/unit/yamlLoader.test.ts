@@ -151,7 +151,7 @@ describe('loadMetadataFromYaml', () => {
     expect(field.types).toEqual([{ ref: { kind: 'Документ', name: 'РасходнаяНакладная' } }]);
   });
 
-  it('maps unknown/timestamp/enum ref types to empty MetaType', () => {
+  it('maps unknown/timestamp ref types to empty MetaType', () => {
     writeCfYaml(tmpDir, 'configuration.yaml', {
       version: 1,
       objects: [
@@ -176,7 +176,8 @@ describe('loadMetadataFromYaml', () => {
 
     expect(fields[0].types).toEqual([{}]);
     expect(fields[1].types).toEqual([{}]);
-    expect(fields[2].types).toEqual([{}]);
+    // Перечисление is now a supported kind, so ref resolves correctly
+    expect(fields[2].types).toEqual([{ ref: { kind: 'Перечисление', name: 'СтатусыЗаказов' } }]);
   });
 
   it('loads a Документ with fields', () => {
@@ -210,19 +211,6 @@ describe('loadMetadataFromYaml', () => {
     expect(table.fields[0].kind).toBe('standard');
     expect(table.fields[1].kind).toBe('attribute');
     expect(table.fields[2].types).toEqual([{ primitive: 'Число' }]);
-  });
-
-  it('skips objects of unsupported types (Перечисление, Константа)', () => {
-    writeCfYaml(tmpDir, 'configuration.yaml', {
-      version: 1,
-      objects: [
-        { type: 'Перечисление', name: 'Статусы', fullName: 'Перечисление.Статусы', file: 'Enums/Статусы.yaml' },
-        { type: 'Константа', name: 'НомерВерсии', fullName: 'Константа.НомерВерсии', file: 'Constants/НомерВерсии.yaml' },
-      ],
-    });
-
-    const result = loadMetadataFromYaml(tmpDir);
-    expect(result.tables).toHaveLength(0);
   });
 
   it('skips objects whose YAML file is missing', () => {
@@ -352,5 +340,119 @@ describe('loadMetadataFromYaml', () => {
 
     const result = loadMetadataFromYaml(tmpDir);
     expect(result.tables).toHaveLength(0);
+  });
+
+  it('loads a РегистрСведений with dimension fields', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1,
+      objects: [
+        { type: 'РегистрСведений', name: 'Курсы', fullName: 'РегистрСведений.Курсы', file: 'InformationRegisters/Курсы.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'InformationRegisters/Курсы.yaml', {
+      version: 1,
+      kind: 'РегистрСведений',
+      name: 'Курсы',
+      fullName: 'РегистрСведений.Курсы',
+      uuid: 'ir-1',
+      fields: [
+        { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число', digits: 9, fractionDigits: 0 }] },
+        { name: 'Период', category: 'standard', types: [{ kind: 'Дата', dateFractions: 'DateTime' }] },
+        { name: 'Валюта', category: 'dimension', types: [{ kind: 'ref', ref: 'Справочник.Валюты' }] },
+        { name: 'Курс', category: 'resource', types: [{ kind: 'Число', digits: 15, fractionDigits: 4 }] },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    expect(result.tables).toHaveLength(1);
+    const table = result.tables[0];
+    expect(table.kind).toBe('РегистрСведений');
+    expect(table.name).toBe('Курсы');
+
+    const валюта = table.fields.find(f => f.name === 'Валюта')!;
+    expect(валюта.kind).toBe('dimension');
+
+    const курс = table.fields.find(f => f.name === 'Курс')!;
+    expect(курс.kind).toBe('resource');
+    expect(курс.types).toEqual([{ primitive: 'Число' }]);
+  });
+
+  it('loads a Константа with Значение field', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1,
+      objects: [
+        { type: 'Константа', name: 'НомерВерсии', fullName: 'Константа.НомерВерсии', file: 'Constants/НомерВерсии.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'Constants/НомерВерсии.yaml', {
+      version: 1,
+      kind: 'Константа',
+      name: 'НомерВерсии',
+      fullName: 'Константа.НомерВерсии',
+      uuid: 'const-1',
+      types: [{ kind: 'Строка', length: 20 }],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    expect(result.tables).toHaveLength(1);
+    const table = result.tables[0];
+    expect(table.kind).toBe('Константа');
+    expect(table.fields).toHaveLength(1);
+    expect(table.fields[0].name).toBe('Значение');
+    expect(table.fields[0].kind).toBe('standard');
+    expect(table.fields[0].types).toEqual([{ primitive: 'Строка' }]);
+  });
+
+  it('loads a Перечисление with Ссылка and Порядок fields', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1,
+      objects: [
+        { type: 'Перечисление', name: 'Статусы', fullName: 'Перечисление.Статусы', file: 'Enums/Статусы.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'Enums/Статусы.yaml', {
+      version: 1,
+      kind: 'Перечисление',
+      name: 'Статусы',
+      fullName: 'Перечисление.Статусы',
+      uuid: 'enum-1',
+      fields: [
+        { name: 'Ссылка', category: 'standard', types: [{ kind: 'ref', ref: 'Перечисление.Статусы' }] },
+        { name: 'Порядок', category: 'standard', types: [{ kind: 'Число' }] },
+      ],
+      values: [{ name: 'Новый' }, { name: 'ВРаботе' }],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    expect(result.tables).toHaveLength(1);
+    const table = result.tables[0];
+    expect(table.kind).toBe('Перечисление');
+    expect(table.fields.map(f => f.name)).toContain('Ссылка');
+    expect(table.fields.map(f => f.name)).toContain('Порядок');
+  });
+
+  it('maps dimension/resource category to MetaField.kind correctly', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1,
+      objects: [
+        { type: 'РегистрНакопления', name: 'Продажи', fullName: 'РегистрНакопления.Продажи', file: 'AccumulationRegisters/Продажи.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'AccumulationRegisters/Продажи.yaml', {
+      version: 1,
+      kind: 'РегистрНакопления',
+      name: 'Продажи',
+      fullName: 'РегистрНакопления.Продажи',
+      uuid: 'ar-1',
+      fields: [
+        { name: 'Номенклатура', category: 'dimension', types: [{ kind: 'ref', ref: 'Справочник.Номенклатура' }] },
+        { name: 'Количество', category: 'resource', types: [{ kind: 'Число', digits: 15, fractionDigits: 3 }] },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    const table = result.tables[0];
+    expect(table.fields.find(f => f.name === 'Номенклатура')?.kind).toBe('dimension');
+    expect(table.fields.find(f => f.name === 'Количество')?.kind).toBe('resource');
   });
 });

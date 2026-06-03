@@ -4,7 +4,13 @@ import { parse } from 'yaml';
 import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind } from './types';
 import type { ParsedObject, ParsedField, ParsedType } from './parser/model';
 
-const SUPPORTED_KINDS: ReadonlySet<string> = new Set(['Справочник', 'Документ']);
+const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
+  'Справочник', 'Документ', 'Константа', 'Перечисление',
+  'ПланОбмена', 'ПланВидовХарактеристик', 'ПланСчетов', 'ПланВидовРасчета',
+  'БизнесПроцесс', 'Задача',
+  'РегистрСведений', 'РегистрНакопления', 'РегистрБухгалтерии', 'РегистрРасчета',
+  'Последовательность', 'ЖурналДокументов', 'КритерийОтбора',
+]);
 
 function mapParsedType(pt: ParsedType): MetaType {
   const k = pt.kind;
@@ -12,7 +18,9 @@ function mapParsedType(pt: ParsedType): MetaType {
     return { primitive: k };
   }
   if (k === 'ref' && pt.ref) {
-    const match = pt.ref.match(/^(Справочник|Документ)\.(.+)$/);
+    const match = pt.ref.match(
+      /^(Справочник|Документ|Константа|Перечисление|ПланОбмена|ПланВидовХарактеристик|ПланСчетов|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|РегистрНакопления|РегистрБухгалтерии|РегистрРасчета|Последовательность|ЖурналДокументов|КритерийОтбора)\.(.+)$/
+    );
     if (match) {
       return { ref: { kind: match[1] as TableKind, name: match[2] } };
     }
@@ -29,6 +37,19 @@ function mapParsedField(pf: ParsedField): MetaField {
 }
 
 function parsedObjectToMetaTable(obj: ParsedObject): MetaTable {
+  if (obj.kind === 'Константа') {
+    return {
+      kind: 'Константа',
+      name: obj.name,
+      fullName: obj.fullName,
+      fields: [{
+        name: 'Значение',
+        kind: 'standard',
+        types: (obj.types ?? []).map(mapParsedType),
+      }],
+    };
+  }
+
   const tabularSections: MetaTable[] = (obj.tabularSections ?? []).map(ts => ({
     kind: 'ТабличнаяЧасть' as TableKind,
     name: ts.name,
@@ -105,7 +126,6 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
     const metaTable = parsedObjectToMetaTable(obj);
     tables.push(metaTable);
 
-    // Tabular sections also go into the flat tables[] so they can be found by fullName
     for (const ts of metaTable.tabularSections ?? []) {
       tables.push(ts);
     }
