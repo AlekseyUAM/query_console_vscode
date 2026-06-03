@@ -11,6 +11,8 @@ import { parseBusinessProcess } from '../../src/core/metadata/parser/businessPro
 import { parseTask } from '../../src/core/metadata/parser/task';
 import { parseInformationRegister } from '../../src/core/metadata/parser/informationRegister';
 import { parseAccumulationRegister } from '../../src/core/metadata/parser/accumulationRegister';
+import { parseAccountingRegister } from '../../src/core/metadata/parser/accountingRegister';
+import { parseCalculationRegister } from '../../src/core/metadata/parser/calculationRegister';
 
 const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
 
@@ -318,5 +320,56 @@ describe('parseAccumulationRegister', () => {
     const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОбор.xml');
     const result = parseAccumulationRegister(el)!;
     expect(result.tabularSections).toBeUndefined();
+  });
+});
+
+describe('parseAccountingRegister', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('AccountingRegisters', 'РегистрБухгалтерии1.xml');
+    const result = parseAccountingRegister(el);
+    expect(result?.name).toBe('РегистрБухгалтерии1');
+    expect(result?.fullName).toBe('РегистрБухгалтерии.РегистрБухгалтерии1');
+    expect(result?.kind).toBe('РегистрБухгалтерии');
+  });
+
+  it('includes НомерСтроки, Период, Регистратор, Активность standard fields', () => {
+    const el = readObjectEl('AccountingRegisters', 'РегистрБухгалтерии1.xml');
+    const result = parseAccountingRegister(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('НомерСтроки');
+    expect(stdNames).toContain('Период');
+    expect(stdNames).toContain('Регистратор');
+    expect(stdNames).toContain('Активность');
+  });
+
+  it('includes dimension, resource, and attribute fields', () => {
+    const el = readObjectEl('AccountingRegisters', 'РегистрБухгалтерии1.xml');
+    const result = parseAccountingRegister(el)!;
+    const dim = result.fields.find(f => f.name === 'Организация');
+    const res = result.fields.find(f => f.name === 'Сумма');
+    const attr = result.fields.find(f => f.name === 'Реквизит1');
+    expect(dim?.category).toBe('dimension');
+    expect(res?.category).toBe('resource');
+    expect(attr?.category).toBe('attribute');
+  });
+});
+
+describe('parseCalculationRegister', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('CalculationRegisters', 'РегистрРасчета1.xml');
+    const result = parseCalculationRegister(el);
+    expect(result?.name).toBe('РегистрРасчета1');
+    expect(result?.fullName).toBe('РегистрРасчета.РегистрРасчета1');
+    expect(result?.kind).toBe('РегистрРасчета');
+  });
+
+  it('includes НомерСтроки, Период, Регистратор, ВидРасчета standard fields', () => {
+    const el = readObjectEl('CalculationRegisters', 'РегистрРасчета1.xml');
+    const result = parseCalculationRegister(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('НомерСтроки');
+    expect(stdNames).toContain('Период');
+    expect(stdNames).toContain('Регистратор');
+    expect(stdNames).toContain('ВидРасчета');
   });
 });
