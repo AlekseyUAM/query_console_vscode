@@ -1,10 +1,11 @@
 import type { QueryModel, SelectedTable } from './queryModel';
+import { defaultTableAlias } from './queryModel';
 
 function resolveAliases(tables: SelectedTable[]): Map<string, string> {
   const seen = new Set<string>();
   const result = new Map<string, string>();
   for (const t of tables) {
-    const base = t.alias ?? t.fullName.split('.')[1] ?? t.fullName;
+    const base = defaultTableAlias(t);
     let alias = base;
     let counter = 1;
     while (seen.has(alias)) {
@@ -17,6 +18,15 @@ function resolveAliases(tables: SelectedTable[]): Map<string, string> {
   return result;
 }
 
+function renderSource(t: SelectedTable): string {
+  if (!t.virtual) return t.fullName;
+  const { period = '', condition = '' } = t.virtual;
+  if (!period && !condition) return t.fullName;
+  // Параметры позиционные: при заданном только условии остаётся ведущая запятая
+  // `(, Условие)`; при заданном только периоде — `(Период)`.
+  return `${t.fullName}(${period}${condition ? ', ' + condition : ''})`;
+}
+
 export function generate(model: QueryModel): string {
   if (model.tables.length === 0) return '';
   const hasFields = model.fields.length > 0 || (model.tabSectionFields?.length ?? 0) > 0;
@@ -25,8 +35,16 @@ export function generate(model: QueryModel): string {
   const aliases = resolveAliases(model.tables);
 
   const allLines: string[] = [];
+  // Счётчик автопсевдонимов произвольных полей. Не проверяет коллизии с явными
+  // псевдонимами — допустимо для фазы 4.2 (UI не смешивает их с полями «Поле{n}»).
+  let exprCounter = 0;
 
   for (const f of model.fields) {
+    if (f.expression) {
+      const alias = f.alias ?? `Поле${++exprCounter}`;
+      allLines.push(`\t${f.expression} КАК ${alias}`);
+      continue;
+    }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
     const expr = f.alias ? `${tableAlias}.${f.path} КАК ${f.alias}` : `${tableAlias}.${f.path}`;
     allLines.push(`\t${expr}`);
@@ -45,7 +63,7 @@ export function generate(model: QueryModel): string {
   const tableLines = model.tables.map((t, i) => {
     const alias = aliases.get(t.id) ?? t.id;
     const comma = i < model.tables.length - 1 ? ',' : '';
-    return `\t${t.fullName} КАК ${alias}${comma}`;
+    return `\t${renderSource(t)} КАК ${alias}${comma}`;
   });
 
   return ['ВЫБРАТЬ', ...fieldLines, 'ИЗ', ...tableLines].join('\n');

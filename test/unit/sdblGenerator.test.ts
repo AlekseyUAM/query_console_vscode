@@ -101,4 +101,67 @@ describe('generate', () => {
       'ВЫБРАТЬ\n\tВалюты.Код КАК КодВалюты\nИЗ\n\tСправочник.Валюты КАК Валюты'
     );
   });
+
+  it('renders a virtual slice table without parens when no params', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: {} }],
+      fields: [{ tableId: 't1', path: 'Период' }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tКурсыСрезПоследних.Период\nИЗ\n\tРегистрСведений.Курсы.СрезПоследних КАК КурсыСрезПоследних'
+    );
+  });
+
+  it('renders a virtual slice table with period and condition params', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { period: '&Период', condition: 'Валюта = &Валюта' } }],
+      fields: [{ tableId: 't1', path: 'Курс' }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tКурсыСрезПоследних.Курс\nИЗ\n\tРегистрСведений.Курсы.СрезПоследних(&Период, Валюта = &Валюта) КАК КурсыСрезПоследних'
+    );
+  });
+
+  it('renders only period when condition empty', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { period: '&Период' } }],
+      fields: [{ tableId: 't1', path: 'Курс' }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tКурсыСрезПоследних.Курс\nИЗ\n\tРегистрСведений.Курсы.СрезПоследних(&Период) КАК КурсыСрезПоследних'
+    );
+  });
+
+  it('renders leading comma when only condition set', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { condition: 'Валюта = &Валюта' } }],
+      fields: [{ tableId: 't1', path: 'Курс' }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tКурсыСрезПоследних.Курс\nИЗ\n\tРегистрСведений.Курсы.СрезПоследних(, Валюта = &Валюта) КАК КурсыСрезПоследних'
+    );
+  });
+
+  it('renders an expression field with explicit alias', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: '', expression: 'ВЫРАЗИТЬ(Валюты.Код КАК ЧИСЛО)', alias: 'КодЧисло' }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВЫРАЗИТЬ(Валюты.Код КАК ЧИСЛО) КАК КодЧисло\nИЗ\n\tСправочник.Валюты КАК Валюты'
+    );
+  });
+
+  it('auto-generates aliases Поле1, Поле2 for expression fields without alias', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: '', expression: 'СУММА(Валюты.Код)' },
+        { tableId: 't1', path: '', expression: 'МАКСИМУМ(Валюты.Код)' },
+      ],
+    };
+    const text = generate(model);
+    expect(text).toContain('\tСУММА(Валюты.Код) КАК Поле1,');
+    expect(text).toContain('\tМАКСИМУМ(Валюты.Код) КАК Поле2\n');
+  });
 });

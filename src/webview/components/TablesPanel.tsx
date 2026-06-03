@@ -12,6 +12,7 @@ interface Props {
   onRemoveTable: (tableId: string) => void;
   onFocusTable: (id: string) => void;
   onExpandRef: (ref: RefId) => void;
+  onOpenVirtualParams: (tableId: string) => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -88,7 +89,7 @@ function FieldRow({ tableFullName, field, depth, expandedRefs, onExpandRef }: {
   );
 }
 
-export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef }: Props): React.ReactElement {
+export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams }: Props): React.ReactElement {
   const [expandedTableIds, setExpandedTableIds] = React.useState<Set<string>>(new Set());
   const [expandedTsSections, setExpandedTsSections] = React.useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -137,6 +138,10 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
     }
   }
 
+  const focusedTable = selectedTables.find(t => t.id === focusedSelectedTableId);
+  const focusedMeta = focusedTable ? metaTables.find(m => m.fullName === focusedTable.fullName) : undefined;
+  const focusedIsVirtual = !!focusedMeta?.virtual;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 4, gap: 4 }}>
       <div style={{ fontWeight: 'bold', fontSize: 12, color: 'var(--vscode-descriptionForeground, #aaa)' }}>Таблицы</div>
@@ -148,6 +153,14 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
           onClick={() => focusedSelectedTableId && onRemoveTable(focusedSelectedTableId)}
         >
           ✕
+        </button>
+        <button
+          style={BTN}
+          title="Параметры виртуальной таблицы"
+          disabled={!focusedIsVirtual}
+          onClick={() => focusedSelectedTableId && onOpenVirtualParams(focusedSelectedTableId)}
+        >
+          ⚙
         </button>
       </div>
       <div

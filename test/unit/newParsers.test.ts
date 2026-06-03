@@ -454,3 +454,17 @@ describe('parseFilterCriteria', () => {
     expect(result.fields[0].category).toBe('standard');
   });
 });
+
+describe('parseInformationRegister — periodicity property', () => {
+  it('stores periodicity in properties for a periodical register', () => {
+    const el = readObjectEl('InformationRegisters', 'АрхивСообщенийОбменов.xml');
+    const result = parseInformationRegister(el)!;
+    expect(result.properties?.periodicity).toBe('Second');
+  });
+
+  it('stores periodicity Nonperiodical for a non-periodical register', () => {
+    const el = readObjectEl('InformationRegisters', 'АдминистративнаяИерархия.xml');
+    const result = parseInformationRegister(el)!;
+    expect(result.properties?.periodicity).toBe('Nonperiodical');
+  });
+});

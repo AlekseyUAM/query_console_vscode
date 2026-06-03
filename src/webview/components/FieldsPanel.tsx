@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { MetaTable } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
+import { defaultTableAlias } from '../../core/query/queryModel';
 import { generate, formatAsBslString } from '../../core/query/sdblGenerator';
 
 interface Props {
@@ -17,6 +18,8 @@ interface Props {
   onFocusField: (idx: number) => void;
   onInsert: (text: string) => void;
   onCancel: () => void;
+  canAddExpression: boolean;
+  onAddExpression: () => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -43,7 +46,7 @@ const REMOVE_BTN: React.CSSProperties = {
 export function FieldsPanel({
   metaTables, selectedTables, selectedFields, tabSectionFields, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
-  onFocusField, onInsert, onCancel,
+  onFocusField, onInsert, onCancel, canAddExpression, onAddExpression,
 }: Props): React.ReactElement {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [expandedTs, setExpandedTs] = React.useState<Set<string>>(new Set(
@@ -114,6 +117,14 @@ export function FieldsPanel({
         >
           ✕
         </button>
+        <button
+          style={BTN}
+          title="Добавить поле (произвольное выражение)"
+          disabled={!canAddExpression}
+          onClick={onAddExpression}
+        >
+          +
+        </button>
       </div>
       <div
         onDragOver={handleDragOver}
@@ -132,10 +143,12 @@ export function FieldsPanel({
         {/* Regular fields */}
         {selectedFields.map((f, i) => {
           const table = selectedTables.find(t => t.id === f.tableId);
-          const label = table ? `${table.fullName.split('.')[1]}.${f.path}` : f.path;
+          const label = f.expression
+            ? (f.alias ?? f.expression)
+            : (table ? `${defaultTableAlias(table)}.${f.path}` : f.path);
           return (
             <div
-              key={`${f.tableId}:${f.path}`}
+              key={f.expression ? `${f.tableId}:expr:${i}` : `${f.tableId}:${f.path}`}
               data-field-idx={i}
               onClick={() => onFocusField(i)}
               style={{

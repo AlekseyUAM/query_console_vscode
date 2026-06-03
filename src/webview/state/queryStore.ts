@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 
@@ -29,7 +29,9 @@ export type QueryAction =
   | { type: 'REMOVE_TAB_SECTION'; tableId: string; tsName: string }
   | { type: 'REMOVE_TAB_SECTION_SUB_FIELD'; tableId: string; tsName: string; fieldName: string }
   | { type: 'FOCUS_SELECTED_TABLE'; id: string }
-  | { type: 'FOCUS_SELECTED_FIELD'; idx: number };
+  | { type: 'FOCUS_SELECTED_FIELD'; idx: number }
+  | { type: 'SET_VIRTUAL_PARAMS'; tableId: string; params: VirtualParams }
+  | { type: 'ADD_EXPRESSION_FIELD'; tableId: string; expression: string; alias?: string };
 
 export function initialState(): QueryState {
   return {
@@ -69,9 +71,11 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       const alreadyIn = state.selectedTables.some(t => t.fullName === action.table.fullName);
       if (alreadyIn) return state;
       const id = `t${++_tableCounter}`;
+      const newTable: SelectedTable = { id, fullName: action.table.fullName };
+      if (action.table.virtual) newTable.virtual = {};
       return {
         ...state,
-        selectedTables: [...state.selectedTables, { id, fullName: action.table.fullName }],
+        selectedTables: [...state.selectedTables, newTable],
         focusedSelectedTableId: id,
       };
     }
@@ -177,6 +181,19 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
 
     case 'FOCUS_SELECTED_FIELD':
       return { ...state, focusedSelectedFieldIdx: action.idx };
+
+    case 'SET_VIRTUAL_PARAMS': {
+      const selectedTables = state.selectedTables.map(t =>
+        t.id === action.tableId ? { ...t, virtual: action.params } : t
+      );
+      return { ...state, selectedTables };
+    }
+
+    case 'ADD_EXPRESSION_FIELD': {
+      const field: SelectedField = { tableId: action.tableId, path: '', expression: action.expression };
+      if (action.alias) field.alias = action.alias;
+      return { ...state, selectedFields: [...state.selectedFields, field] };
+    }
 
     default:
       return state;

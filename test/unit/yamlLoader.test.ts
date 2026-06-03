@@ -431,6 +431,88 @@ describe('loadMetadataFromYaml', () => {
     expect(table.fields.map(f => f.name)).toContain('Порядок');
   });
 
+  it('emits СрезПервых and СрезПоследних for a periodical information register', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1, name: 'TestConf',
+      objects: [
+        { type: 'РегистрСведений', name: 'Курсы', fullName: 'РегистрСведений.Курсы', file: 'InformationRegisters/Курсы.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'InformationRegisters/Курсы.yaml', {
+      version: 1, kind: 'РегистрСведений', name: 'Курсы', fullName: 'РегистрСведений.Курсы',
+      properties: { periodicity: 'Day' },
+      fields: [
+        { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
+        { name: 'Активность', category: 'standard', types: [{ kind: 'Булево' }] },
+        { name: 'Период', category: 'standard', types: [{ kind: 'Дата' }] },
+        { name: 'Валюта', category: 'dimension', types: [{ kind: 'Строка' }] },
+        { name: 'Курс', category: 'resource', types: [{ kind: 'Число' }] },
+      ],
+    });
+
+    const result: MetadataModel = loadMetadataFromYaml(tmpDir);
+    const names = result.tables.map(t => t.fullName);
+    expect(names).toContain('РегистрСведений.Курсы');
+    expect(names).toContain('РегистрСведений.Курсы.СрезПервых');
+    expect(names).toContain('РегистрСведений.Курсы.СрезПоследних');
+
+    const slice = result.tables.find(t => t.fullName === 'РегистрСведений.Курсы.СрезПоследних')!;
+    expect(slice.virtual).toEqual({ slice: 'СрезПоследних', baseFullName: 'РегистрСведений.Курсы' });
+    const fieldNames = slice.fields.map(f => f.name);
+    expect(fieldNames).toEqual(['Период', 'ПериодОкончание', 'Валюта', 'Курс']);
+    expect(fieldNames).not.toContain('НомерСтроки');
+    expect(fieldNames).not.toContain('Активность');
+  });
+
+  it('excludes Регистратор from a periodical recorder-subordinate slice', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1, name: 'TestConf',
+      objects: [
+        { type: 'РегистрСведений', name: 'События', fullName: 'РегистрСведений.События', file: 'InformationRegisters/События.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'InformationRegisters/События.yaml', {
+      version: 1, kind: 'РегистрСведений', name: 'События', fullName: 'РегистрСведений.События',
+      properties: { periodicity: 'Day' },
+      fields: [
+        { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
+        { name: 'Активность', category: 'standard', types: [{ kind: 'Булево' }] },
+        { name: 'Период', category: 'standard', types: [{ kind: 'Дата' }] },
+        { name: 'Регистратор', category: 'standard', types: [{ kind: 'unknown' }] },
+        { name: 'Объект', category: 'dimension', types: [{ kind: 'Строка' }] },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    const slice = result.tables.find(t => t.fullName === 'РегистрСведений.События.СрезПоследних')!;
+    const fieldNames = slice.fields.map(f => f.name);
+    expect(fieldNames).toEqual(['Период', 'ПериодОкончание', 'Объект']);
+    expect(fieldNames).not.toContain('Регистратор');
+  });
+
+  it('does not emit slices for a non-periodical information register', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1, name: 'TestConf',
+      objects: [
+        { type: 'РегистрСведений', name: 'Иерархия', fullName: 'РегистрСведений.Иерархия', file: 'InformationRegisters/Иерархия.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'InformationRegisters/Иерархия.yaml', {
+      version: 1, kind: 'РегистрСведений', name: 'Иерархия', fullName: 'РегистрСведений.Иерархия',
+      properties: { periodicity: 'Nonperiodical' },
+      fields: [
+        { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
+        { name: 'Активность', category: 'standard', types: [{ kind: 'Булево' }] },
+        { name: 'Узел', category: 'dimension', types: [{ kind: 'Строка' }] },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    const names = result.tables.map(t => t.fullName);
+    expect(names).toContain('РегистрСведений.Иерархия');
+    expect(names.some(n => n.includes('Срез'))).toBe(false);
+  });
+
   it('maps dimension/resource category to MetaField.kind correctly', () => {
     writeCfYaml(tmpDir, 'configuration.yaml', {
       version: 1,

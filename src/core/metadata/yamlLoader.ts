@@ -69,6 +69,34 @@ function parsedObjectToMetaTable(obj: ParsedObject): MetaTable {
   };
 }
 
+const SLICE_EXCLUDED: ReadonlySet<string> = new Set(['НомерСтроки', 'Активность', 'Регистратор', 'Период']);
+
+function buildInfoRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
+  if (obj.kind !== 'РегистрСведений') return [];
+  const periodicity = (obj.properties as { periodicity?: string } | undefined)?.periodicity;
+  if (!periodicity || periodicity === 'Nonperiodical') return [];
+
+  // Поля среза по скриншотам конструктора 1С: Период + ПериодОкончание (именно
+  // «ПериодОкончание», как в эталонном тексте запроса) + измерения/ресурсы/реквизиты
+  // базового регистра без стандартных служебных полей.
+  const sliceFields: MetaField[] = [
+    { name: 'Период', kind: 'standard', types: [{ primitive: 'Дата' }] },
+    { name: 'ПериодОкончание', kind: 'standard', types: [{ primitive: 'Дата' }] },
+    ...base.fields.filter(f => !SLICE_EXCLUDED.has(f.name)),
+  ];
+
+  const slices: ('СрезПервых' | 'СрезПоследних')[] = ['СрезПервых', 'СрезПоследних'];
+  // Каждый срез получает собственную копию массива полей, чтобы будущие потребители
+  // не могли случайно мутировать поля обоих срезов сразу.
+  return slices.map((slice): MetaTable => ({
+    kind: 'РегистрСведений',
+    name: `${obj.name}.${slice}`,
+    fullName: `${obj.fullName}.${slice}`,
+    fields: [...sliceFields],
+    virtual: { slice, baseFullName: obj.fullName },
+  }));
+}
+
 interface IndexEntry {
   type: string;
   name: string;
@@ -128,6 +156,10 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
 
     for (const ts of metaTable.tabularSections ?? []) {
       tables.push(ts);
+    }
+
+    for (const slice of buildInfoRegSlices(obj, metaTable)) {
+      tables.push(slice);
     }
   }
 

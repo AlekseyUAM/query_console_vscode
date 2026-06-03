@@ -37,6 +37,7 @@ export function parseInformationRegister(objectEl: any): ParsedObject | null {
     name,
     fullName,
     uuid,
+    properties: { periodicity: periodicity || 'Nonperiodical' },
     fields,
   };
 }
