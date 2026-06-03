@@ -168,6 +168,7 @@
   `Периодичность`/`МетодДополнения` — голые слова SDBL. Эталоны — в спеке.
 
 Спек: [`specs/2026-06-03-phase4-accum-virtual-tables-design.md`](superpowers/specs/2026-06-03-phase4-accum-virtual-tables-design.md)
+План: [`plans/2026-06-03-phase4-accum-virtual-tables.md`](superpowers/plans/2026-06-03-phase4-accum-virtual-tables.md)
 
 За рамками: регистр бухгалтерии (субконто), виртуальные таблицы регистра расчёта,
 валидация выражений и обратный разбор (фаза 6).
