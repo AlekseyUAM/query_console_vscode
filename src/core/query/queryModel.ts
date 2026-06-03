@@ -1,5 +1,9 @@
 export interface VirtualParams {
-  period?: string;
+  period?: string;       // срез РС, Остатки РН
+  startPeriod?: string;  // НачалоПериода (Обороты, ОстаткиИОбороты)
+  endPeriod?: string;    // КонецПериода
+  periodicity?: string;  // Период|Запись|Регистратор|Секунда|…|Авто
+  fillMethod?: string;   // Движения|ДвиженияИГраницыПериода (ОстаткиИОбороты)
   condition?: string;
 }
 
