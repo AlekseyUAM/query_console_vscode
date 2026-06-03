@@ -6,11 +6,13 @@ export type RefId = { kind: TableKind; name: string };
 export type HostMsg =
   | { type: 'metadataTree'; tables: MetaTable[] }
   | { type: 'refFields'; ref: RefId; fields: MetaField[] }
-  | { type: 'generatedText'; text: string };
+  | { type: 'generatedText'; text: string }
+  | { type: 'refreshResult'; ok: boolean; message: string };
 
 export type WebviewMsg =
   | { type: 'ready' }
   | { type: 'expandRef'; ref: RefId }
   | { type: 'generate'; model: QueryModel }
   | { type: 'insertText'; text: string }
-  | { type: 'cancel' };
+  | { type: 'cancel' }
+  | { type: 'refreshCache' };
