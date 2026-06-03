@@ -4,6 +4,10 @@ import { TabsBar } from './components/TabsBar';
 import { DbTreePanel } from './components/DbTreePanel';
 import { TablesPanel } from './components/TablesPanel';
 import { FieldsPanel } from './components/FieldsPanel';
+import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
+import { ExpressionBuilder } from './components/ExpressionBuilder';
+import type { VirtualParams } from '../core/query/queryModel';
+import type { MetaField, MetaTable } from '../core/metadata/types';
 import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer } from './state/queryStore';
 import { generate } from '../core/query/sdblGenerator';
@@ -24,6 +28,12 @@ export function App(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const [queryModalText, setQueryModalText] = useState<string | null>(null);
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
+  const [vtDialogTableId, setVtDialogTableId] = useState<string | null>(null);
+  const [exprBuilder, setExprBuilder] = useState<null | {
+    fields: string[];
+    initial: string;
+    onOk: (text: string) => void;
+  }>(null);
 
   useEffect(() => {
     const unsub = onHostMessage(msg => {
@@ -59,6 +69,23 @@ export function App(): React.ReactElement {
   function handleRefreshCache() {
     setRefreshState('loading');
     postToHost({ type: 'refreshCache' });
+  }
+
+  function aliasOf(t: { fullName: string; virtual?: VirtualParams }): string {
+    const parts = t.fullName.split('.');
+    if (t.virtual && parts.length >= 3) return parts[1] + parts[2];
+    return parts[1] ?? t.fullName;
+  }
+
+  // qualified=true → 'Alias.Поле' (для произвольного поля в SELECT);
+  // qualified=false → 'Поле' (для условия внутри скобок виртуальной таблицы).
+  function fieldsForTable(tableId: string, qualified: boolean): string[] {
+    const sel = state.selectedTables.find(t => t.id === tableId);
+    if (!sel) return [];
+    const meta: MetaTable | undefined = state.tables.find(m => m.fullName === sel.fullName);
+    if (!meta) return [];
+    const alias = aliasOf(sel);
+    return meta.fields.map((f: MetaField) => qualified ? `${alias}.${f.name}` : f.name);
   }
 
   const panelStyle: React.CSSProperties = {
@@ -112,6 +139,7 @@ export function App(): React.ReactElement {
             onRemoveTable={tableId => dispatch({ type: 'REMOVE_TABLE', tableId })}
             onFocusTable={id => dispatch({ type: 'FOCUS_SELECTED_TABLE', id })}
             onExpandRef={ref => postToHost({ type: 'expandRef', ref })}
+            onOpenVirtualParams={tableId => setVtDialogTableId(tableId)}
           />
         </div>
         <div style={panelStyle}>
@@ -133,6 +161,19 @@ export function App(): React.ReactElement {
             onFocusField={idx => dispatch({ type: 'FOCUS_SELECTED_FIELD', idx })}
             onInsert={handleInsert}
             onCancel={handleCancel}
+            canAddExpression={state.focusedSelectedTableId !== null}
+            onAddExpression={() => {
+              const tableId = state.focusedSelectedTableId;
+              if (!tableId) return;
+              setExprBuilder({
+                fields: fieldsForTable(tableId, true),
+                initial: '',
+                onOk: text => {
+                  if (text.trim()) dispatch({ type: 'ADD_EXPRESSION_FIELD', tableId, expression: text.trim() });
+                  setExprBuilder(null);
+                },
+              });
+            }}
           />
         </div>
       </div>
@@ -140,6 +181,39 @@ export function App(): React.ReactElement {
       <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
         <button style={BTN} onClick={handleShowQuery}>Запрос</button>
       </div>
+
+      {/* Virtual table params modal */}
+      {vtDialogTableId !== null && (() => {
+        const sel = state.selectedTables.find(t => t.id === vtDialogTableId);
+        if (!sel) return null;
+        return (
+          <VirtualTableParamsDialog
+            initial={sel.virtual ?? {}}
+            onOpenConditionBuilder={(current, apply) => {
+              setExprBuilder({
+                fields: fieldsForTable(vtDialogTableId, false),
+                initial: current,
+                onOk: text => { apply(text); setExprBuilder(null); },
+              });
+            }}
+            onOk={(params: VirtualParams) => {
+              dispatch({ type: 'SET_VIRTUAL_PARAMS', tableId: vtDialogTableId, params });
+              setVtDialogTableId(null);
+            }}
+            onCancel={() => setVtDialogTableId(null)}
+          />
+        );
+      })()}
+
+      {/* Expression builder modal */}
+      {exprBuilder && (
+        <ExpressionBuilder
+          availableFields={exprBuilder.fields}
+          initialText={exprBuilder.initial}
+          onOk={exprBuilder.onOk}
+          onCancel={() => setExprBuilder(null)}
+        />
+      )}
 
       {/* Query preview modal */}
       {queryModalText !== null && (
