@@ -17,6 +17,8 @@ interface Props {
   onFocusField: (idx: number) => void;
   onInsert: (text: string) => void;
   onCancel: () => void;
+  canAddExpression: boolean;
+  onAddExpression: () => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -43,7 +45,7 @@ const REMOVE_BTN: React.CSSProperties = {
 export function FieldsPanel({
   metaTables, selectedTables, selectedFields, tabSectionFields, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
-  onFocusField, onInsert, onCancel,
+  onFocusField, onInsert, onCancel, canAddExpression, onAddExpression,
 }: Props): React.ReactElement {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [expandedTs, setExpandedTs] = React.useState<Set<string>>(new Set(
@@ -113,6 +115,14 @@ export function FieldsPanel({
           onClick={() => focusedSelectedFieldIdx !== null && onRemoveField(focusedSelectedFieldIdx)}
         >
           ✕
+        </button>
+        <button
+          style={BTN}
+          title="Добавить поле (произвольное выражение)"
+          disabled={!canAddExpression}
+          onClick={onAddExpression}
+        >
+          +
         </button>
       </div>
       <div
