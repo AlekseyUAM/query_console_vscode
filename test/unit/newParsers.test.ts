@@ -6,6 +6,9 @@ import { parseChildObjects } from '../../src/core/metadata/parser/attribute';
 import { parseExchangePlan } from '../../src/core/metadata/parser/exchangePlan';
 import { parseChartOfCharacteristicTypes } from '../../src/core/metadata/parser/chartOfCharacteristicTypes';
 import { parseChartOfAccounts } from '../../src/core/metadata/parser/chartOfAccounts';
+import { parseChartOfCalculationTypes } from '../../src/core/metadata/parser/chartOfCalculationTypes';
+import { parseBusinessProcess } from '../../src/core/metadata/parser/businessProcess';
+import { parseTask } from '../../src/core/metadata/parser/task';
 
 const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
 
@@ -127,5 +130,79 @@ describe('parseChartOfAccounts', () => {
     expect(stdNames).toContain('ВидСчета');
     expect(stdNames).toContain('ПризнакАктивности');
     expect(stdNames).toContain('Ссылка');
+  });
+});
+
+describe('parseChartOfCalculationTypes', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('ChartsOfCalculationTypes', 'ПланВидовРасчета1.xml');
+    const result = parseChartOfCalculationTypes(el);
+    expect(result?.name).toBe('ПланВидовРасчета1');
+    expect(result?.fullName).toBe('ПланВидовРасчета.ПланВидовРасчета1');
+    expect(result?.kind).toBe('ПланВидовРасчета');
+  });
+
+  it('includes Ссылка standard field and attribute fields', () => {
+    const el = readObjectEl('ChartsOfCalculationTypes', 'ПланВидовРасчета1.xml');
+    const result = parseChartOfCalculationTypes(el)!;
+    expect(result.fields.map(f => f.name)).toContain('Ссылка');
+    expect(result.fields.filter(f => f.category === 'attribute').map(f => f.name)).toContain('Реквизит1');
+  });
+
+  it('parses tabular sections', () => {
+    const el = readObjectEl('ChartsOfCalculationTypes', 'ПланВидовРасчета1.xml');
+    const result = parseChartOfCalculationTypes(el)!;
+    expect(result.tabularSections).toBeDefined();
+    expect(result.tabularSections!.length).toBeGreaterThan(0);
+    expect(result.tabularSections![0].name).toBe('ТабличнаяЧасть1');
+  });
+});
+
+describe('parseBusinessProcess', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('BusinessProcesses', 'Задание.xml');
+    const result = parseBusinessProcess(el);
+    expect(result?.name).toBe('Задание');
+    expect(result?.fullName).toBe('БизнесПроцесс.Задание');
+    expect(result?.kind).toBe('БизнесПроцесс');
+  });
+
+  it('includes always-present standard fields', () => {
+    const el = readObjectEl('BusinessProcesses', 'Задание.xml');
+    const result = parseBusinessProcess(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('Ссылка');
+    expect(stdNames).toContain('Дата');
+    expect(stdNames).toContain('Старт');
+    expect(stdNames).toContain('Завершен');
+    expect(stdNames).toContain('ГоловнаяЗадача');
+  });
+
+  it('includes Номер when NumberLength > 0', () => {
+    const el = readObjectEl('BusinessProcesses', 'Задание.xml');
+    const result = parseBusinessProcess(el)!;
+    expect(result.fields.map(f => f.name)).toContain('Номер');
+  });
+});
+
+describe('parseTask', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('Tasks', 'ЗадачаИсполнителя.xml');
+    const result = parseTask(el);
+    expect(result?.name).toBe('ЗадачаИсполнителя');
+    expect(result?.fullName).toBe('Задача.ЗадачаИсполнителя');
+    expect(result?.kind).toBe('Задача');
+  });
+
+  it('includes standard fields including Выполнена, ТочкаМаршрута, БизнесПроцесс', () => {
+    const el = readObjectEl('Tasks', 'ЗадачаИсполнителя.xml');
+    const result = parseTask(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('Ссылка');
+    expect(stdNames).toContain('Выполнена');
+    expect(stdNames).toContain('ТочкаМаршрута');
+    expect(stdNames).toContain('БизнесПроцесс');
+    expect(stdNames).toContain('Номер');
+    expect(stdNames).toContain('Наименование');
   });
 });
