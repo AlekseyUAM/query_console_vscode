@@ -18,9 +18,12 @@ const BTN: React.CSSProperties = {
   fontSize: 12,
 };
 
+type RefreshState = 'idle' | 'loading' | { ok: boolean; message: string };
+
 export function App(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const [queryModalText, setQueryModalText] = useState<string | null>(null);
+  const [refreshState, setRefreshState] = useState<RefreshState>('idle');
 
   useEffect(() => {
     const unsub = onHostMessage(msg => {
@@ -28,6 +31,8 @@ export function App(): React.ReactElement {
         dispatch({ type: 'SET_METADATA', tables: msg.tables });
       } else if (msg.type === 'refFields') {
         dispatch({ type: 'SET_REF_FIELDS', ref: msg.ref, fields: msg.fields });
+      } else if (msg.type === 'refreshResult') {
+        setRefreshState({ ok: msg.ok, message: msg.message });
       }
     });
     postToHost({ type: 'ready' });
@@ -51,6 +56,11 @@ export function App(): React.ReactElement {
     setQueryModalText(text || '-- нет полей для генерации запроса');
   }
 
+  function handleRefreshCache() {
+    setRefreshState('loading');
+    postToHost({ type: 'refreshCache' });
+  }
+
   const panelStyle: React.CSSProperties = {
     flex: 1,
     minWidth: 0,
@@ -63,6 +73,21 @@ export function App(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
       <TabsBar />
+      {/* Cache toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
+        <button
+          style={{ ...BTN, opacity: refreshState === 'loading' ? 0.6 : 1 }}
+          onClick={handleRefreshCache}
+          disabled={refreshState === 'loading'}
+        >
+          {refreshState === 'loading' ? 'Обновление...' : 'Обновить кэш'}
+        </button>
+        {typeof refreshState === 'object' && (
+          <span style={{ fontSize: 12, color: refreshState.ok ? 'var(--vscode-terminal-ansiGreen, #4caf50)' : 'var(--vscode-errorForeground, #f44747)' }}>
+            {refreshState.message}
+          </span>
+        )}
+      </div>
       <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
         <div style={panelStyle}>
           <DbTreePanel
