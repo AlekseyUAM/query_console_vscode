@@ -142,10 +142,12 @@ export function FieldsPanel({
         {/* Regular fields */}
         {selectedFields.map((f, i) => {
           const table = selectedTables.find(t => t.id === f.tableId);
-          const label = table ? `${table.fullName.split('.')[1]}.${f.path}` : f.path;
+          const label = f.expression
+            ? (f.alias ?? f.expression)
+            : (table ? `${table.fullName.split('.')[1]}.${f.path}` : f.path);
           return (
             <div
-              key={`${f.tableId}:${f.path}`}
+              key={f.expression ? `${f.tableId}:expr:${i}` : `${f.tableId}:${f.path}`}
               data-field-idx={i}
               onClick={() => onFocusField(i)}
               style={{

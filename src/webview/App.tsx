@@ -7,6 +7,7 @@ import { FieldsPanel } from './components/FieldsPanel';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
+import { defaultTableAlias } from '../core/query/queryModel';
 import type { MetaField, MetaTable } from '../core/metadata/types';
 import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer } from './state/queryStore';
@@ -71,12 +72,6 @@ export function App(): React.ReactElement {
     postToHost({ type: 'refreshCache' });
   }
 
-  function aliasOf(t: { fullName: string; virtual?: VirtualParams }): string {
-    const parts = t.fullName.split('.');
-    if (t.virtual && parts.length >= 3) return parts[1] + parts[2];
-    return parts[1] ?? t.fullName;
-  }
-
   // qualified=true → 'Alias.Поле' (для произвольного поля в SELECT);
   // qualified=false → 'Поле' (для условия внутри скобок виртуальной таблицы).
   function fieldsForTable(tableId: string, qualified: boolean): string[] {
@@ -84,9 +79,15 @@ export function App(): React.ReactElement {
     if (!sel) return [];
     const meta: MetaTable | undefined = state.tables.find(m => m.fullName === sel.fullName);
     if (!meta) return [];
-    const alias = aliasOf(sel);
+    const alias = defaultTableAlias(sel);
     return meta.fields.map((f: MetaField) => qualified ? `${alias}.${f.name}` : f.name);
   }
+
+  // Выбранная таблица для окна «Параметры виртуальной таблицы» (null, если строка
+  // уже удалена из выборки, пока окно было открыто).
+  const vtSel = vtDialogTableId !== null
+    ? state.selectedTables.find(t => t.id === vtDialogTableId) ?? null
+    : null;
 
   const panelStyle: React.CSSProperties = {
     flex: 1,
@@ -183,27 +184,23 @@ export function App(): React.ReactElement {
       </div>
 
       {/* Virtual table params modal */}
-      {vtDialogTableId !== null && (() => {
-        const sel = state.selectedTables.find(t => t.id === vtDialogTableId);
-        if (!sel) return null;
-        return (
-          <VirtualTableParamsDialog
-            initial={sel.virtual ?? {}}
-            onOpenConditionBuilder={(current, apply) => {
-              setExprBuilder({
-                fields: fieldsForTable(vtDialogTableId, false),
-                initial: current,
-                onOk: text => { apply(text); setExprBuilder(null); },
-              });
-            }}
-            onOk={(params: VirtualParams) => {
-              dispatch({ type: 'SET_VIRTUAL_PARAMS', tableId: vtDialogTableId, params });
-              setVtDialogTableId(null);
-            }}
-            onCancel={() => setVtDialogTableId(null)}
-          />
-        );
-      })()}
+      {vtDialogTableId !== null && vtSel && (
+        <VirtualTableParamsDialog
+          initial={vtSel.virtual ?? {}}
+          onOpenConditionBuilder={(current, apply) => {
+            setExprBuilder({
+              fields: fieldsForTable(vtDialogTableId, false),
+              initial: current,
+              onOk: text => { apply(text); setExprBuilder(null); },
+            });
+          }}
+          onOk={(params: VirtualParams) => {
+            dispatch({ type: 'SET_VIRTUAL_PARAMS', tableId: vtDialogTableId, params });
+            setVtDialogTableId(null);
+          }}
+          onCancel={() => setVtDialogTableId(null)}
+        />
+      )}
 
       {/* Expression builder modal */}
       {exprBuilder && (

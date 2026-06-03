@@ -71,8 +71,7 @@ export function ExpressionBuilder({ title = 'Произвольное выраж
     if (!ta) { setText(prev => prev + snippet); return; }
     const start = ta.selectionStart ?? text.length;
     const end = ta.selectionEnd ?? text.length;
-    const next = text.slice(0, start) + snippet + text.slice(end);
-    setText(next);
+    setText(prev => prev.slice(0, start) + snippet + prev.slice(end));
     requestAnimationFrame(() => {
       ta.focus();
       const pos = start + snippet.length;
@@ -115,7 +114,15 @@ export function ExpressionBuilder({ title = 'Произвольное выраж
           onChange={e => setText(e.target.value)}
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
           onDrop={handleDrop}
-          style={{ height: 120, fontFamily: 'var(--vscode-editor-font-family, monospace)', fontSize: 13, resize: 'none' }}
+          style={{
+            height: 120,
+            fontFamily: 'var(--vscode-editor-font-family, monospace)',
+            fontSize: 13,
+            resize: 'none',
+            background: 'var(--vscode-input-background, #3c3c3c)',
+            color: 'var(--vscode-input-foreground, #ccc)',
+            border: '1px solid var(--vscode-input-border, #555)',
+          }}
         />
         <div style={{ display: 'flex', gap: 4, alignSelf: 'flex-end' }}>
           <button data-testid="expr-ok" style={BTN} onClick={() => onOk(text)}>ОК</button>

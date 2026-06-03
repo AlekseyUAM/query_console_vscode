@@ -1,19 +1,11 @@
 import type { QueryModel, SelectedTable } from './queryModel';
-
-function defaultAlias(t: SelectedTable): string {
-  if (t.alias) return t.alias;
-  const parts = t.fullName.split('.');
-  if (t.virtual && parts.length >= 3) return parts[1] + parts[2];
-  // Невиртуальные таблицы имеют двусегментный fullName (Вид.Имя); табличные части
-  // идут отдельным путём (tabSectionFields), а не через model.tables.
-  return parts[1] ?? t.fullName;
-}
+import { defaultTableAlias } from './queryModel';
 
 function resolveAliases(tables: SelectedTable[]): Map<string, string> {
   const seen = new Set<string>();
   const result = new Map<string, string>();
   for (const t of tables) {
-    const base = defaultAlias(t);
+    const base = defaultTableAlias(t);
     let alias = base;
     let counter = 1;
     while (seen.has(alias)) {
