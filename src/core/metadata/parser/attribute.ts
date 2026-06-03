@@ -38,9 +38,13 @@ export function parseTabularSection(tsEl: any): ParsedTabularSection | null {
 export function parseChildObjects(objectEl: any): {
   attributes: ParsedField[];
   tabularSections: ParsedTabularSection[];
+  dimensions: ParsedField[];
+  resources: ParsedField[];
 } {
   const attributes: ParsedField[] = [];
   const tabularSections: ParsedTabularSection[] = [];
+  const dimensions: ParsedField[] = [];
+  const resources: ParsedField[] = [];
   const child = childByLocalName(objectEl, 'ChildObjects');
   if (child) {
     for (const a of childrenByLocalName(child, 'Attribute')) {
@@ -51,6 +55,14 @@ export function parseChildObjects(objectEl: any): {
       const ts = parseTabularSection(t);
       if (ts) tabularSections.push(ts);
     }
+    for (const d of childrenByLocalName(child, 'Dimension')) {
+      const f = parseAttribute(d);
+      if (f) dimensions.push({ ...f, category: 'dimension' });
+    }
+    for (const r of childrenByLocalName(child, 'Resource')) {
+      const f = parseAttribute(r);
+      if (f) resources.push({ ...f, category: 'resource' });
+    }
   }
-  return { attributes, tabularSections };
+  return { attributes, tabularSections, dimensions, resources };
 }
