@@ -5,6 +5,7 @@ import { parseCf } from '../core/metadata/cfParser';
 import { buildCachePath, writeCache } from '../core/metadata/cacheBuilder';
 import { isCacheValid, readCache } from '../core/metadata/cacheLoader';
 import { loadMetadataFromYaml } from '../core/metadata/yamlLoader';
+import { parseConfiguration } from '../core/metadata/parser/parseConfiguration';
 import { generate } from '../core/query/sdblGenerator';
 import { insertResult } from './insertResult';
 import type { SavedEditorState } from './insertResult';
@@ -32,18 +33,32 @@ function getHtml(webview: vscode.Webview, scriptUri: vscode.Uri, n: string): str
 </html>`;
 }
 
-async function loadMetadata(
-  context: vscode.ExtensionContext,
-  cfPath: string,
-  channel: vscode.OutputChannel
-): Promise<MetadataModel> {
-  // Try YAML path first
+function resolveOutPath(context: vscode.ExtensionContext): string {
   const config = vscode.workspace.getConfiguration('queryConsole');
   const outSetting = config.get<string>('parserOutputPath') || 'tmp/parser_data';
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? context.extensionUri.fsPath;
-  const outPath = path.isAbsolute(outSetting) ? outSetting : path.join(root, outSetting);
+  return path.isAbsolute(outSetting) ? outSetting : path.join(root, outSetting);
+}
+
+async function loadMetadata(
+  cfPath: string,
+  outPath: string,
+  context: vscode.ExtensionContext,
+  channel: vscode.OutputChannel
+): Promise<MetadataModel> {
   const cfYamlDir = path.join(outPath, 'cf');
   const configYaml = path.join(cfYamlDir, 'configuration.yaml');
+
+  // Auto-parse: if no YAML cache exists and cfPath is set, try parsing first
+  if (!fs.existsSync(configYaml) && cfPath) {
+    channel.appendLine(`[1C Query] YAML не найден, попытка авто-парсинга: ${cfPath}`);
+    try {
+      parseConfiguration(cfPath, outPath);
+      channel.appendLine(`[1C Query] Авто-парсинг завершён`);
+    } catch (e) {
+      channel.appendLine(`[1C Query] Авто-парсинг не удался: ${e}`);
+    }
+  }
 
   if (fs.existsSync(configYaml)) {
     channel.appendLine(`[1C Query] Loading metadata from YAML: ${cfYamlDir}`);
@@ -105,8 +120,9 @@ export function createPanel(
   const n = nonce();
   panel.webview.html = getHtml(panel.webview, scriptUri, n);
 
+  const outPath = resolveOutPath(context);
   let metadataModel: MetadataModel = { version: 1, tables: [] };
-  const metadataReady = loadMetadata(context, cfPath, channel).then(m => { metadataModel = m; });
+  const metadataReady = loadMetadata(cfPath, outPath, context, channel).then(m => { metadataModel = m; });
 
   panel.webview.onDidReceiveMessage(async (msg: WebviewMsg) => {
     if (msg.type === 'ready') {
@@ -135,6 +151,20 @@ export function createPanel(
       panel.dispose();
     } else if (msg.type === 'cancel') {
       panel.dispose();
+    } else if (msg.type === 'refreshCache') {
+      if (!cfPath) {
+        const reply: HostMsg = { type: 'refreshResult', ok: false, message: 'Не найден путь к выгрузке конфигурации' };
+        panel.webview.postMessage(reply);
+        return;
+      }
+      try {
+        parseConfiguration(cfPath, outPath);
+        const reply: HostMsg = { type: 'refreshResult', ok: true, message: 'Кэш обновлён. Перезапустите конструктор для применения изменений.' };
+        panel.webview.postMessage(reply);
+      } catch (e) {
+        const reply: HostMsg = { type: 'refreshResult', ok: false, message: `Ошибка парсинга: ${e}` };
+        panel.webview.postMessage(reply);
+      }
     }
   });
 
