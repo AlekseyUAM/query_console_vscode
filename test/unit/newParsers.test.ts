@@ -9,6 +9,7 @@ import { parseChartOfAccounts } from '../../src/core/metadata/parser/chartOfAcco
 import { parseChartOfCalculationTypes } from '../../src/core/metadata/parser/chartOfCalculationTypes';
 import { parseBusinessProcess } from '../../src/core/metadata/parser/businessProcess';
 import { parseTask } from '../../src/core/metadata/parser/task';
+import { parseInformationRegister } from '../../src/core/metadata/parser/informationRegister';
 
 const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
 
@@ -204,5 +205,82 @@ describe('parseTask', () => {
     expect(stdNames).toContain('БизнесПроцесс');
     expect(stdNames).toContain('Номер');
     expect(stdNames).toContain('Наименование');
+  });
+});
+
+const SYNTHETIC_INFOREG_PERIODICAL_RECORDER = `<?xml version="1.0" encoding="UTF-8"?>
+<MetaDataObject>
+  <InformationRegister uuid="test-ir-1">
+    <Properties>
+      <Name>ТестРегистр</Name>
+      <InformationRegisterPeriodicity>Year</InformationRegisterPeriodicity>
+      <WriteMode>RecorderSubordinate</WriteMode>
+    </Properties>
+    <ChildObjects>
+      <Dimension uuid="dim-1">
+        <Properties>
+          <Name>Измерение1</Name>
+          <Type><v8:Type xmlns:v8="http://v8.1c.ru/8.1/data/core">xs:string</v8:Type></Type>
+        </Properties>
+      </Dimension>
+      <Resource uuid="res-1">
+        <Properties>
+          <Name>Ресурс1</Name>
+          <Type><v8:Type xmlns:v8="http://v8.1c.ru/8.1/data/core">xs:decimal</v8:Type></Type>
+        </Properties>
+      </Resource>
+    </ChildObjects>
+  </InformationRegister>
+</MetaDataObject>`;
+
+describe('parseInformationRegister', () => {
+  it('parses name, fullName, kind from real XML', () => {
+    const el = readObjectEl('InformationRegisters', 'АдминистративнаяИерархия.xml');
+    const result = parseInformationRegister(el);
+    expect(result?.name).toBe('АдминистративнаяИерархия');
+    expect(result?.fullName).toBe('РегистрСведений.АдминистративнаяИерархия');
+    expect(result?.kind).toBe('РегистрСведений');
+  });
+
+  it('omits Период when Nonperiodical', () => {
+    const el = readObjectEl('InformationRegisters', 'АдминистративнаяИерархия.xml');
+    const result = parseInformationRegister(el)!;
+    expect(result.fields.map(f => f.name)).not.toContain('Период');
+  });
+
+  it('omits Регистратор when Independent', () => {
+    const el = readObjectEl('InformationRegisters', 'АдминистративнаяИерархия.xml');
+    const result = parseInformationRegister(el)!;
+    expect(result.fields.map(f => f.name)).not.toContain('Регистратор');
+  });
+
+  it('includes Период when periodicity is not Nonperiodical', () => {
+    const el = readObjectEl('InformationRegisters', 'АрхивСообщенийОбменов.xml');
+    const result = parseInformationRegister(el)!;
+    expect(result.fields.map(f => f.name)).toContain('Период');
+  });
+
+  it('includes Регистратор when WriteMode is not Independent', () => {
+    const doc = parseXml(SYNTHETIC_INFOREG_PERIODICAL_RECORDER)!;
+    const el = firstElementChild(doc.documentElement);
+    const result = parseInformationRegister(el)!;
+    expect(result.fields.map(f => f.name)).toContain('Регистратор');
+  });
+
+  it('includes dimension fields from ChildObjects', () => {
+    const el = readObjectEl('InformationRegisters', 'АдминистративнаяИерархия.xml');
+    const result = parseInformationRegister(el)!;
+    const dims = result.fields.filter(f => f.category === 'dimension');
+    expect(dims.length).toBeGreaterThan(0);
+  });
+
+  it('synthetic register has dimension and resource fields', () => {
+    const doc = parseXml(SYNTHETIC_INFOREG_PERIODICAL_RECORDER)!;
+    const el = firstElementChild(doc.documentElement);
+    const result = parseInformationRegister(el)!;
+    const dim = result.fields.find(f => f.name === 'Измерение1');
+    const res = result.fields.find(f => f.name === 'Ресурс1');
+    expect(dim?.category).toBe('dimension');
+    expect(res?.category).toBe('resource');
   });
 });
