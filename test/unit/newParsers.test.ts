@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { parseXml, firstElementChild } from '../../src/core/metadata/parser/dom';
 import { parseChildObjects } from '../../src/core/metadata/parser/attribute';
+import { parseExchangePlan } from '../../src/core/metadata/parser/exchangePlan';
 
 const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
 
@@ -36,5 +37,40 @@ describe('parseChildObjects — dimension/resource', () => {
     expect(Array.isArray(result.resources)).toBe(true);
     expect(result.dimensions).toHaveLength(0);
     expect(result.resources).toHaveLength(0);
+  });
+});
+
+describe('parseExchangePlan', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('ExchangePlans', 'ОбновлениеИнформационнойБазы.xml');
+    const result = parseExchangePlan(el);
+    expect(result?.name).toBe('ОбновлениеИнформационнойБазы');
+    expect(result?.fullName).toBe('ПланОбмена.ОбновлениеИнформационнойБазы');
+    expect(result?.kind).toBe('ПланОбмена');
+  });
+
+  it('includes always-present standard fields', () => {
+    const el = readObjectEl('ExchangePlans', 'ОбновлениеИнформационнойБазы.xml');
+    const result = parseExchangePlan(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('Ссылка');
+    expect(stdNames).toContain('ЭтотУзел');
+    expect(stdNames).toContain('НомерПринятого');
+    expect(stdNames).toContain('НомерОтправленного');
+  });
+
+  it('includes Код and Наименование when lengths > 0', () => {
+    const el = readObjectEl('ExchangePlans', 'ОбновлениеИнформационнойБазы.xml');
+    const result = parseExchangePlan(el)!;
+    const names = result.fields.map(f => f.name);
+    expect(names).toContain('Код');
+    expect(names).toContain('Наименование');
+  });
+
+  it('parses attribute fields', () => {
+    const el = readObjectEl('ExchangePlans', 'ОбновлениеИнформационнойБазы.xml');
+    const result = parseExchangePlan(el)!;
+    const attrNames = result.fields.filter(f => f.category === 'attribute').map(f => f.name);
+    expect(attrNames).toContain('Очередь');
   });
 });
