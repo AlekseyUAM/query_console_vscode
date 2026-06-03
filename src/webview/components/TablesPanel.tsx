@@ -1,14 +1,17 @@
 import * as React from 'react';
-import type { MetaTable } from '../../core/metadata/types';
+import type { MetaTable, MetaField } from '../../core/metadata/types';
 import type { SelectedTable } from '../../core/query/queryModel';
+import type { RefId } from '../../shared/messages';
 
 interface Props {
   metaTables: MetaTable[];
   selectedTables: SelectedTable[];
   focusedSelectedTableId: string | null;
+  expandedRefs: Map<string, MetaField[]>;
   onAddTable: (table: MetaTable) => void;
   onRemoveTable: (tableId: string) => void;
   onFocusTable: (id: string) => void;
+  onExpandRef: (ref: RefId) => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -21,14 +24,87 @@ const BTN: React.CSSProperties = {
   fontSize: 12,
 };
 
-export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, onAddTable, onRemoveTable, onFocusTable }: Props): React.ReactElement {
+function FieldRow({ tableFullName, field, depth, expandedRefs, onExpandRef }: {
+  tableFullName: string;
+  field: MetaField;
+  depth: number;
+  expandedRefs: Map<string, MetaField[]>;
+  onExpandRef: (ref: RefId) => void;
+}): React.ReactElement {
+  const [localExpanded, setLocalExpanded] = React.useState(false);
+  const ref = field.types.find(t => t.ref)?.ref ?? null;
+  const refKey = ref ? `${ref.kind}.${ref.name}` : null;
+  const fetched = refKey ? expandedRefs.has(refKey) : false;
+  const expanded = localExpanded && fetched && refKey ? true : false;
+
+  function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!ref || !refKey) return;
+    if (!fetched) onExpandRef(ref);
+    setLocalExpanded(prev => !prev);
+  }
+
+  return (
+    <>
+      <div
+        draggable
+        onDragStart={e => {
+          e.dataTransfer.setData('text/plain', JSON.stringify({ kind: 'field', tableFullName, fieldPath: field.name }));
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
+        style={{
+          paddingLeft: 8 + depth * 16,
+          paddingTop: 1,
+          paddingBottom: 1,
+          fontSize: 12,
+          color: 'var(--vscode-descriptionForeground, #aaa)',
+          userSelect: 'none',
+          cursor: 'default',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        {ref ? (
+          <span onClick={handleToggle} style={{ cursor: 'pointer', fontSize: 10, width: 12, flexShrink: 0 }}>
+            {expanded ? '▼' : '▶'}
+          </span>
+        ) : (
+          <span style={{ width: 12, flexShrink: 0 }} />
+        )}
+        <span>{field.name}</span>
+      </div>
+      {expanded && refKey && expandedRefs.get(refKey)?.map(subField => (
+        <FieldRow
+          key={`${field.name}.${subField.name}`}
+          tableFullName={tableFullName}
+          field={{ ...subField, name: `${field.name}.${subField.name}` }}
+          depth={depth + 1}
+          expandedRefs={expandedRefs}
+          onExpandRef={onExpandRef}
+        />
+      ))}
+    </>
+  );
+}
+
+export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef }: Props): React.ReactElement {
   const [expandedTableIds, setExpandedTableIds] = React.useState<Set<string>>(new Set());
+  const [expandedTsSections, setExpandedTsSections] = React.useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = React.useState(false);
 
   function toggleExpand(id: string) {
     setExpandedTableIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleTs(key: string) {
+    setExpandedTsSections(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   }
@@ -50,6 +126,10 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
       const data = JSON.parse(e.dataTransfer.getData('text/plain'));
       if (data.kind === 'table') {
         const meta = metaTables.find(t => t.fullName === data.tableFullName);
+        if (meta) onAddTable(meta);
+      } else if (data.kind === 'tabularsection') {
+        // Add ТЧ as separate table
+        const meta = metaTables.find(t => t.fullName === data.tsFullName);
         if (meta) onAddTable(meta);
       }
     } catch {
@@ -84,11 +164,6 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
           minHeight: 40,
         }}
       >
-        {selectedTables.length === 0 && (
-          <div style={{ color: 'var(--vscode-descriptionForeground, #888)', padding: 6, fontSize: 11 }}>
-            Перетащите таблицу сюда
-          </div>
-        )}
         {selectedTables.map(t => {
           const isSelected = focusedSelectedTableId === t.id;
           const isExpanded = expandedTableIds.has(t.id);
@@ -112,21 +187,83 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
                 <span style={{ fontSize: 10 }}>{isExpanded ? '▼' : '▶'}</span>
                 <span>{t.fullName}</span>
               </div>
-              {isExpanded && meta && meta.fields.map(field => (
-                <div
-                  key={field.name}
-                  style={{
-                    paddingLeft: 24,
-                    paddingTop: 1,
-                    paddingBottom: 1,
-                    fontSize: 12,
-                    color: 'var(--vscode-descriptionForeground, #aaa)',
-                    userSelect: 'none',
-                  }}
-                >
-                  {field.name}
-                </div>
-              ))}
+              {isExpanded && meta && (
+                <>
+                  {meta.fields.map(field => (
+                    <FieldRow
+                      key={field.name}
+                      tableFullName={t.fullName}
+                      field={field}
+                      depth={1}
+                      expandedRefs={expandedRefs}
+                      onExpandRef={onExpandRef}
+                    />
+                  ))}
+                  {meta.tabularSections?.map(ts => {
+                    const tsKey = `${t.id}:${ts.name}`;
+                    const isTsExpanded = expandedTsSections.has(tsKey);
+                    return (
+                      <div key={ts.name}>
+                        <div
+                          draggable
+                          onDragStart={e => {
+                            e.dataTransfer.setData('text/plain', JSON.stringify({
+                              kind: 'tabularsection',
+                              parentTableFullName: t.fullName,
+                              tsName: ts.name,
+                              tsFullName: ts.fullName,
+                              tsFields: ts.fields.map(f => f.name),
+                            }));
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
+                          onClick={() => toggleTs(tsKey)}
+                          style={{
+                            paddingLeft: 24,
+                            paddingTop: 1,
+                            paddingBottom: 1,
+                            fontSize: 12,
+                            color: 'var(--vscode-descriptionForeground, #888)',
+                            userSelect: 'none',
+                            cursor: 'default',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <span style={{ fontSize: 10, width: 12, flexShrink: 0 }}>{isTsExpanded ? '▼' : '▶'}</span>
+                          <span style={{ fontSize: 10, opacity: 0.7 }}>[ТЧ]</span>
+                          <span>{ts.name}</span>
+                        </div>
+                        {isTsExpanded && ts.fields.map(field => (
+                          <div
+                            key={field.name}
+                            draggable
+                            onDragStart={e => {
+                              e.dataTransfer.setData('text/plain', JSON.stringify({
+                                kind: 'field',
+                                tableFullName: ts.fullName,
+                                fieldPath: field.name,
+                              }));
+                              e.dataTransfer.effectAllowed = 'copy';
+                            }}
+                            style={{
+                              paddingLeft: 48,
+                              paddingTop: 1,
+                              paddingBottom: 1,
+                              fontSize: 12,
+                              color: 'var(--vscode-descriptionForeground, #aaa)',
+                              userSelect: 'none',
+                              cursor: 'default',
+                            }}
+                          >
+                            {field.name}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           );
         })}

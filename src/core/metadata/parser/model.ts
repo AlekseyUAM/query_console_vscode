@@ -1,5 +1,5 @@
 export type Primitive = 'Строка' | 'Число' | 'Дата' | 'Булево';
-export type TypeKind = Primitive | 'ref' | 'unknown';
+export type TypeKind = Primitive | 'timestamp' | 'ref' | 'unknown';
 
 export interface ParsedType {
   kind: TypeKind;

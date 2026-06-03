@@ -270,6 +270,75 @@ describe('loadMetadataFromYaml', () => {
     expect(result.tables.map(t => t.kind)).toContain('Документ');
   });
 
+  it('maps tabular sections onto parent table and into flat tables[]', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1,
+      objects: [
+        { type: 'Документ', name: 'Заказ', fullName: 'Документ.Заказ', file: 'Documents/Заказ.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'Documents/Заказ.yaml', {
+      version: 1,
+      kind: 'Документ',
+      name: 'Заказ',
+      fullName: 'Документ.Заказ',
+      uuid: 'doc-1',
+      fields: [
+        { name: 'Ссылка', category: 'standard', types: [] },
+      ],
+      tabularSections: [
+        {
+          name: 'Товары',
+          uuid: 'ts-1',
+          fields: [
+            { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число', digits: 5 }] },
+            { name: 'Номенклатура', category: 'attribute', types: [] },
+          ],
+        },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+
+    // flat tables[]: parent + TS entry
+    expect(result.tables).toHaveLength(2);
+
+    const parent = result.tables.find(t => t.fullName === 'Документ.Заказ')!;
+    expect(parent.kind).toBe('Документ');
+    expect(parent.tabularSections).toHaveLength(1);
+    expect(parent.tabularSections![0].name).toBe('Товары');
+    expect(parent.tabularSections![0].fullName).toBe('Документ.Заказ.Товары');
+    expect(parent.tabularSections![0].kind).toBe('ТабличнаяЧасть');
+    expect(parent.tabularSections![0].fields).toHaveLength(3); // Ссылка + НомерСтроки + Номенклатура
+
+    // TS also present as flat entry for lookup by fullName
+    const tsFlat = result.tables.find(t => t.fullName === 'Документ.Заказ.Товары')!;
+    expect(tsFlat.kind).toBe('ТабличнаяЧасть');
+    expect(tsFlat.fields[0].name).toBe('Ссылка');
+    expect(tsFlat.fields[2].name).toBe('Номенклатура');
+  });
+
+  it('parent without tabular sections has no tabularSections property', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1,
+      objects: [
+        { type: 'Справочник', name: 'Простой', fullName: 'Справочник.Простой', file: 'Catalogs/Простой.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'Catalogs/Простой.yaml', {
+      version: 1,
+      kind: 'Справочник',
+      name: 'Простой',
+      fullName: 'Справочник.Простой',
+      uuid: 'x',
+      fields: [{ name: 'Код', category: 'standard', types: [] }],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    expect(result.tables).toHaveLength(1);
+    expect(result.tables[0].tabularSections).toBeUndefined();
+  });
+
   it('skips objects whose YAML file is malformed', () => {
     writeCfYaml(tmpDir, 'configuration.yaml', {
       version: 1,

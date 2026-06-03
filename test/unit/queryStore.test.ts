@@ -26,9 +26,12 @@ describe('queryStore reducer', () => {
     expect(state.tables[0].fullName).toBe('Справочник.Валюты');
   });
 
-  it('SET_GENERATED_TEXT updates generatedText', () => {
-    const state = reducer(initialState(), { type: 'SET_GENERATED_TEXT', text: 'ВЫБРАТЬ 1' });
-    expect(state.generatedText).toBe('ВЫБРАТЬ 1');
+  it('ADD_FIELD_WITH_TABLE adds table and field atomically', () => {
+    const state = reducer(initialState(), { type: 'ADD_FIELD_WITH_TABLE', tableFullName: 'Справочник.Валюты', fieldPath: 'Код' });
+    expect(state.selectedTables).toHaveLength(1);
+    expect(state.selectedTables[0].fullName).toBe('Справочник.Валюты');
+    expect(state.selectedFields).toHaveLength(1);
+    expect(state.selectedFields[0].path).toBe('Код');
   });
 
   it('SET_REF_FIELDS adds to expandedRefs', () => {

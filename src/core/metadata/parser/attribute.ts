@@ -17,8 +17,13 @@ export function parseTabularSection(tsEl: any): ParsedTabularSection | null {
   const name = nodeText(childByLocalName(props, 'Name'));
   if (!name) return null;
   const uuid = tsEl.getAttribute('uuid') || '';
+  const lineNumberLength = Number(nodeText(childByLocalName(props, 'LineNumberLength')) || '5');
   const fields: ParsedField[] = [
-    { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
+    {
+      name: 'НомерСтроки',
+      category: 'standard',
+      types: [{ kind: 'Число', digits: lineNumberLength, fractionDigits: 0 }],
+    },
   ];
   const child = childByLocalName(tsEl, 'ChildObjects');
   if (child) {

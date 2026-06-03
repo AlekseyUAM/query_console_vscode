@@ -29,11 +29,22 @@ function mapParsedField(pf: ParsedField): MetaField {
 }
 
 function parsedObjectToMetaTable(obj: ParsedObject): MetaTable {
+  const tabularSections: MetaTable[] = (obj.tabularSections ?? []).map(ts => ({
+    kind: 'ТабличнаяЧасть' as TableKind,
+    name: ts.name,
+    fullName: `${obj.fullName}.${ts.name}`,
+    fields: [
+      { name: 'Ссылка', kind: 'standard' as const, types: [{ ref: { kind: obj.kind as TableKind, name: obj.name } }] },
+      ...(ts.fields ?? []).map(mapParsedField),
+    ],
+  }));
+
   return {
     kind: obj.kind as TableKind,
     name: obj.name,
     fullName: obj.fullName,
     fields: (obj.fields ?? []).map(mapParsedField),
+    ...(tabularSections.length ? { tabularSections } : {}),
   };
 }
 
@@ -91,7 +102,13 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
       continue;
     }
 
-    tables.push(parsedObjectToMetaTable(obj));
+    const metaTable = parsedObjectToMetaTable(obj);
+    tables.push(metaTable);
+
+    // Tabular sections also go into the flat tables[] so they can be found by fullName
+    for (const ts of metaTable.tabularSections ?? []) {
+      tables.push(ts);
+    }
   }
 
   return { version: 1, tables };

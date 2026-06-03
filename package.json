@@ -22,6 +22,15 @@
         "title": "1С: Распарсить метаданные в YAML"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "1c.queryConstructor",
+          "when": "resourceExtname == .bsl",
+          "group": "1_modification@100"
+        }
+      ]
+    },
     "configuration": {
       "title": "Query Console 1C",
       "properties": {

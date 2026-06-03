@@ -20,7 +20,7 @@ export function parseDocument(objectEl: any): ParsedObject | null {
     fields.push({ name: n, category: 'standard', types });
 
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
-  std('ВерсияДанных', [{ kind: 'Строка' }]);
+  std('ВерсияДанных', [{ kind: 'timestamp' }]);
   std('ПометкаУдаления', [{ kind: 'Булево' }]);
   std('Дата', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   if (numberLength > 0) {
@@ -30,7 +30,7 @@ export function parseDocument(objectEl: any): ParsedObject | null {
     std('Номер', [num]);
   }
   if (posting === 'Allow') {
-    std('Проведён', [{ kind: 'Булево' }]);
+    std('Проведен', [{ kind: 'Булево' }]);
   }
 
   const { attributes, tabularSections } = parseChildObjects(objectEl);

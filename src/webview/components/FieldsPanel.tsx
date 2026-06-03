@@ -1,18 +1,22 @@
 import * as React from 'react';
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
+import { generate, formatAsBslString } from '../../core/query/sdblGenerator';
 
 interface Props {
   metaTables: MetaTable[];
   selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
+  tabSectionFields: SelectedTabSectionField[];
   focusedSelectedFieldIdx: number | null;
-  generatedText: string;
-  onAddField: (tableId: string, fieldPath: string) => void;
+  onDropField: (tableFullName: string, fieldPath: string) => void;
+  onDropTabSection: (parentTableFullName: string, tsName: string, tsFullName: string, tsFields: string[]) => void;
   onRemoveField: (fieldIdx: number) => void;
+  onRemoveTabSection: (tableId: string, tsName: string) => void;
+  onRemoveTabSectionSubField: (tableId: string, tsName: string, fieldName: string) => void;
   onFocusField: (idx: number) => void;
-  onGenerate: () => void;
   onInsert: (text: string) => void;
+  onCancel: () => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -25,8 +29,46 @@ const BTN: React.CSSProperties = {
   fontSize: 12,
 };
 
-export function FieldsPanel({ metaTables, selectedTables, selectedFields, focusedSelectedFieldIdx, generatedText, onAddField, onRemoveField, onFocusField, onGenerate, onInsert }: Props): React.ReactElement {
+const REMOVE_BTN: React.CSSProperties = {
+  padding: '0 4px',
+  cursor: 'pointer',
+  background: 'transparent',
+  color: 'var(--vscode-descriptionForeground, #888)',
+  border: 'none',
+  fontSize: 10,
+  lineHeight: 1,
+  flexShrink: 0,
+};
+
+export function FieldsPanel({
+  metaTables, selectedTables, selectedFields, tabSectionFields, focusedSelectedFieldIdx,
+  onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
+  onFocusField, onInsert, onCancel,
+}: Props): React.ReactElement {
   const [isDragOver, setIsDragOver] = React.useState(false);
+  const [expandedTs, setExpandedTs] = React.useState<Set<string>>(new Set(
+    // start all ТЧ expanded
+  ));
+
+  // Auto-expand newly added ТЧ sections
+  React.useEffect(() => {
+    setExpandedTs(prev => {
+      const next = new Set(prev);
+      for (const ts of tabSectionFields) {
+        const key = `${ts.tableId}:${ts.tsName}`;
+        next.add(key);
+      }
+      return next;
+    });
+  }, [tabSectionFields]);
+
+  function toggleTs(key: string) {
+    setExpandedTs(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
 
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
@@ -44,15 +86,21 @@ export function FieldsPanel({ metaTables, selectedTables, selectedFields, focuse
     try {
       const data = JSON.parse(e.dataTransfer.getData('text/plain'));
       if (data.kind === 'field') {
-        const tableInQuery = selectedTables.find(t => t.fullName === data.tableFullName);
-        if (tableInQuery) {
-          onAddField(tableInQuery.id, data.fieldPath);
-        }
+        onDropField(data.tableFullName, data.fieldPath);
+      } else if (data.kind === 'tabularsection') {
+        onDropTabSection(data.parentTableFullName, data.tsName, data.tsFullName, data.tsFields);
       }
     } catch {
       // ignore malformed drag data
     }
   }
+
+  function handleOk() {
+    const text = generate({ tables: selectedTables, fields: selectedFields, tabSectionFields });
+    if (text) onInsert(formatAsBslString(text));
+  }
+
+  const canInsert = selectedTables.length > 0 && (selectedFields.length > 0 || tabSectionFields.length > 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 4, gap: 4 }}>
@@ -81,11 +129,7 @@ export function FieldsPanel({ metaTables, selectedTables, selectedFields, focuse
           minHeight: 40,
         }}
       >
-        {selectedFields.length === 0 && (
-          <div style={{ color: 'var(--vscode-descriptionForeground, #888)', padding: 6, fontSize: 11 }}>
-            Перетащите поле сюда
-          </div>
-        )}
+        {/* Regular fields */}
         {selectedFields.map((f, i) => {
           const table = selectedTables.find(t => t.id === f.tableId);
           const label = table ? `${table.fullName.split('.')[1]}.${f.path}` : f.path;
@@ -100,35 +144,97 @@ export function FieldsPanel({ metaTables, selectedTables, selectedFields, focuse
                 background: focusedSelectedFieldIdx === i ? 'var(--vscode-list-activeSelectionBackground, #094771)' : 'transparent',
                 color: focusedSelectedFieldIdx === i ? 'var(--vscode-list-activeSelectionForeground, #fff)' : 'inherit',
                 userSelect: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
               }}
             >
-              {label}
+              <span>{label}</span>
+              <button style={REMOVE_BTN} onClick={e => { e.stopPropagation(); onRemoveField(i); }}>✕</button>
+            </div>
+          );
+        })}
+
+        {/* Tabular section fields */}
+        {tabSectionFields.map(ts => {
+          const table = selectedTables.find(t => t.id === ts.tableId);
+          const tableAlias = table?.fullName.split('.')[1] ?? ts.tableId;
+          const label = `${tableAlias}.${ts.tsName}`;
+          const tsKey = `${ts.tableId}:${ts.tsName}`;
+          const isExpanded = expandedTs.has(tsKey);
+          return (
+            <div key={tsKey}>
+              <div
+                style={{
+                  padding: '2px 6px',
+                  cursor: 'default',
+                  userSelect: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: 'transparent',
+                }}
+              >
+                <span
+                  onClick={() => toggleTs(tsKey)}
+                  style={{ fontSize: 10, cursor: 'pointer', width: 12, flexShrink: 0 }}
+                >
+                  {isExpanded ? '▼' : '▶'}
+                </span>
+                <span style={{ flex: 1 }}>{label}</span>
+                <button
+                  style={REMOVE_BTN}
+                  title="Убрать табличную часть"
+                  onClick={() => onRemoveTabSection(ts.tableId, ts.tsName)}
+                >
+                  ✕
+                </button>
+              </div>
+              {isExpanded && ts.fields.map(fieldName => (
+                <div
+                  key={fieldName}
+                  style={{
+                    paddingLeft: 24,
+                    paddingTop: 1,
+                    paddingBottom: 1,
+                    fontSize: 12,
+                    color: 'var(--vscode-descriptionForeground, #aaa)',
+                    userSelect: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingRight: 6,
+                  }}
+                >
+                  <span>{fieldName}</span>
+                  <button
+                    style={REMOVE_BTN}
+                    onClick={() => onRemoveTabSectionSubField(ts.tableId, ts.tsName, fieldName)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
             </div>
           );
         })}
       </div>
-      {generatedText && (
-        <div style={{ fontSize: 11, fontFamily: 'var(--vscode-editor-font-family, monospace)', background: 'var(--vscode-editor-background, #1e1e1e)', border: '1px solid var(--vscode-panel-border, #444)', borderRadius: 2, padding: 6, whiteSpace: 'pre-wrap', maxHeight: 120, overflowY: 'auto', color: 'var(--vscode-foreground, #ccc)' }}>
-          {generatedText}
-        </div>
-      )}
       <div style={{ display: 'flex', gap: 4, alignSelf: 'flex-end', marginTop: 4 }}>
         <button
-          data-testid="btn-generate"
-          style={{ ...BTN, padding: '6px 12px' }}
-          onClick={onGenerate}
+          data-testid="btn-ok"
+          style={{ ...BTN, padding: '6px 12px', background: 'var(--vscode-button-prominentBackground, #1177bb)', opacity: canInsert ? 1 : 0.5 }}
+          disabled={!canInsert}
+          onClick={handleOk}
         >
-          Сгенерировать
+          ОК
         </button>
-        {generatedText && (
-          <button
-            data-testid="btn-ok"
-            style={{ ...BTN, padding: '6px 12px', background: 'var(--vscode-button-prominentBackground, #1177bb)' }}
-            onClick={() => onInsert(generatedText)}
-          >
-            ОК
-          </button>
-        )}
+        <button
+          data-testid="btn-cancel"
+          style={{ ...BTN, padding: '6px 12px', background: 'var(--vscode-button-secondaryBackground, #3a3d41)' }}
+          onClick={onCancel}
+        >
+          Отмена
+        </button>
       </div>
     </div>
   );

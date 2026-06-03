@@ -21,7 +21,7 @@ describe('parseCatalogXml', () => {
     );
     const table = parseCatalogXml(xml)!;
     const stdNames = table.fields.filter(f => f.kind === 'standard').map(f => f.name);
-    expect(stdNames).toEqual(['Ссылка', 'Код', 'Наименование', 'ПометкаУдаления', 'Предопределённый']);
+    expect(stdNames).toEqual(['Ссылка', 'Код', 'Наименование', 'ПометкаУдаления', 'Предопределенный']);
   });
 
   it('parses xs:boolean attribute type', () => {
@@ -65,7 +65,7 @@ describe('parseDocumentXml', () => {
     expect(table?.name).toBe('ТестДок');
     expect(table?.kind).toBe('Документ');
     const stdNames = table!.fields.filter(f => f.kind === 'standard').map(f => f.name);
-    expect(stdNames).toEqual(['Ссылка', 'Номер', 'Дата', 'Проведён', 'ПометкаУдаления']);
+    expect(stdNames).toEqual(['Ссылка', 'Номер', 'Дата', 'Проведен', 'ПометкаУдаления']);
   });
 
   it('parses xs:decimal as Число', () => {

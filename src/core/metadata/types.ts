@@ -1,6 +1,6 @@
 export type FieldKind = 'standard' | 'attribute';
 
-export type TableKind = 'Справочник' | 'Документ';
+export type TableKind = 'Справочник' | 'Документ' | 'ТабличнаяЧасть';
 
 export interface MetaType {
   primitive?: 'Строка' | 'Число' | 'Булево' | 'Дата';
@@ -18,6 +18,7 @@ export interface MetaTable {
   name: string;
   fullName: string;
   fields: MetaField[];
+  tabularSections?: MetaTable[];
 }
 
 export interface MetadataModel {

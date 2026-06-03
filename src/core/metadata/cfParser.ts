@@ -72,14 +72,14 @@ const CATALOG_STANDARD_FIELDS: MetaField[] = [
   { name: 'Код', kind: 'standard', types: [{ primitive: 'Строка' }] },
   { name: 'Наименование', kind: 'standard', types: [{ primitive: 'Строка' }] },
   { name: 'ПометкаУдаления', kind: 'standard', types: [{ primitive: 'Булево' }] },
-  { name: 'Предопределённый', kind: 'standard', types: [{ primitive: 'Булево' }] },
+  { name: 'Предопределенный', kind: 'standard', types: [{ primitive: 'Булево' }] },
 ];
 
 const DOCUMENT_STANDARD_FIELDS: MetaField[] = [
   { name: 'Ссылка', kind: 'standard', types: [] },
   { name: 'Номер', kind: 'standard', types: [{ primitive: 'Строка' }] },
   { name: 'Дата', kind: 'standard', types: [{ primitive: 'Дата' }] },
-  { name: 'Проведён', kind: 'standard', types: [{ primitive: 'Булево' }] },
+  { name: 'Проведен', kind: 'standard', types: [{ primitive: 'Булево' }] },
   { name: 'ПометкаУдаления', kind: 'standard', types: [{ primitive: 'Булево' }] },
 ];
 

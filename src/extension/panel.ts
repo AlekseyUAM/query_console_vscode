@@ -7,6 +7,7 @@ import { isCacheValid, readCache } from '../core/metadata/cacheLoader';
 import { loadMetadataFromYaml } from '../core/metadata/yamlLoader';
 import { generate } from '../core/query/sdblGenerator';
 import { insertResult } from './insertResult';
+import type { SavedEditorState } from './insertResult';
 import type { HostMsg, WebviewMsg } from '../shared/messages';
 import type { MetadataModel } from '../core/metadata/types';
 import type { QueryModel } from '../core/query/queryModel';
@@ -39,7 +40,7 @@ async function loadMetadata(
   // Try YAML path first
   const config = vscode.workspace.getConfiguration('queryConsole');
   const outSetting = config.get<string>('parserOutputPath') || 'tmp/parser_data';
-  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? context.extensionUri.fsPath;
   const outPath = path.isAbsolute(outSetting) ? outSetting : path.join(root, outSetting);
   const cfYamlDir = path.join(outPath, 'cf');
   const configYaml = path.join(cfYamlDir, 'configuration.yaml');
@@ -86,7 +87,8 @@ async function loadMetadata(
 export function createPanel(
   context: vscode.ExtensionContext,
   cfPath: string,
-  channel: vscode.OutputChannel
+  channel: vscode.OutputChannel,
+  savedEditor?: SavedEditorState
 ): vscode.WebviewPanel {
   const panel = vscode.window.createWebviewPanel(
     '1c.queryConstructor',
@@ -129,7 +131,10 @@ export function createPanel(
       const reply: HostMsg = { type: 'generatedText', text };
       panel.webview.postMessage(reply);
     } else if (msg.type === 'insertText') {
-      await insertResult(msg.text);
+      await insertResult(msg.text, savedEditor);
+      panel.dispose();
+    } else if (msg.type === 'cancel') {
+      panel.dispose();
     }
   });
 

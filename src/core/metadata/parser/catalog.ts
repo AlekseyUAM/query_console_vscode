@@ -27,10 +27,10 @@ export function parseCatalog(objectEl: any): ParsedObject | null {
     fields.push({ name: n, category: 'standard', types });
 
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
-  std('ВерсияДанных', [{ kind: 'Строка' }]);
+  std('ВерсияДанных', [{ kind: 'timestamp' }]);
   std('ПометкаУдаления', [{ kind: 'Булево' }]);
-  std('Предопределённый', [{ kind: 'Булево' }]);
-  std('ИмяПредопределённыхДанных', [{ kind: 'Строка' }]);
+  std('Предопределенный', [{ kind: 'Булево' }]);
+  std('ИмяПредопределенныхДанных', [{ kind: 'Строка', length: 255 }]);
   if (codeLength > 0) {
     const codeStr: ParsedType = { kind: 'Строка', length: codeLength, allowedLength: codeAllowedLength };
     const code: ParsedType =

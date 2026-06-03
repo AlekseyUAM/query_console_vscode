@@ -11,6 +11,11 @@ export function activate(context: vscode.ExtensionContext): void {
   outputChannel = vscode.window.createOutputChannel('1C Query Constructor');
 
   const cmd = vscode.commands.registerCommand('1c.queryConstructor', () => {
+    const activeEditor = vscode.window.activeTextEditor;
+    const savedEditor = activeEditor
+      ? { document: activeEditor.document, selection: activeEditor.selection }
+      : undefined;
+
     const config = vscode.workspace.getConfiguration('queryConsole');
     const setting = config.get<string>('metadataPath') ?? '';
     outputChannel.appendLine(`[1C Query] metadataPath setting: "${setting}"`);
@@ -18,7 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const cfPath = resolveCfPath();
     outputChannel.appendLine(`[1C Query] resolved cfPath: "${cfPath}"`);
     outputChannel.show(true);
-    createPanel(context, cfPath, outputChannel);
+    createPanel(context, cfPath, outputChannel, savedEditor);
   });
 
   context.subscriptions.push(cmd, registerParseCommand(outputChannel), outputChannel);
