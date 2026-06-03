@@ -69,21 +69,36 @@ function parsedObjectToMetaTable(obj: ParsedObject): MetaTable {
   };
 }
 
-const SLICE_EXCLUDED: ReadonlySet<string> = new Set(['НомерСтроки', 'Активность', 'Регистратор', 'Период']);
+// Служебные поля базового регистра, которые в срезе пересобираются в фиксированном
+// порядке (а не копируются из базы как есть).
+const SLICE_SERVICE_FIELDS: ReadonlySet<string> =
+  new Set(['НомерСтроки', 'Активность', 'Период', 'Регистратор', 'ПериодОкончание']);
 
 function buildInfoRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
   if (obj.kind !== 'РегистрСведений') return [];
   const periodicity = (obj.properties as { periodicity?: string } | undefined)?.periodicity;
   if (!periodicity || periodicity === 'Nonperiodical') return [];
 
-  // Поля среза по скриншотам конструктора 1С: Период + ПериодОкончание (именно
-  // «ПериодОкончание», как в эталонном тексте запроса) + измерения/ресурсы/реквизиты
-  // базового регистра без стандартных служебных полей.
-  const sliceFields: MetaField[] = [
-    { name: 'Период', kind: 'standard', types: [{ primitive: 'Дата' }] },
-    { name: 'ПериодОкончание', kind: 'standard', types: [{ primitive: 'Дата' }] },
-    ...base.fields.filter(f => !SLICE_EXCLUDED.has(f.name)),
-  ];
+  const byName = new Map(base.fields.map(f => [f.name, f]));
+  const pull = (name: string, types: MetaType[]): MetaField =>
+    byName.get(name) ?? { name, kind: 'standard', types };
+
+  // Состав полей среза по эталону конструктора 1С зависит от режима записи:
+  //  - подчинённый регистратору (есть Регистратор): Период, Регистратор, НомерСтроки,
+  //    Активность + измерения/ресурсы/реквизиты; ПериодОкончание отсутствует;
+  //  - независимый (нет Регистратора): Период, ПериодОкончание + измерения/ресурсы/реквизиты.
+  const subordinate = byName.has('Регистратор');
+  const standard: MetaField[] = [pull('Период', [{ primitive: 'Дата' }])];
+  if (subordinate) {
+    standard.push(pull('Регистратор', [{}]));
+    standard.push(pull('НомерСтроки', [{ primitive: 'Число' }]));
+    standard.push(pull('Активность', [{ primitive: 'Булево' }]));
+  } else {
+    standard.push({ name: 'ПериодОкончание', kind: 'standard', types: [{ primitive: 'Дата' }] });
+  }
+
+  const rest = base.fields.filter(f => !SLICE_SERVICE_FIELDS.has(f.name));
+  const sliceFields: MetaField[] = [...standard, ...rest];
 
   const slices: ('СрезПервых' | 'СрезПоследних')[] = ['СрезПервых', 'СрезПоследних'];
   // Каждый срез получает собственную копию массива полей, чтобы будущие потребители
