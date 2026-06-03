@@ -543,4 +543,66 @@ describe('loadMetadataFromYaml', () => {
     expect(table.fields.find(f => f.name === 'Номенклатура')?.kind).toBe('dimension');
     expect(table.fields.find(f => f.name === 'Количество')?.kind).toBe('resource');
   });
+
+  it('emits Остатки, Обороты, ОстаткиИОбороты for a balance accumulation register', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1, name: 'TestConf',
+      objects: [
+        { type: 'РегистрНакопления', name: 'РегистрНакопленияОст', fullName: 'РегистрНакопления.РегистрНакопленияОст', file: 'AccumulationRegisters/Ост.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'AccumulationRegisters/Ост.yaml', {
+      version: 1, kind: 'РегистрНакопления', name: 'РегистрНакопленияОст', fullName: 'РегистрНакопления.РегистрНакопленияОст',
+      properties: { registerType: 'Balance' },
+      fields: [
+        { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
+        { name: 'Период', category: 'standard', types: [{ kind: 'Дата' }] },
+        { name: 'Регистратор', category: 'standard', types: [{ kind: 'unknown' }] },
+        { name: 'Измерение1', category: 'dimension', types: [{ kind: 'Строка' }] },
+        { name: 'Ресурс1', category: 'resource', types: [{ kind: 'Число' }] },
+      ],
+    });
+
+    const result: MetadataModel = loadMetadataFromYaml(tmpDir);
+    const names = result.tables.map(t => t.fullName);
+    expect(names).toContain('РегистрНакопления.РегистрНакопленияОст.Остатки');
+    expect(names).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты');
+    expect(names).toContain('РегистрНакопления.РегистрНакопленияОст.ОстаткиИОбороты');
+
+    const ostatki = result.tables.find(t => t.fullName.endsWith('.Остатки'))!;
+    expect(ostatki.virtual).toEqual({ slice: 'Остатки', baseFullName: 'РегистрНакопления.РегистрНакопленияОст' });
+    expect(ostatki.fields.map(f => f.name)).toEqual(['Измерение1', 'Ресурс1Остаток']);
+
+    const oboroty = result.tables.find(t => t.fullName.endsWith('.Обороты'))!;
+    expect(oboroty.fields.map(f => f.name)).toEqual(['Измерение1', 'Ресурс1Оборот', 'Ресурс1Приход', 'Ресурс1Расход']);
+
+    const oio = result.tables.find(t => t.fullName.endsWith('.ОстаткиИОбороты'))!;
+    expect(oio.fields.map(f => f.name)).toEqual([
+      'Измерение1', 'Ресурс1НачальныйОстаток', 'Ресурс1КонечныйОстаток', 'Ресурс1Оборот', 'Ресурс1Приход', 'Ресурс1Расход',
+    ]);
+  });
+
+  it('emits only Обороты (with Оборот resource) for a turnover accumulation register', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1, name: 'TestConf',
+      objects: [
+        { type: 'РегистрНакопления', name: 'РегистрНакопленияОбор', fullName: 'РегистрНакопления.РегистрНакопленияОбор', file: 'AccumulationRegisters/Обор.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'AccumulationRegisters/Обор.yaml', {
+      version: 1, kind: 'РегистрНакопления', name: 'РегистрНакопленияОбор', fullName: 'РегистрНакопления.РегистрНакопленияОбор',
+      properties: { registerType: 'Turnovers' },
+      fields: [
+        { name: 'Период', category: 'standard', types: [{ kind: 'Дата' }] },
+        { name: 'Измерение1', category: 'dimension', types: [{ kind: 'Строка' }] },
+        { name: 'Ресурс1', category: 'resource', types: [{ kind: 'Число' }] },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    const vtNames = result.tables.filter(t => t.virtual).map(t => t.fullName);
+    expect(vtNames).toEqual(['РегистрНакопления.РегистрНакопленияОбор.Обороты']);
+    const oboroty = result.tables.find(t => t.virtual)!;
+    expect(oboroty.fields.map(f => f.name)).toEqual(['Измерение1', 'Ресурс1Оборот']);
+  });
 });

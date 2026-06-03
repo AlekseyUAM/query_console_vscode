@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from 'yaml';
-import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind } from './types';
+import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind, VirtualTableInfo } from './types';
 import type { ParsedObject, ParsedField, ParsedType } from './parser/model';
 
 const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
@@ -112,6 +112,49 @@ function buildInfoRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
   }));
 }
 
+// Развёртка ресурса <R> по виду виртуальной таблицы (по эталону конструктора 1С):
+//  Остатки           → <R>Остаток
+//  Обороты (Остатки) → <R>Оборот, <R>Приход, <R>Расход
+//  Обороты (Обороты) → <R>Оборот
+//  ОстаткиИОбороты   → <R>НачальныйОстаток, <R>КонечныйОстаток, <R>Оборот, <R>Приход, <R>Расход
+function expandResources(resources: MetaField[], suffixes: string[]): MetaField[] {
+  return resources.flatMap(r =>
+    suffixes.map((s): MetaField => ({ name: `${r.name}${s}`, kind: 'resource', types: r.types }))
+  );
+}
+
+function buildAccumRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
+  if (obj.kind !== 'РегистрНакопления') return [];
+  const registerType = (obj.properties as { registerType?: string } | undefined)?.registerType ?? 'Balance';
+  const isBalance = registerType !== 'Turnovers';
+
+  const dims = base.fields.filter(f => f.kind === 'dimension');
+  const resources = base.fields.filter(f => f.kind === 'resource');
+
+  const makeVT = (slice: VirtualTableInfo['slice'], resourceFields: MetaField[]): MetaTable => ({
+    kind: 'РегистрНакопления',
+    name: `${obj.name}.${slice}`,
+    fullName: `${obj.fullName}.${slice}`,
+    // Период-независимая часть: измерения + развёрнутые ресурсы. Период-поля
+    // (зависят от выбранной периодичности) добавляются на слое webview.
+    fields: [...dims.map(d => ({ ...d })), ...resourceFields],
+    virtual: { slice, baseFullName: obj.fullName },
+  });
+
+  const oborotSuffixes = isBalance ? ['Оборот', 'Приход', 'Расход'] : ['Оборот'];
+
+  const result: MetaTable[] = [];
+  if (isBalance) {
+    result.push(makeVT('Остатки', expandResources(resources, ['Остаток'])));
+  }
+  result.push(makeVT('Обороты', expandResources(resources, oborotSuffixes)));
+  if (isBalance) {
+    result.push(makeVT('ОстаткиИОбороты',
+      expandResources(resources, ['НачальныйОстаток', 'КонечныйОстаток', 'Оборот', 'Приход', 'Расход'])));
+  }
+  return result;
+}
+
 interface IndexEntry {
   type: string;
   name: string;
@@ -174,6 +217,10 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
     }
 
     for (const slice of buildInfoRegSlices(obj, metaTable)) {
+      tables.push(slice);
+    }
+
+    for (const slice of buildAccumRegSlices(obj, metaTable)) {
       tables.push(slice);
     }
   }
