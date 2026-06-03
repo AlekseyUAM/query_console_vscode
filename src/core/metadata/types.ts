@@ -20,7 +20,7 @@ export interface MetaField {
 }
 
 export interface VirtualTableInfo {
-  slice: 'СрезПервых' | 'СрезПоследних';
+  slice: 'СрезПервых' | 'СрезПоследних' | 'Обороты' | 'Остатки' | 'ОстаткиИОбороты';
   baseFullName: string;
 }
 
