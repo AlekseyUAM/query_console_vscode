@@ -4,6 +4,8 @@ function defaultAlias(t: SelectedTable): string {
   if (t.alias) return t.alias;
   const parts = t.fullName.split('.');
   if (t.virtual && parts.length >= 3) return parts[1] + parts[2];
+  // Невиртуальные таблицы имеют двусегментный fullName (Вид.Имя); табличные части
+  // идут отдельным путём (tabSectionFields), а не через model.tables.
   return parts[1] ?? t.fullName;
 }
 
@@ -26,11 +28,11 @@ function resolveAliases(tables: SelectedTable[]): Map<string, string> {
 
 function renderSource(t: SelectedTable): string {
   if (!t.virtual) return t.fullName;
-  const p = t.virtual.period ?? '';
-  const c = t.virtual.condition ?? '';
-  if (!p && !c) return t.fullName;
-  const inner = c ? `${p}, ${c}` : p;
-  return `${t.fullName}(${inner})`;
+  const { period = '', condition = '' } = t.virtual;
+  if (!period && !condition) return t.fullName;
+  // Параметры позиционные: при заданном только условии остаётся ведущая запятая
+  // `(, Условие)`; при заданном только периоде — `(Период)`.
+  return `${t.fullName}(${period}${condition ? ', ' + condition : ''})`;
 }
 
 export function generate(model: QueryModel): string {
@@ -41,6 +43,8 @@ export function generate(model: QueryModel): string {
   const aliases = resolveAliases(model.tables);
 
   const allLines: string[] = [];
+  // Счётчик автопсевдонимов произвольных полей. Не проверяет коллизии с явными
+  // псевдонимами — допустимо для фазы 4.2 (UI не смешивает их с полями «Поле{n}»).
   let exprCounter = 0;
 
   for (const f of model.fields) {

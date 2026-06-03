@@ -127,7 +127,9 @@ describe('generate', () => {
       tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { period: '&Период' } }],
       fields: [{ tableId: 't1', path: 'Курс' }],
     };
-    expect(generate(model)).toContain('РегистрСведений.Курсы.СрезПоследних(&Период) КАК КурсыСрезПоследних');
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tКурсыСрезПоследних.Курс\nИЗ\n\tРегистрСведений.Курсы.СрезПоследних(&Период) КАК КурсыСрезПоследних'
+    );
   });
 
   it('renders leading comma when only condition set', () => {
@@ -135,7 +137,9 @@ describe('generate', () => {
       tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { condition: 'Валюта = &Валюта' } }],
       fields: [{ tableId: 't1', path: 'Курс' }],
     };
-    expect(generate(model)).toContain('РегистрСведений.Курсы.СрезПоследних(, Валюта = &Валюта) КАК КурсыСрезПоследних');
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tКурсыСрезПоследних.Курс\nИЗ\n\tРегистрСведений.Курсы.СрезПоследних(, Валюта = &Валюта) КАК КурсыСрезПоследних'
+    );
   });
 
   it('renders an expression field with explicit alias', () => {
