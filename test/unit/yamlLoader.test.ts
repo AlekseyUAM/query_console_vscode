@@ -464,30 +464,36 @@ describe('loadMetadataFromYaml', () => {
     expect(fieldNames).not.toContain('Активность');
   });
 
-  it('excludes Регистратор from a periodical recorder-subordinate slice', () => {
+  it('keeps Регистратор/НомерСтроки/Активность and omits ПериодОкончание for a recorder-subordinate slice', () => {
+    // Подчинённый регистратору периодический РС (есть Регистратор) — по эталону 1С
+    // срез содержит Период, Регистратор, НомерСтроки, Активность + измерения/ресурсы,
+    // и НЕ содержит ПериодОкончание (оно только у независимых регистров).
     writeCfYaml(tmpDir, 'configuration.yaml', {
       version: 1, name: 'TestConf',
       objects: [
-        { type: 'РегистрСведений', name: 'События', fullName: 'РегистрСведений.События', file: 'InformationRegisters/События.yaml' },
+        { type: 'РегистрСведений', name: 'Согласия', fullName: 'РегистрСведений.Согласия', file: 'InformationRegisters/Согласия.yaml' },
       ],
     });
-    writeCfYaml(tmpDir, 'InformationRegisters/События.yaml', {
-      version: 1, kind: 'РегистрСведений', name: 'События', fullName: 'РегистрСведений.События',
+    writeCfYaml(tmpDir, 'InformationRegisters/Согласия.yaml', {
+      version: 1, kind: 'РегистрСведений', name: 'Согласия', fullName: 'РегистрСведений.Согласия',
       properties: { periodicity: 'Day' },
       fields: [
         { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
         { name: 'Активность', category: 'standard', types: [{ kind: 'Булево' }] },
         { name: 'Период', category: 'standard', types: [{ kind: 'Дата' }] },
         { name: 'Регистратор', category: 'standard', types: [{ kind: 'unknown' }] },
-        { name: 'Объект', category: 'dimension', types: [{ kind: 'Строка' }] },
+        { name: 'Субъект', category: 'dimension', types: [{ kind: 'Строка' }] },
+        { name: 'Организация', category: 'dimension', types: [{ kind: 'Строка' }] },
+        { name: 'Действует', category: 'resource', types: [{ kind: 'Булево' }] },
+        { name: 'СрокДействия', category: 'attribute', types: [{ kind: 'Дата' }] },
       ],
     });
 
     const result = loadMetadataFromYaml(tmpDir);
-    const slice = result.tables.find(t => t.fullName === 'РегистрСведений.События.СрезПоследних')!;
+    const slice = result.tables.find(t => t.fullName === 'РегистрСведений.Согласия.СрезПоследних')!;
     const fieldNames = slice.fields.map(f => f.name);
-    expect(fieldNames).toEqual(['Период', 'ПериодОкончание', 'Объект']);
-    expect(fieldNames).not.toContain('Регистратор');
+    expect(fieldNames).toEqual(['Период', 'Регистратор', 'НомерСтроки', 'Активность', 'Субъект', 'Организация', 'Действует', 'СрокДействия']);
+    expect(fieldNames).not.toContain('ПериодОкончание');
   });
 
   it('does not emit slices for a non-periodical information register', () => {
