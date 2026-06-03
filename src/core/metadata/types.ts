@@ -19,12 +19,18 @@ export interface MetaField {
   types: MetaType[];
 }
 
+export interface VirtualTableInfo {
+  slice: 'СрезПервых' | 'СрезПоследних';
+  baseFullName: string;
+}
+
 export interface MetaTable {
   kind: TableKind;
   name: string;
   fullName: string;
   fields: MetaField[];
   tabularSections?: MetaTable[];
+  virtual?: VirtualTableInfo;
 }
 
 export interface MetadataModel {
