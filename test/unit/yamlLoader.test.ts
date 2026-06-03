@@ -464,6 +464,32 @@ describe('loadMetadataFromYaml', () => {
     expect(fieldNames).not.toContain('Активность');
   });
 
+  it('excludes Регистратор from a periodical recorder-subordinate slice', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1, name: 'TestConf',
+      objects: [
+        { type: 'РегистрСведений', name: 'События', fullName: 'РегистрСведений.События', file: 'InformationRegisters/События.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'InformationRegisters/События.yaml', {
+      version: 1, kind: 'РегистрСведений', name: 'События', fullName: 'РегистрСведений.События',
+      properties: { periodicity: 'Day' },
+      fields: [
+        { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число' }] },
+        { name: 'Активность', category: 'standard', types: [{ kind: 'Булево' }] },
+        { name: 'Период', category: 'standard', types: [{ kind: 'Дата' }] },
+        { name: 'Регистратор', category: 'standard', types: [{ kind: 'unknown' }] },
+        { name: 'Объект', category: 'dimension', types: [{ kind: 'Строка' }] },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    const slice = result.tables.find(t => t.fullName === 'РегистрСведений.События.СрезПоследних')!;
+    const fieldNames = slice.fields.map(f => f.name);
+    expect(fieldNames).toEqual(['Период', 'ПериодОкончание', 'Объект']);
+    expect(fieldNames).not.toContain('Регистратор');
+  });
+
   it('does not emit slices for a non-periodical information register', () => {
     writeCfYaml(tmpDir, 'configuration.yaml', {
       version: 1, name: 'TestConf',

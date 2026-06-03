@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from 'yaml';
-import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind, VirtualTableInfo } from './types';
+import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind } from './types';
 import type { ParsedObject, ParsedField, ParsedType } from './parser/model';
 
 const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
@@ -76,6 +76,9 @@ function buildInfoRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
   const periodicity = (obj.properties as { periodicity?: string } | undefined)?.periodicity;
   if (!periodicity || periodicity === 'Nonperiodical') return [];
 
+  // Поля среза по скриншотам конструктора 1С: Период + ПериодОкончание (именно
+  // «ПериодОкончание», как в эталонном тексте запроса) + измерения/ресурсы/реквизиты
+  // базового регистра без стандартных служебных полей.
   const sliceFields: MetaField[] = [
     { name: 'Период', kind: 'standard', types: [{ primitive: 'Дата' }] },
     { name: 'ПериодОкончание', kind: 'standard', types: [{ primitive: 'Дата' }] },
@@ -83,12 +86,14 @@ function buildInfoRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
   ];
 
   const slices: ('СрезПервых' | 'СрезПоследних')[] = ['СрезПервых', 'СрезПоследних'];
+  // Каждый срез получает собственную копию массива полей, чтобы будущие потребители
+  // не могли случайно мутировать поля обоих срезов сразу.
   return slices.map((slice): MetaTable => ({
     kind: 'РегистрСведений',
     name: `${obj.name}.${slice}`,
     fullName: `${obj.fullName}.${slice}`,
-    fields: sliceFields,
-    virtual: { slice, baseFullName: obj.fullName } as VirtualTableInfo,
+    fields: [...sliceFields],
+    virtual: { slice, baseFullName: obj.fullName },
   }));
 }
 
