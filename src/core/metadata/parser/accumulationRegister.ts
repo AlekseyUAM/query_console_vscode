@@ -9,6 +9,7 @@ export function parseAccumulationRegister(objectEl: any): ParsedObject | null {
   if (!name) return null;
   const uuid = objectEl.getAttribute('uuid') || '';
   const fullName = `РегистрНакопления.${name}`;
+  const registerType = nodeText(childByLocalName(props, 'RegisterType')) || 'Balance';
 
   const fields: ParsedField[] = [];
   const std = (n: string, types: ParsedType[]) =>
@@ -29,6 +30,7 @@ export function parseAccumulationRegister(objectEl: any): ParsedObject | null {
     name,
     fullName,
     uuid,
+    properties: { registerType }, // 'Balance' (Остатки) | 'Turnovers' (Обороты)
     fields,
   };
 }

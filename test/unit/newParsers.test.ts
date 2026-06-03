@@ -468,3 +468,17 @@ describe('parseInformationRegister — periodicity property', () => {
     expect(result.properties?.periodicity).toBe('Nonperiodical');
   });
 });
+
+describe('parseAccumulationRegister — registerType property', () => {
+  it('stores Balance for a balance (Остатки) register', () => {
+    const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОст.xml');
+    const result = parseAccumulationRegister(el)!;
+    expect(result.properties?.registerType).toBe('Balance');
+  });
+
+  it('stores Turnovers for a turnover (Обороты) register', () => {
+    const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОбор.xml');
+    const result = parseAccumulationRegister(el)!;
+    expect(result.properties?.registerType).toBe('Turnovers');
+  });
+});
