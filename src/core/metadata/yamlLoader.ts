@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from 'yaml';
-import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind } from './types';
+import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind, VirtualTableInfo } from './types';
 import type { ParsedObject, ParsedField, ParsedType } from './parser/model';
 
 const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
@@ -69,6 +69,29 @@ function parsedObjectToMetaTable(obj: ParsedObject): MetaTable {
   };
 }
 
+const SLICE_EXCLUDED: ReadonlySet<string> = new Set(['НомерСтроки', 'Активность', 'Регистратор', 'Период']);
+
+function buildInfoRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
+  if (obj.kind !== 'РегистрСведений') return [];
+  const periodicity = (obj.properties as { periodicity?: string } | undefined)?.periodicity;
+  if (!periodicity || periodicity === 'Nonperiodical') return [];
+
+  const sliceFields: MetaField[] = [
+    { name: 'Период', kind: 'standard', types: [{ primitive: 'Дата' }] },
+    { name: 'ПериодОкончание', kind: 'standard', types: [{ primitive: 'Дата' }] },
+    ...base.fields.filter(f => !SLICE_EXCLUDED.has(f.name)),
+  ];
+
+  const slices: ('СрезПервых' | 'СрезПоследних')[] = ['СрезПервых', 'СрезПоследних'];
+  return slices.map((slice): MetaTable => ({
+    kind: 'РегистрСведений',
+    name: `${obj.name}.${slice}`,
+    fullName: `${obj.fullName}.${slice}`,
+    fields: sliceFields,
+    virtual: { slice, baseFullName: obj.fullName } as VirtualTableInfo,
+  }));
+}
+
 interface IndexEntry {
   type: string;
   name: string;
@@ -128,6 +151,10 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
 
     for (const ts of metaTable.tabularSections ?? []) {
       tables.push(ts);
+    }
+
+    for (const slice of buildInfoRegSlices(obj, metaTable)) {
+      tables.push(slice);
     }
   }
 
