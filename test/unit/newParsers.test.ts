@@ -10,6 +10,7 @@ import { parseChartOfCalculationTypes } from '../../src/core/metadata/parser/cha
 import { parseBusinessProcess } from '../../src/core/metadata/parser/businessProcess';
 import { parseTask } from '../../src/core/metadata/parser/task';
 import { parseInformationRegister } from '../../src/core/metadata/parser/informationRegister';
+import { parseAccumulationRegister } from '../../src/core/metadata/parser/accumulationRegister';
 
 const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
 
@@ -282,5 +283,40 @@ describe('parseInformationRegister', () => {
     const res = result.fields.find(f => f.name === 'Ресурс1');
     expect(dim?.category).toBe('dimension');
     expect(res?.category).toBe('resource');
+  });
+});
+
+describe('parseAccumulationRegister', () => {
+  it('parses name, fullName, kind', () => {
+    const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОбор.xml');
+    const result = parseAccumulationRegister(el);
+    expect(result?.name).toBe('РегистрНакопленияОбор');
+    expect(result?.fullName).toBe('РегистрНакопления.РегистрНакопленияОбор');
+    expect(result?.kind).toBe('РегистрНакопления');
+  });
+
+  it('always includes НомерСтроки, Период, Регистратор, ВидДвижения', () => {
+    const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОбор.xml');
+    const result = parseAccumulationRegister(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toContain('НомерСтроки');
+    expect(stdNames).toContain('Период');
+    expect(stdNames).toContain('Регистратор');
+    expect(stdNames).toContain('ВидДвижения');
+  });
+
+  it('includes dimension and resource fields', () => {
+    const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОбор.xml');
+    const result = parseAccumulationRegister(el)!;
+    const dim = result.fields.find(f => f.name === 'Измерение1');
+    const res = result.fields.find(f => f.name === 'Ресурс1');
+    expect(dim?.category).toBe('dimension');
+    expect(res?.category).toBe('resource');
+  });
+
+  it('has no tabularSections', () => {
+    const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОбор.xml');
+    const result = parseAccumulationRegister(el)!;
+    expect(result.tabularSections).toBeUndefined();
   });
 });
