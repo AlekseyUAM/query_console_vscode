@@ -20,11 +20,26 @@ function resolveAliases(tables: SelectedTable[]): Map<string, string> {
 
 function renderSource(t: SelectedTable): string {
   if (!t.virtual) return t.fullName;
-  const { period = '', condition = '' } = t.virtual;
-  if (!period && !condition) return t.fullName;
-  // Параметры позиционные: при заданном только условии остаётся ведущая запятая
-  // `(, Условие)`; при заданном только периоде — `(Период)`.
-  return `${t.fullName}(${period}${condition ? ', ' + condition : ''})`;
+  const v = t.virtual;
+  const slice = t.fullName.split('.')[2];
+
+  // Позиционные параметры зависят от вида виртуальной таблицы.
+  let positions: string[];
+  if (slice === 'Обороты') {
+    positions = [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.condition ?? ''];
+  } else if (slice === 'ОстаткиИОбороты') {
+    positions = [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.fillMethod ?? '', v.condition ?? ''];
+  } else {
+    // СрезПервых / СрезПоследних / Остатки
+    positions = [v.period ?? '', v.condition ?? ''];
+  }
+
+  // Хвостовые пустые позиции отбрасываются; пустые позиции в середине сохраняются
+  // (ведущая/средняя запятая). Все позиции пусты → вызов без скобок.
+  let last = positions.length - 1;
+  while (last >= 0 && positions[last] === '') last--;
+  if (last < 0) return t.fullName;
+  return `${t.fullName}(${positions.slice(0, last + 1).join(', ')})`;
 }
 
 export function generate(model: QueryModel): string {

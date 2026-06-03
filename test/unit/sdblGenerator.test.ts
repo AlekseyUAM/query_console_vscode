@@ -164,4 +164,53 @@ describe('generate', () => {
     expect(text).toContain('\tСУММА(Валюты.Код) КАК Поле1,');
     expect(text).toContain('\tМАКСИМУМ(Валюты.Код) КАК Поле2\n');
   });
+
+  it('renders accumulation Обороты with positional params (start, end, periodicity, condition)', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.Обороты', virtual: { startPeriod: '&Нач', endPeriod: '&Кон', periodicity: 'Авто', condition: 'Измерение1 = &Пар' } }],
+      fields: [
+        { tableId: 't1', path: 'Измерение1', alias: 'Измерение1' },
+        { tableId: 't1', path: 'Ресурс1Оборот', alias: 'Ресурс1Оборот' },
+      ],
+    };
+    expect(generate(model)).toContain(
+      'РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, &Кон, Авто, Измерение1 = &Пар) КАК РегистрНакопленияОстОбороты'
+    );
+  });
+
+  it('renders accumulation Остатки with period and condition', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.Остатки', virtual: { period: '&Период', condition: 'Измерение1 = &Пар' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Остаток', alias: 'Ресурс1Остаток' }],
+    };
+    expect(generate(model)).toContain(
+      'РегистрНакопления.РегистрНакопленияОст.Остатки(&Период, Измерение1 = &Пар) КАК РегистрНакопленияОстОстатки'
+    );
+  });
+
+  it('renders accumulation ОстаткиИОбороты with all five positional params', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.ОстаткиИОбороты', virtual: { startPeriod: '&НачалоПериода', endPeriod: '&КонецП', periodicity: 'Авто', fillMethod: 'ДвиженияИГраницыПериода', condition: 'Измерение1 = &Пар' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Оборот', alias: 'Ресурс1Оборот' }],
+    };
+    expect(generate(model)).toContain(
+      'РегистрНакопления.РегистрНакопленияОст.ОстаткиИОбороты(&НачалоПериода, &КонецП, Авто, ДвиженияИГраницыПериода, Измерение1 = &Пар) КАК РегистрНакопленияОстОстаткиИОбороты'
+    );
+  });
+
+  it('drops trailing empty positions for Обороты (only start/end period set)', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.Обороты', virtual: { startPeriod: '&Нач', endPeriod: '&Кон' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Оборот' }],
+    };
+    expect(generate(model)).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, &Кон) КАК РегистрНакопленияОстОбороты');
+  });
+
+  it('keeps empty middle position for Обороты (start + periodicity, no end)', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.Обороты', virtual: { startPeriod: '&Нач', periodicity: 'Месяц' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Оборот' }],
+    };
+    expect(generate(model)).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, , Месяц) КАК РегистрНакопленияОстОбороты');
+  });
 });
