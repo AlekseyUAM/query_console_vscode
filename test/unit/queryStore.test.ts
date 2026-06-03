@@ -19,6 +19,14 @@ const mockTable2: MetaTable = {
   fields: [{ name: 'Дата', types: [{ primitive: 'Дата' }] }],
 };
 
+const mockSlice: MetaTable = {
+  kind: 'РегистрСведений',
+  name: 'Курсы.СрезПоследних',
+  fullName: 'РегистрСведений.Курсы.СрезПоследних',
+  fields: [{ name: 'Период', kind: 'standard', types: [{ primitive: 'Дата' }] }],
+  virtual: { slice: 'СрезПоследних', baseFullName: 'РегистрСведений.Курсы' },
+};
+
 describe('queryStore reducer', () => {
   it('SET_METADATA updates tables', () => {
     const state = reducer(initialState(), { type: 'SET_METADATA', tables: [mockTable] });
@@ -110,5 +118,31 @@ describe('queryStore reducer', () => {
   it('FOCUS_SELECTED_FIELD sets focusedSelectedFieldIdx', () => {
     const state = reducer(initialState(), { type: 'FOCUS_SELECTED_FIELD', idx: 2 });
     expect(state.focusedSelectedFieldIdx).toBe(2);
+  });
+
+  it('ADD_TABLE marks a virtual table with empty params', () => {
+    const state = reducer(initialState(), { type: 'ADD_TABLE', table: mockSlice });
+    expect(state.selectedTables[0].virtual).toEqual({});
+  });
+
+  it('ADD_TABLE leaves non-virtual tables without virtual marker', () => {
+    const state = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    expect(state.selectedTables[0].virtual).toBeUndefined();
+  });
+
+  it('SET_VIRTUAL_PARAMS writes params to the matching table', () => {
+    let state = reducer(initialState(), { type: 'ADD_TABLE', table: mockSlice });
+    const tableId = state.selectedTables[0].id;
+    state = reducer(state, { type: 'SET_VIRTUAL_PARAMS', tableId, params: { period: '&Период', condition: 'Валюта = &В' } });
+    expect(state.selectedTables[0].virtual).toEqual({ period: '&Период', condition: 'Валюта = &В' });
+  });
+
+  it('ADD_EXPRESSION_FIELD appends an expression field', () => {
+    let state = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const tableId = state.selectedTables[0].id;
+    state = reducer(state, { type: 'ADD_EXPRESSION_FIELD', tableId, expression: 'СУММА(Валюты.Код)' });
+    expect(state.selectedFields).toHaveLength(1);
+    expect(state.selectedFields[0].expression).toBe('СУММА(Валюты.Код)');
+    expect(state.selectedFields[0].tableId).toBe(tableId);
   });
 });
