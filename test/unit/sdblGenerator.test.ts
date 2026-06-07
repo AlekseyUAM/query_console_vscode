@@ -449,3 +449,128 @@ describe('generate — группировка', () => {
     });
   });
 });
+
+describe('generate — условия (ГДЕ)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [
+      { tableId: 't1', path: 'Код', alias: 'Код' },
+      { tableId: 't1', path: 'Наименование', alias: 'Наименование' },
+    ],
+  });
+
+  it('одно простое условие → оператор и параметр по умолчанию', () => {
+    const model = base();
+    model.conditions = [{ custom: false, tableId: 't1', path: 'Код' }];
+    const text = generate(model);
+    expect(text).toContain('ГДЕ\n\tВалюты.Код = &Код');
+  });
+
+  it('два простых условия → соединены через И (эталон)', () => {
+    const model = base();
+    model.conditions = [
+      { custom: false, tableId: 't1', path: 'Код' },
+      { custom: false, tableId: 't1', path: 'Наименование' },
+    ];
+    const text = generate(model);
+    expect(text).toContain(
+      'ГДЕ\n' +
+      '\tВалюты.Код = &Код\n' +
+      '\tИ Валюты.Наименование = &Наименование'
+    );
+  });
+
+  it('нестандартный оператор и явный параметр', () => {
+    const model = base();
+    model.conditions = [
+      { custom: false, tableId: 't1', path: 'Код', operator: '>=', param: '&МинКод' },
+    ];
+    expect(generate(model)).toContain('ГДЕ\n\tВалюты.Код >= &МинКод');
+  });
+
+  it('произвольное условие рендерится как есть', () => {
+    const model = base();
+    model.conditions = [{ custom: true, expression: 'Валюты.Код В (&Список)' }];
+    expect(generate(model)).toContain('ГДЕ\n\tВалюты.Код В (&Список)');
+  });
+
+  it('пустое произвольное условие и условие без path пропускаются', () => {
+    const model = base();
+    model.conditions = [
+      { custom: true, expression: '   ' },
+      { custom: false, tableId: 't1' },
+    ];
+    const text = generate(model);
+    expect(text).not.toContain('ГДЕ');
+  });
+
+  it('lastSegment берётся из последнего сегмента пути', () => {
+    const model = base();
+    model.conditions = [{ custom: false, tableId: 't1', path: 'Владелец.Код' }];
+    expect(generate(model)).toContain('\tВалюты.Владелец.Код = &Код');
+  });
+
+  it('псевдоним берётся из tableId, если не разрешён', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код', alias: 'Код' }],
+      conditions: [{ custom: false, tableId: 'unknown', path: 'Код' }],
+    };
+    expect(generate(model)).toContain('\tunknown.Код = &Код');
+  });
+
+  it('ГДЕ располагается после ИЗ и до СГРУППИРОВАТЬ ПО', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      conditions: [{ custom: false, tableId: 't1', path: 'Код' }],
+      grouping: {
+        multiple: false,
+        groupFields: [{ tableId: 't1', path: 'Код' }],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    };
+    const text = generate(model);
+    const iz = text.indexOf('ИЗ');
+    const where = text.indexOf('ГДЕ');
+    const group = text.indexOf('СГРУППИРОВАТЬ ПО');
+    expect(iz).toBeGreaterThanOrEqual(0);
+    expect(where).toBeGreaterThan(iz);
+    expect(group).toBeGreaterThan(where);
+  });
+
+  describe('пустые условия не меняют вывод', () => {
+    const plain: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код' }],
+    };
+    const expected = 'ВЫБРАТЬ\n\tВалюты.Код\nИЗ\n\tСправочник.Валюты КАК Валюты';
+
+    it('conditions undefined → как раньше', () => {
+      expect(generate(plain)).toBe(expected);
+    });
+
+    it('conditions [] → как раньше', () => {
+      expect(generate({ ...plain, conditions: [] })).toBe(expected);
+    });
+
+    it('только нерендерящиеся условия → как раньше', () => {
+      expect(
+        generate({ ...plain, conditions: [{ custom: true, expression: '' }, { custom: false }] })
+      ).toBe(expected);
+    });
+  });
+
+  it('валидный SDBL', async () => {
+    const model = base();
+    model.conditions = [
+      { custom: false, tableId: 't1', path: 'Код' },
+      { custom: false, tableId: 't1', path: 'Наименование' },
+    ];
+    await assertValidSdbl(generate(model));
+  });
+});

@@ -60,6 +60,23 @@ export interface Grouping {
   aggregates: SummableField[];
 }
 
+export type ConditionOperator = '=' | '<>' | '>' | '>=' | '<' | '<=' | 'В' | 'МЕЖДУ' | 'ПОДОБНО';
+
+export interface Condition {
+  /** «П.» — произвольное выражение (а не простое условие поле/оператор/параметр). */
+  custom: boolean;
+  /** Простое условие: таблица поля. */
+  tableId?: string;
+  /** Простое условие: путь к полю. */
+  path?: string;
+  /** Оператор сравнения, по умолчанию '='. */
+  operator?: ConditionOperator;
+  /** Параметр, по умолчанию '&<ПоследнийСегментПути>'. */
+  param?: string;
+  /** Произвольное условие — полный текст выражения. */
+  expression?: string;
+}
+
 export interface QueryModel {
   tables: SelectedTable[];
   fields: SelectedField[];
@@ -67,6 +84,8 @@ export interface QueryModel {
   /** Поля, которые должны быть отрисованы ПОСЛЕ табличных частей (Предопределенный, ИмяПредопределенныхДанных). */
   trailingFields?: SelectedField[];
   grouping?: Grouping;
+  /** Условия отбора (секция ГДЕ). */
+  conditions?: Condition[];
 }
 
 /**

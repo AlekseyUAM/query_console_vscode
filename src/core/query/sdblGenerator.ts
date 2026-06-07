@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, AggregateFunction, FieldRef } from './queryModel';
+import type { QueryModel, SelectedTable, AggregateFunction, FieldRef, Condition } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
@@ -145,9 +145,10 @@ export function generate(model: QueryModel): string {
     return `\t${renderSource(t)} КАК ${alias}${comma}`;
   });
 
+  const conditionLines = renderConditions(model.conditions, aliases);
   const groupingLines = renderGrouping(model.grouping, aliases);
 
-  return ['ВЫБРАТЬ', ...fieldLines, 'ИЗ', ...tableLines, ...groupingLines].join('\n');
+  return ['ВЫБРАТЬ', ...fieldLines, 'ИЗ', ...tableLines, ...conditionLines, ...groupingLines].join('\n');
 }
 
 /** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */
@@ -187,6 +188,34 @@ function renderGrouping(
     return inner + comma;
   });
   return ['СГРУППИРОВАТЬ ПО ГРУППИРУЮЩИМ НАБОРАМ', '(', ...setLines, ')'];
+}
+
+/**
+ * Секция ГДЕ (условия отбора). Возвращает [] если рендерящихся условий нет —
+ * тогда вывод байт-в-байт как раньше. Первое условие на отдельной строке,
+ * каждое последующее — с префиксом «И ».
+ */
+function renderConditions(
+  conditions: Condition[] | undefined,
+  aliases: Map<string, string>
+): string[] {
+  if (!conditions || conditions.length === 0) return [];
+
+  const conds: string[] = [];
+  for (const c of conditions) {
+    if (c.custom) {
+      const expr = (c.expression ?? '').trim();
+      if (expr) conds.push(expr);
+      continue;
+    }
+    if (!c.path) continue;
+    const alias = aliases.get(c.tableId ?? '') ?? c.tableId;
+    const param = c.param ?? `&${c.path.split('.').pop()}`;
+    conds.push(`${alias}.${c.path} ${c.operator ?? '='} ${param}`);
+  }
+
+  if (conds.length === 0) return [];
+  return ['ГДЕ', ...conds.map((c, i) => (i === 0 ? `\t${c}` : `\tИ ${c}`))];
 }
 
 export function formatAsBslString(text: string): string {
