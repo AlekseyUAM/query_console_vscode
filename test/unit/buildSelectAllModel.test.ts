@@ -39,7 +39,7 @@ describe('buildSelectAllModel', () => {
     expect(model.tables[0].fullName).toBe('Справочник.Z');
   });
 
-  it('maps tabular sections into tabSectionFields (fields duplicated, like 1С constructor)', () => {
+  it('maps tabular sections into tabSectionFields (each field once)', () => {
     const t: MetaTable = {
       kind: 'Справочник', name: 'W', fullName: 'Справочник.W',
       fields: [{ name: 'Ссылка', kind: 'standard', types: [] }],
@@ -54,8 +54,7 @@ describe('buildSelectAllModel', () => {
     const model = buildSelectAllModel(t);
     expect(model.tabSectionFields).toHaveLength(1);
     expect(model.tabSectionFields![0].tsName).toBe('ТЧ1');
-    // Конструктор 1С дублирует поля ТЧ — передаём список дважды,
-    // generate() применяет дедупликацию псевдонимов (Ссылка → Ссылка1).
-    expect(model.tabSectionFields![0].fields).toEqual(['Ссылка', 'Поле1', 'Ссылка', 'Поле1']);
+    // Поля ТЧ — по одному разу (удвоение в эталонах 1С — артефакт выгрузки).
+    expect(model.tabSectionFields![0].fields).toEqual(['Ссылка', 'Поле1']);
   });
 });

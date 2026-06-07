@@ -93,16 +93,9 @@ export function generate(model: QueryModel): string {
 
   for (const tsf of model.tabSectionFields ?? []) {
     const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
-    // Дедупликация псевдонимов: если поле встречается повторно — добавляем числовой суффикс
-    // (пример: Ссылка → Ссылка1). Это воспроизводит поведение конструктора 1С,
-    // который может дважды включить одноимённые поля ТЧ.
-    const usedAliases = new Map<string, number>();
-    const subLines = tsf.fields.map((f, i) => {
-      const count = usedAliases.get(f) ?? 0;
-      usedAliases.set(f, count + 1);
-      const alias = count === 0 ? f : `${f}${count}`;
-      return `\t\t${f} КАК ${alias}${i < tsf.fields.length - 1 ? ',' : ''}`;
-    });
+    const subLines = tsf.fields.map((f, i) =>
+      `\t\t${f} КАК ${f}${i < tsf.fields.length - 1 ? ',' : ''}`
+    );
     allLines.push(`\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.tsName}`);
   }
 

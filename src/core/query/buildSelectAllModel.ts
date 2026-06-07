@@ -67,18 +67,15 @@ export function buildSelectAllModel(t: MetaTable, periodicity?: string): QueryMo
     trailingFields = split.trailing.length ? split.trailing : undefined;
   }
 
-  // Конструктор 1С дважды включает поля ТЧ в выборку (1С-особенность):
-  // первый раз — без суффикса, второй раз — с числовым суффиксом (Ссылка → Ссылка1).
-  // Дедупликация псевдонимов выполняется внутри generate().
-  const tabSectionFields: SelectedTabSectionField[] = (t.tabularSections ?? []).map(ts => {
-    const names = ts.fields.map(f => f.name);
-    return {
-      tableId: 't1',
-      tsName: ts.name,
-      tsFullName: ts.fullName,
-      fields: [...names, ...names],
-    };
-  });
+  // Поля табличной части — по одному разу. (Удвоение полей ТЧ в эталонах
+  // tmp/meta1c — артефакт скрипта-выгрузки, а не поведение конструктора 1С;
+  // см. нормализацию dedupeTabSections в golden-сьюте.)
+  const tabSectionFields: SelectedTabSectionField[] = (t.tabularSections ?? []).map(ts => ({
+    tableId: 't1',
+    tsName: ts.name,
+    tsFullName: ts.fullName,
+    fields: ts.fields.map(f => f.name),
+  }));
 
   return {
     tables: [{ id: 't1', fullName: t.fullName, ...(t.virtual ? { virtual: {} } : {}) }],
