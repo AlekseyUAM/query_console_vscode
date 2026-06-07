@@ -1,18 +1,55 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
+import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
+
+/** Метаданные одного запроса-участника объединения. */
+export interface QueryMeta {
+  name: string;
+  distinct: boolean;
+}
+
+/**
+ * Сериализуемое состояние одного запроса (working set без общих/транзитных полей).
+ * Хранится в `savedQueries` для всех неактивных запросов; активный живёт в плоских полях.
+ */
+export interface SavedQuery {
+  selectedTables: SelectedTable[];
+  selectedFields: SelectedField[];
+  tabSectionFields: SelectedTabSectionField[];
+  grouping: Grouping;
+  conditions: Condition[];
+  selection: Selection;
+  queryType: QueryType;
+  tempTableName: string;
+  lockForUpdate: string[];
+}
 
 export interface QueryState {
   tables: MetaTable[];
   selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
   tabSectionFields: SelectedTabSectionField[];
+  grouping: Grouping;
+  conditions: Condition[];
+  selection: Selection;
+  queryType: QueryType;
+  tempTableName: string;
+  lockForUpdate: string[];
+  lockEnabled: boolean;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
   focusedDbFieldPath: string | null;
   focusedSelectedTableId: string | null;
   focusedSelectedFieldIdx: number | null;
+  // --- слой документа объединения ---
+  /** Метаданные всех запросов-участников (включая активный). */
+  queryList: QueryMeta[];
+  /** Индекс активного запроса (его working set живёт в плоских полях выше). */
+  activeQuery: number;
+  /** Снимок working set каждого запроса; слот активного запроса = null (живёт в плоских полях). */
+  savedQueries: (SavedQuery | null)[];
 }
 
 export type QueryAction =
@@ -31,7 +68,38 @@ export type QueryAction =
   | { type: 'FOCUS_SELECTED_TABLE'; id: string }
   | { type: 'FOCUS_SELECTED_FIELD'; idx: number }
   | { type: 'SET_VIRTUAL_PARAMS'; tableId: string; params: VirtualParams }
-  | { type: 'ADD_EXPRESSION_FIELD'; tableId: string; expression: string; alias?: string };
+  | { type: 'ADD_EXPRESSION_FIELD'; tableId: string; expression: string; alias?: string }
+  | { type: 'SET_GROUPING_MULTIPLE'; multiple: boolean }
+  | { type: 'ADD_GROUP_FIELD'; tableId: string; path: string }
+  | { type: 'REMOVE_GROUP_FIELD'; tableId: string; path: string }
+  | { type: 'ADD_SUMMABLE_FIELD'; tableId: string; path: string; func: AggregateFunction }
+  | { type: 'REMOVE_SUMMABLE_FIELD'; tableId: string; path: string }
+  | { type: 'SET_SUMMABLE_FUNC'; tableId: string; path: string; func: AggregateFunction }
+  | { type: 'ADD_GROUP_SET' }
+  | { type: 'REMOVE_GROUP_SET'; index: number }
+  | { type: 'ADD_FIELD_TO_SET'; index: number; tableId: string; path: string }
+  | { type: 'REMOVE_FIELD_FROM_SET'; index: number; tableId: string; path: string }
+  | { type: 'ADD_CONDITION'; tableId: string; path: string }
+  | { type: 'REMOVE_CONDITION'; index: number }
+  | { type: 'SET_CONDITION_CUSTOM'; index: number; custom: boolean }
+  | { type: 'SET_CONDITION_OPERATOR'; index: number; operator: ConditionOperator }
+  | { type: 'SET_CONDITION_PARAM'; index: number; param: string }
+  | { type: 'SET_CONDITION_EXPRESSION'; index: number; expression: string }
+  | { type: 'SET_SELECTION_TOP'; top: number | undefined }
+  | { type: 'SET_SELECTION_DISTINCT'; distinct: boolean }
+  | { type: 'SET_SELECTION_ALLOWED'; allowed: boolean }
+  | { type: 'SET_QUERY_TYPE'; queryType: QueryType }
+  | { type: 'SET_TEMP_TABLE_NAME'; name: string }
+  | { type: 'SET_LOCK_ENABLED'; enabled: boolean }
+  | { type: 'ADD_LOCK_TABLE'; fullName: string }
+  | { type: 'REMOVE_LOCK_TABLE'; fullName: string }
+  // --- слой документа объединения ---
+  | { type: 'ADD_QUERY' }
+  | { type: 'SET_ACTIVE_QUERY'; index: number }
+  | { type: 'REMOVE_QUERY'; index: number }
+  | { type: 'RENAME_QUERY'; index: number; name: string }
+  | { type: 'SET_QUERY_DISTINCT'; index: number; distinct: boolean }
+  | { type: 'SET_COLUMN_ALIAS'; alias: string; newAlias: string };
 
 export function initialState(): QueryState {
   return {
@@ -39,15 +107,112 @@ export function initialState(): QueryState {
     selectedTables: [],
     selectedFields: [],
     tabSectionFields: [],
+    grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
+    conditions: [],
+    selection: {},
+    queryType: 'select',
+    tempTableName: '',
+    lockForUpdate: [],
+    lockEnabled: false,
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
     focusedDbFieldPath: null,
     focusedSelectedTableId: null,
     focusedSelectedFieldIdx: null,
+    queryList: [{ name: 'Запрос 1', distinct: false }],
+    activeQuery: 0,
+    savedQueries: [null],
   };
 }
 
 let _tableCounter = 0;
+
+// ============================================================================
+// Слой документа объединения: снимок/восстановление активного запроса.
+// ============================================================================
+
+/** Извлечь working set активного запроса (плоские поля) в сериализуемый SavedQuery. */
+export function snapshotActive(state: QueryState): SavedQuery {
+  return {
+    selectedTables: state.selectedTables,
+    selectedFields: state.selectedFields,
+    tabSectionFields: state.tabSectionFields,
+    grouping: state.grouping,
+    conditions: state.conditions,
+    selection: state.selection,
+    queryType: state.queryType,
+    tempTableName: state.tempTableName,
+    lockForUpdate: state.lockForUpdate,
+  };
+}
+
+/**
+ * Восстановить плоские поля из снимка (или пустые значения по умолчанию при null).
+ * Транзитные поля фокуса всегда сбрасываются.
+ */
+export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Partial<QueryState> {
+  const base = saved ?? {
+    selectedTables: [],
+    selectedFields: [],
+    tabSectionFields: [],
+    grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] } as Grouping,
+    conditions: [],
+    selection: {},
+    queryType: 'select' as QueryType,
+    tempTableName: '',
+    lockForUpdate: [],
+  };
+  return {
+    selectedTables: base.selectedTables,
+    selectedFields: base.selectedFields,
+    tabSectionFields: base.tabSectionFields,
+    grouping: base.grouping,
+    conditions: base.conditions,
+    selection: base.selection,
+    queryType: base.queryType,
+    tempTableName: base.tempTableName,
+    lockForUpdate: base.lockForUpdate,
+    lockEnabled: base.lockForUpdate.length > 0,
+    focusedSelectedTableId: null,
+    focusedSelectedFieldIdx: null,
+  };
+}
+
+/** Собрать QueryModel из снимка (или из плоских полей активного запроса). */
+export function buildModelFromFlat(flat: SavedQuery): QueryModel {
+  return {
+    tables: flat.selectedTables,
+    fields: flat.selectedFields,
+    tabSectionFields: flat.tabSectionFields,
+    grouping: flat.grouping,
+    conditions: flat.conditions,
+    selection: flat.selection,
+    queryType: flat.queryType,
+    tempTableName: flat.tempTableName,
+    lockForUpdate: flat.lockForUpdate,
+  };
+}
+
+/**
+ * Собрать участников объединения: модель из (i === activeQuery ? живые плоские поля
+ * : savedQueries[i]); имя/distinct из queryList[i].
+ */
+export function assembleMembers(state: QueryState): UnionMember[] {
+  return state.queryList.map((meta, i) => {
+    const saved = i === state.activeQuery ? snapshotActive(state) : state.savedQueries[i];
+    const flat = saved ?? snapshotActive(state); // savedQueries[i] не должен быть null для неактивного
+    return {
+      name: meta.name,
+      distinct: meta.distinct,
+      model: buildModelFromFlat(flat),
+    };
+  });
+}
+
+/** Применить переименование псевдонима колонки к списку полей одного запроса. */
+function applyColumnAlias(fields: SelectedField[], alias: string, newAlias: string): SelectedField[] {
+  return fields.map(f => (fieldAlias(f) === alias ? { ...f, alias: newAlias } : f));
+}
 
 export function reducer(state: QueryState, action: QueryAction): QueryState {
   switch (action.type) {
@@ -85,10 +250,23 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     }
 
     case 'REMOVE_TABLE': {
+      const removed = state.selectedTables.find(t => t.id === action.tableId);
       const filtered = state.selectedTables.filter(t => t.id !== action.tableId);
       const fields = state.selectedFields.filter(f => f.tableId !== action.tableId);
       const tabSectionFields = state.tabSectionFields.filter(ts => ts.tableId !== action.tableId);
-      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, focusedSelectedTableId: null };
+      const grouping: Grouping = {
+        ...state.grouping,
+        groupFields: state.grouping.groupFields.filter(f => f.tableId !== action.tableId),
+        aggregates: state.grouping.aggregates.filter(a => a.tableId !== action.tableId),
+        groupSets: state.grouping.groupSets
+          .map(set => set.filter(f => f.tableId !== action.tableId))
+          .filter(set => set.length > 0),
+      };
+      const conditions = state.conditions.filter(c => c.custom || c.tableId !== action.tableId);
+      const lockForUpdate = removed
+        ? state.lockForUpdate.filter(n => n !== removed.fullName)
+        : state.lockForUpdate;
+      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, lockForUpdate, focusedSelectedTableId: null };
     }
 
     case 'ADD_FIELD': {
@@ -176,8 +354,22 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     }
 
     case 'REMOVE_FIELD': {
+      const removed = state.selectedFields[action.fieldIdx];
       const fields = state.selectedFields.filter((_, i) => i !== action.fieldIdx);
-      return { ...state, selectedFields: fields, focusedSelectedFieldIdx: null };
+      // Выражения (path === '') не имеют ссылок в группировке — нечего пруны.
+      if (!removed || removed.path === '') {
+        return { ...state, selectedFields: fields, focusedSelectedFieldIdx: null };
+      }
+      const { tableId, path } = removed;
+      const grouping: Grouping = {
+        ...state.grouping,
+        groupFields: state.grouping.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        aggregates: state.grouping.aggregates.filter(a => !(a.tableId === tableId && a.path === path)),
+        groupSets: state.grouping.groupSets
+          .map(set => set.filter(f => !(f.tableId === tableId && f.path === path)))
+          .filter(set => set.length > 0),
+      };
+      return { ...state, selectedFields: fields, grouping, focusedSelectedFieldIdx: null };
     }
 
     case 'FOCUS_SELECTED_TABLE':
@@ -199,6 +391,260 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       const field: SelectedField = { tableId: action.tableId, path: '', expression: action.expression };
       if (action.alias) field.alias = action.alias;
       return { ...state, selectedFields: [...state.selectedFields, field] };
+    }
+
+    case 'SET_GROUPING_MULTIPLE':
+      return { ...state, grouping: { ...state.grouping, multiple: action.multiple } };
+
+    case 'ADD_GROUP_FIELD': {
+      const { tableId, path } = action;
+      if (state.grouping.groupFields.some(f => f.tableId === tableId && f.path === path)) return state;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          groupFields: [...state.grouping.groupFields, { tableId, path }],
+          aggregates: state.grouping.aggregates.filter(a => !(a.tableId === tableId && a.path === path)),
+        },
+      };
+    }
+
+    case 'REMOVE_GROUP_FIELD': {
+      const { tableId, path } = action;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          groupFields: state.grouping.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        },
+      };
+    }
+
+    case 'ADD_SUMMABLE_FIELD': {
+      const { tableId, path, func } = action;
+      if (state.grouping.aggregates.some(a => a.tableId === tableId && a.path === path)) return state;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          aggregates: [...state.grouping.aggregates, { tableId, path, func }],
+          groupFields: state.grouping.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        },
+      };
+    }
+
+    case 'REMOVE_SUMMABLE_FIELD': {
+      const { tableId, path } = action;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          aggregates: state.grouping.aggregates.filter(a => !(a.tableId === tableId && a.path === path)),
+        },
+      };
+    }
+
+    case 'SET_SUMMABLE_FUNC': {
+      const { tableId, path, func } = action;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          aggregates: state.grouping.aggregates.map(a =>
+            a.tableId === tableId && a.path === path ? { ...a, func } : a
+          ),
+        },
+      };
+    }
+
+    case 'ADD_GROUP_SET':
+      return { ...state, grouping: { ...state.grouping, groupSets: [...state.grouping.groupSets, []] } };
+
+    case 'REMOVE_GROUP_SET': {
+      const groupSets = state.grouping.groupSets.filter((_, i) => i !== action.index);
+      return { ...state, grouping: { ...state.grouping, groupSets } };
+    }
+
+    case 'ADD_FIELD_TO_SET': {
+      const { index, tableId, path } = action;
+      const set = state.grouping.groupSets[index];
+      if (!set) return state;
+      if (set.some(f => f.tableId === tableId && f.path === path)) return state;
+      const groupSets = state.grouping.groupSets.map((s, i) =>
+        i === index ? [...s, { tableId, path }] : s
+      );
+      return { ...state, grouping: { ...state.grouping, groupSets } };
+    }
+
+    case 'REMOVE_FIELD_FROM_SET': {
+      const { index, tableId, path } = action;
+      const groupSets = state.grouping.groupSets.map((s, i) =>
+        i === index ? s.filter(f => !(f.tableId === tableId && f.path === path)) : s
+      );
+      return { ...state, grouping: { ...state.grouping, groupSets } };
+    }
+
+    case 'ADD_CONDITION': {
+      const { tableId, path } = action;
+      const param = `&${path.split('.').pop()}`;
+      const condition: Condition = { custom: false, tableId, path, operator: '=', param };
+      return { ...state, conditions: [...state.conditions, condition] };
+    }
+
+    case 'REMOVE_CONDITION': {
+      const conditions = state.conditions.filter((_, i) => i !== action.index);
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_CUSTOM': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, custom: action.custom } : c
+      );
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_OPERATOR': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, operator: action.operator } : c
+      );
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_PARAM': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, param: action.param } : c
+      );
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_EXPRESSION': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, expression: action.expression } : c
+      );
+      return { ...state, conditions };
+    }
+
+    case 'SET_SELECTION_TOP': {
+      const selection = { ...state.selection };
+      if (action.top === undefined || action.top === 0) {
+        delete selection.top;
+      } else {
+        selection.top = action.top;
+      }
+      return { ...state, selection };
+    }
+
+    case 'SET_SELECTION_DISTINCT':
+      return { ...state, selection: { ...state.selection, distinct: action.distinct } };
+
+    case 'SET_SELECTION_ALLOWED':
+      return { ...state, selection: { ...state.selection, allowed: action.allowed } };
+
+    case 'SET_QUERY_TYPE':
+      return { ...state, queryType: action.queryType };
+
+    case 'SET_TEMP_TABLE_NAME':
+      return { ...state, tempTableName: action.name };
+
+    case 'SET_LOCK_ENABLED':
+      return {
+        ...state,
+        lockEnabled: action.enabled,
+        lockForUpdate: action.enabled ? state.lockForUpdate : [],
+      };
+
+    case 'ADD_LOCK_TABLE': {
+      if (state.lockForUpdate.includes(action.fullName)) return state;
+      return { ...state, lockForUpdate: [...state.lockForUpdate, action.fullName] };
+    }
+
+    case 'REMOVE_LOCK_TABLE':
+      return { ...state, lockForUpdate: state.lockForUpdate.filter(n => n !== action.fullName) };
+
+    case 'ADD_QUERY': {
+      // Сохранить активный запрос в его слот, добавить новый пустой запрос и сделать его активным.
+      const savedQueries = [...state.savedQueries];
+      savedQueries[state.activeQuery] = snapshotActive(state);
+      savedQueries.push(null);
+      const queryList = [...state.queryList, { name: `Запрос ${state.queryList.length + 1}`, distinct: false }];
+      const activeQuery = queryList.length - 1;
+      return {
+        ...state,
+        queryList,
+        savedQueries,
+        activeQuery,
+        ...restoreSaved(state, null),
+      };
+    }
+
+    case 'SET_ACTIVE_QUERY': {
+      const { index } = action;
+      if (index === state.activeQuery) return state;
+      if (index < 0 || index >= state.queryList.length) return state;
+      // Сохранить текущий активный, загрузить целевой, целевой слот делаем live (null).
+      const savedQueries = [...state.savedQueries];
+      savedQueries[state.activeQuery] = snapshotActive(state);
+      const target = savedQueries[index];
+      savedQueries[index] = null;
+      return {
+        ...state,
+        savedQueries,
+        activeQuery: index,
+        ...restoreSaved(state, target),
+      };
+    }
+
+    case 'REMOVE_QUERY': {
+      const { index } = action;
+      if (state.queryList.length === 1) return state; // нельзя удалить последний
+      if (index < 0 || index >= state.queryList.length) return state;
+
+      const queryList = state.queryList.filter((_, i) => i !== index);
+      const savedQueries = state.savedQueries.filter((_, i) => i !== index);
+
+      if (index === state.activeQuery) {
+        // Удаляем активный → выбрать соседа новым активным и загрузить его.
+        const newActive = index >= queryList.length ? queryList.length - 1 : index;
+        const target = savedQueries[newActive];
+        savedQueries[newActive] = null;
+        return {
+          ...state,
+          queryList,
+          savedQueries,
+          activeQuery: newActive,
+          ...restoreSaved(state, target),
+        };
+      }
+
+      // Удаляем неактивный → активный остаётся live, поправить индекс при сдвиге.
+      const activeQuery = index < state.activeQuery ? state.activeQuery - 1 : state.activeQuery;
+      return { ...state, queryList, savedQueries, activeQuery };
+    }
+
+    case 'RENAME_QUERY': {
+      const queryList = state.queryList.map((q, i) =>
+        i === action.index ? { ...q, name: action.name } : q
+      );
+      return { ...state, queryList };
+    }
+
+    case 'SET_QUERY_DISTINCT': {
+      const queryList = state.queryList.map((q, i) =>
+        i === action.index ? { ...q, distinct: action.distinct } : q
+      );
+      return { ...state, queryList };
+    }
+
+    case 'SET_COLUMN_ALIAS': {
+      const { alias, newAlias } = action;
+      // Активный запрос — в плоских полях; остальные — в snapshot'ах.
+      const selectedFields = applyColumnAlias(state.selectedFields, alias, newAlias);
+      const savedQueries = state.savedQueries.map((sq, i) =>
+        i === state.activeQuery || sq === null
+          ? sq
+          : { ...sq, selectedFields: applyColumnAlias(sq.selectedFields, alias, newAlias) }
+      );
+      return { ...state, selectedFields, savedQueries };
     }
 
     default:

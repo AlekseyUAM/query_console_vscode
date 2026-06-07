@@ -36,12 +36,77 @@ export interface SelectedTabSectionField {
   fields: string[];
 }
 
+export type AggregateFunction =
+  | 'Сумма' | 'Количество' | 'КоличествоРазличных'
+  | 'Максимум' | 'Минимум' | 'Среднее';
+
+export interface FieldRef {
+  tableId: string;
+  path: string;
+}
+
+export interface SummableField extends FieldRef {
+  func: AggregateFunction;
+}
+
+export interface Grouping {
+  /** «Использовать несколько группировок». */
+  multiple: boolean;
+  /** Поля группировки (режим single), в порядке добавления. */
+  groupFields: FieldRef[];
+  /** Наборы группировки (режим multiple=true). */
+  groupSets: FieldRef[][];
+  /** Суммируемые поля с функцией агрегирования. */
+  aggregates: SummableField[];
+}
+
+export type ConditionOperator = '=' | '<>' | '>' | '>=' | '<' | '<=' | 'В' | 'МЕЖДУ' | 'ПОДОБНО';
+
+export interface Condition {
+  /** «П.» — произвольное выражение (а не простое условие поле/оператор/параметр). */
+  custom: boolean;
+  /** Простое условие: таблица поля. */
+  tableId?: string;
+  /** Простое условие: путь к полю. */
+  path?: string;
+  /** Оператор сравнения, по умолчанию '='. */
+  operator?: ConditionOperator;
+  /** Параметр, по умолчанию '&<ПоследнийСегментПути>'. */
+  param?: string;
+  /** Произвольное условие — полный текст выражения. */
+  expression?: string;
+}
+
+/** Модификаторы выборки записей (ВЫБРАТЬ ...). */
+export interface Selection {
+  /** ПЕРВЫЕ N — ограничение количества первых записей. */
+  top?: number;
+  /** РАЗЛИЧНЫЕ — без повторяющихся. */
+  distinct?: boolean;
+  /** РАЗРЕШЕННЫЕ — только разрешённые данные. */
+  allowed?: boolean;
+}
+
+/** Тип запроса: обычная выборка или работа с временной таблицей. */
+export type QueryType = 'select' | 'createTemp' | 'appendTemp' | 'dropTemp';
+
 export interface QueryModel {
   tables: SelectedTable[];
   fields: SelectedField[];
   tabSectionFields?: SelectedTabSectionField[];
   /** Поля, которые должны быть отрисованы ПОСЛЕ табличных частей (Предопределенный, ИмяПредопределенныхДанных). */
   trailingFields?: SelectedField[];
+  grouping?: Grouping;
+  /** Условия отбора (секция ГДЕ). */
+  conditions?: Condition[];
+  /** Модификаторы выборки записей (ПЕРВЫЕ/РАЗЛИЧНЫЕ/РАЗРЕШЕННЫЕ). */
+  selection?: Selection;
+  /** Тип запроса (по умолчанию обычная выборка). */
+  queryType?: QueryType;
+  /** Имя временной таблицы для ПОМЕСТИТЬ/ДОБАВИТЬ/УНИЧТОЖИТЬ. */
+  tempTableName?: string;
+  /** Таблицы для секции ДЛЯ ИЗМЕНЕНИЯ (полные имена). */
+  lockForUpdate?: string[];
 }
 
 /**

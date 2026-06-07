@@ -4,6 +4,10 @@ import { TabsBar } from './components/TabsBar';
 import { DbTreePanel } from './components/DbTreePanel';
 import { TablesPanel } from './components/TablesPanel';
 import { FieldsPanel } from './components/FieldsPanel';
+import { GroupingTab } from './components/GroupingTab';
+import { ConditionsTab } from './components/ConditionsTab';
+import { AdditionalTab } from './components/AdditionalTab';
+import { UnionsTab } from './components/UnionsTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -11,8 +15,9 @@ import { defaultTableAlias } from '../core/query/queryModel';
 import type { MetaField, MetaTable } from '../core/metadata/types';
 import { accumPeriodFields } from '../core/query/accumVirtualFields';
 import { postToHost, onHostMessage } from './bridge';
-import { initialState, reducer } from './state/queryStore';
-import { generate } from '../core/query/sdblGenerator';
+import { initialState, reducer, assembleMembers } from './state/queryStore';
+import { generateDocument } from '../core/query/sdblGenerator';
+import { deriveUnionColumns } from '../core/query/unionModel';
 
 const BTN: React.CSSProperties = {
   padding: '4px 12px',
@@ -28,6 +33,7 @@ type RefreshState = 'idle' | 'loading' | { ok: boolean; message: string };
 
 export function App(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
+  const [activeTab, setActiveTab] = useState('Таблицы и поля');
   const [queryModalText, setQueryModalText] = useState<string | null>(null);
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
   const [vtDialogTableId, setVtDialogTableId] = useState<string | null>(null);
@@ -60,11 +66,7 @@ export function App(): React.ReactElement {
   }
 
   function handleShowQuery() {
-    const text = generate({
-      tables: state.selectedTables,
-      fields: state.selectedFields,
-      tabSectionFields: state.tabSectionFields,
-    });
+    const text = generateDocument({ members: assembleMembers(state) });
     setQueryModalText(text || '-- нет полей для генерации запроса');
   }
 
@@ -88,6 +90,12 @@ export function App(): React.ReactElement {
     return [...periodFields, ...meta.fields].map((f: MetaField) => qualified ? `${alias}.${f.name}` : f.name);
   }
 
+  // Квалифицированные поля (Alias.Поле) по всем выбранным таблицам — для
+  // конструктора произвольного условия.
+  function qualifiedFieldsAllTables(): string[] {
+    return state.selectedTables.flatMap(t => fieldsForTable(t.id, true));
+  }
+
   // Выбранная таблица для окна «Параметры виртуальной таблицы» (null, если строка
   // уже удалена из выборки, пока окно было открыто).
   const vtSel = vtDialogTableId !== null
@@ -107,9 +115,44 @@ export function App(): React.ReactElement {
     flexDirection: 'column',
   };
 
+  // Участники объединения и производные колонки — общий источник для генерации
+  // и вкладки «Объединения/Псевдонимы».
+  const members = assembleMembers(state);
+  const unionColumns = deriveUnionColumns(members);
+
+  // Вертикальная полоса боковых вкладок запросов (только если запросов > 1 и
+  // активна одна из конструкторских вкладок, кроме «Объединения/Псевдонимы»).
+  const showSideTabs = state.queryList.length > 1 && activeTab !== 'Объединения/Псевдонимы';
+  const sideTabsStrip = showSideTabs ? (
+    <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
+      {state.queryList.map((q, i) => {
+        const isActive = i === state.activeQuery;
+        return (
+          <div
+            key={i}
+            onClick={() => dispatch({ type: 'SET_ACTIVE_QUERY', index: i })}
+            title={q.name}
+            style={{
+              writingMode: 'vertical-rl',
+              padding: '12px 6px',
+              cursor: 'pointer',
+              borderLeft: isActive ? '2px solid var(--vscode-focusBorder, #007fd4)' : '2px solid transparent',
+              color: isActive ? 'var(--vscode-tab-activeForeground, #fff)' : 'var(--vscode-tab-inactiveForeground, #999)',
+              background: isActive ? 'var(--vscode-tab-activeBackground, #1e1e1e)' : 'transparent',
+              fontSize: 13,
+              userSelect: 'none',
+            }}
+          >
+            {q.name}
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
-      <TabsBar />
+      <TabsBar active={activeTab} onSelect={setActiveTab} />
       {/* Cache toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
         <button
@@ -125,6 +168,9 @@ export function App(): React.ReactElement {
           </span>
         )}
       </div>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+      {activeTab === 'Таблицы и поля' && (
       <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
         <div style={panelStyle}>
           <DbTreePanel
@@ -154,10 +200,10 @@ export function App(): React.ReactElement {
         </div>
         <div style={panelStyle}>
           <FieldsPanel
-            metaTables={state.tables}
             selectedTables={state.selectedTables}
             selectedFields={state.selectedFields}
             tabSectionFields={state.tabSectionFields}
+            members={members}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -187,6 +233,92 @@ export function App(): React.ReactElement {
           />
         </div>
       </div>
+      )}
+
+      {activeTab === 'Группировка' && (
+        <GroupingTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          metaTables={state.tables}
+          grouping={state.grouping}
+          onSetMultiple={multiple => dispatch({ type: 'SET_GROUPING_MULTIPLE', multiple })}
+          onAddGroupField={(tableId, path) => dispatch({ type: 'ADD_GROUP_FIELD', tableId, path })}
+          onRemoveGroupField={(tableId, path) => dispatch({ type: 'REMOVE_GROUP_FIELD', tableId, path })}
+          onAddSummableField={(tableId, path, func) => dispatch({ type: 'ADD_SUMMABLE_FIELD', tableId, path, func })}
+          onRemoveSummableField={(tableId, path) => dispatch({ type: 'REMOVE_SUMMABLE_FIELD', tableId, path })}
+          onSetSummableFunc={(tableId, path, func) => dispatch({ type: 'SET_SUMMABLE_FUNC', tableId, path, func })}
+          onAddGroupSet={() => dispatch({ type: 'ADD_GROUP_SET' })}
+          onRemoveGroupSet={index => dispatch({ type: 'REMOVE_GROUP_SET', index })}
+          onAddFieldToSet={(index, tableId, path) => dispatch({ type: 'ADD_FIELD_TO_SET', index, tableId, path })}
+          onRemoveFieldFromSet={(index, tableId, path) => dispatch({ type: 'REMOVE_FIELD_FROM_SET', index, tableId, path })}
+        />
+      )}
+
+      {activeTab === 'Условия' && (
+        <ConditionsTab
+          selectedTables={state.selectedTables}
+          metaTables={state.tables}
+          conditions={state.conditions}
+          onAddCondition={(tableId, path) => dispatch({ type: 'ADD_CONDITION', tableId, path })}
+          onRemoveCondition={index => dispatch({ type: 'REMOVE_CONDITION', index })}
+          onSetCustom={(index, custom) => dispatch({ type: 'SET_CONDITION_CUSTOM', index, custom })}
+          onSetOperator={(index, operator) => dispatch({ type: 'SET_CONDITION_OPERATOR', index, operator })}
+          onSetParam={(index, param) => dispatch({ type: 'SET_CONDITION_PARAM', index, param })}
+          onOpenExpressionBuilder={(index, currentText) => {
+            setExprBuilder({
+              fields: qualifiedFieldsAllTables(),
+              initial: currentText,
+              onOk: text => {
+                dispatch({ type: 'SET_CONDITION_EXPRESSION', index, expression: text });
+                setExprBuilder(null);
+              },
+            });
+          }}
+        />
+      )}
+
+      {activeTab === 'Дополнительно' && (
+        <AdditionalTab
+          selectedTables={state.selectedTables}
+          selection={state.selection}
+          queryType={state.queryType}
+          tempTableName={state.tempTableName}
+          lockForUpdate={state.lockForUpdate}
+          lockEnabled={state.lockEnabled}
+          onSetTop={top => dispatch({ type: 'SET_SELECTION_TOP', top })}
+          onSetDistinct={distinct => dispatch({ type: 'SET_SELECTION_DISTINCT', distinct })}
+          onSetAllowed={allowed => dispatch({ type: 'SET_SELECTION_ALLOWED', allowed })}
+          onSetQueryType={qt => dispatch({ type: 'SET_QUERY_TYPE', queryType: qt })}
+          onSetTempTableName={name => dispatch({ type: 'SET_TEMP_TABLE_NAME', name })}
+          onSetLockEnabled={enabled => dispatch({ type: 'SET_LOCK_ENABLED', enabled })}
+          onAddLockTable={fullName => dispatch({ type: 'ADD_LOCK_TABLE', fullName })}
+          onRemoveLockTable={fullName => dispatch({ type: 'REMOVE_LOCK_TABLE', fullName })}
+        />
+      )}
+
+      {activeTab === 'Объединения/Псевдонимы' && (
+        <UnionsTab
+          queryList={state.queryList}
+          activeQuery={state.activeQuery}
+          columns={unionColumns}
+          onAddQuery={() => dispatch({ type: 'ADD_QUERY' })}
+          onRemoveQuery={index => dispatch({ type: 'REMOVE_QUERY', index })}
+          onSetActiveQuery={index => dispatch({ type: 'SET_ACTIVE_QUERY', index })}
+          onRenameQuery={(index, name) => dispatch({ type: 'RENAME_QUERY', index, name })}
+          onSetQueryDistinct={(index, distinct) => dispatch({ type: 'SET_QUERY_DISTINCT', index, distinct })}
+          onSetColumnAlias={(alias, newAlias) => dispatch({ type: 'SET_COLUMN_ALIAS', alias, newAlias })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
+          Вкладка в разработке
+        </div>
+      )}
+      </div>
+      {sideTabsStrip}
+      </div>
+
       {/* Bottom bar */}
       <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
         <button style={BTN} onClick={handleShowQuery}>Запрос</button>

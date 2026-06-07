@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { generate } from '../../src/core/query/sdblGenerator';
+import { generate, generateDocument } from '../../src/core/query/sdblGenerator';
+import type { QueryDocument } from '../../src/core/query/unionModel';
 import type { QueryModel } from '../../src/core/query/queryModel';
+import { assertValidSdbl } from '../helpers/assertValidSdbl';
 
 describe('generate', () => {
   it('returns empty string when no tables', () => {
@@ -265,6 +267,575 @@ describe('generate', () => {
     it('ДвиженияССубконто с параметром Первые (арность 5)', () => {
       const text = generate(mk('ДвиженияССубконто', { top: '3' }));
       expect(text).toContain('РегистрБухгалтерии.РБ1.ДвиженияССубконто(, , , , 3) КАК РБ1');
+    });
+  });
+});
+
+describe('generate — группировка', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Наценка', alias: 'Наценка' }],
+  });
+
+  describe('агрегатные обёртки в ВЫБРАТЬ', () => {
+    const cases: Array<[string, string]> = [
+      ['Сумма', 'СУММА(Валюты.Наценка) КАК Наценка'],
+      ['Количество', 'КОЛИЧЕСТВО(Валюты.Наценка) КАК Наценка'],
+      ['КоличествоРазличных', 'КОЛИЧЕСТВО(РАЗЛИЧНЫЕ Валюты.Наценка) КАК Наценка'],
+      ['Максимум', 'МАКСИМУМ(Валюты.Наценка) КАК Наценка'],
+      ['Минимум', 'МИНИМУМ(Валюты.Наценка) КАК Наценка'],
+      ['Среднее', 'СРЕДНЕЕ(Валюты.Наценка) КАК Наценка'],
+    ];
+    for (const [func, expected] of cases) {
+      it(`${func} → ${expected}`, () => {
+        const model = base();
+        model.grouping = {
+          multiple: false,
+          groupFields: [],
+          groupSets: [],
+          aggregates: [{ tableId: 't1', path: 'Наценка', func: func as any }],
+        };
+        expect(generate(model)).toContain(`\t${expected}`);
+      });
+    }
+
+    it('суммируемое поле без псевдонима — без КАК', () => {
+      const model: QueryModel = {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [{ tableId: 't1', path: 'Наценка' }],
+        grouping: {
+          multiple: false,
+          groupFields: [],
+          groupSets: [],
+          aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+        },
+      };
+      const text = generate(model);
+      expect(text).toContain('\tСУММА(Валюты.Наценка)\n');
+      expect(text).not.toContain('СУММА(Валюты.Наценка) КАК');
+    });
+
+    it('не оборачивает поля с expression', () => {
+      const model: QueryModel = {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [{ tableId: 't1', path: '', expression: 'Валюты.Наценка', alias: 'Наценка' }],
+        grouping: {
+          multiple: false,
+          groupFields: [{ tableId: 't1', path: 'Код' }],
+          groupSets: [],
+          aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+        },
+      };
+      // expression-поле остаётся как есть, без СУММА(...)
+      expect(generate(model)).toContain('\tВалюты.Наценка КАК Наценка');
+    });
+  });
+
+  describe('одна группировка', () => {
+    const model = (): QueryModel => ({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+      ],
+      grouping: {
+        multiple: false,
+        groupFields: [
+          { tableId: 't1', path: 'Ссылка' },
+          { tableId: 't1', path: 'Код' },
+        ],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+
+    it('добавляет секцию СГРУППИРОВАТЬ ПО после ИЗ', () => {
+      const text = generate(model());
+      expect(text).toBe(
+        'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка,\n' +
+        '\tСУММА(Валюты.Наценка) КАК Наценка,\n' +
+        '\tВалюты.Код КАК Код\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты\n' +
+        'СГРУППИРОВАТЬ ПО\n' +
+        '\tВалюты.Ссылка,\n' +
+        '\tВалюты.Код'
+      );
+    });
+
+    it('валидный SDBL', async () => {
+      await assertValidSdbl(generate(model()));
+    });
+  });
+
+  describe('несколько группировок', () => {
+    const model = (): QueryModel => ({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'ОсновнаяВалюта', alias: 'ОсновнаяВалюта' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Представление', alias: 'Представление' },
+      ],
+      grouping: {
+        multiple: true,
+        groupFields: [],
+        groupSets: [
+          [
+            { tableId: 't1', path: 'ОсновнаяВалюта' },
+            { tableId: 't1', path: 'Ссылка' },
+          ],
+          [{ tableId: 't1', path: 'Код' }],
+          [{ tableId: 't1', path: 'Представление' }],
+        ],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+
+    it('добавляет секцию ГРУППИРУЮЩИМ НАБОРАМ с 3 наборами', () => {
+      const text = generate(model());
+      expect(text).toBe(
+        'ВЫБРАТЬ\n' +
+        '\tВалюты.ОсновнаяВалюта КАК ОсновнаяВалюта,\n' +
+        '\tСУММА(Валюты.Наценка) КАК Наценка,\n' +
+        '\tВалюты.Код КАК Код,\n' +
+        '\tВалюты.Представление КАК Представление\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты\n' +
+        'СГРУППИРОВАТЬ ПО ГРУППИРУЮЩИМ НАБОРАМ\n' +
+        '(\n' +
+        '\t(Валюты.ОсновнаяВалюта,\n' +
+        '\t\tВалюты.Ссылка),\n' +
+        '\t(Валюты.Код),\n' +
+        '\t(Валюты.Представление)\n' +
+        ')'
+      );
+    });
+
+    it('пропускает пустые наборы', () => {
+      const m = model();
+      m.grouping!.groupSets = [
+        [{ tableId: 't1', path: 'Код' }],
+        [],
+        [{ tableId: 't1', path: 'Представление' }],
+      ];
+      const text = generate(m);
+      expect(text).toContain('(Валюты.Код)');
+      expect(text).toContain('(Валюты.Представление)');
+      expect(text).not.toContain('()');
+    });
+
+    it('валидный SDBL', async () => {
+      await assertValidSdbl(generate(model()));
+    });
+  });
+
+  describe('неактивная группировка не меняет вывод', () => {
+    const plain: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код' }],
+    };
+    const expected = 'ВЫБРАТЬ\n\tВалюты.Код\nИЗ\n\tСправочник.Валюты КАК Валюты';
+
+    it('grouping undefined → как раньше', () => {
+      expect(generate(plain)).toBe(expected);
+    });
+
+    it('single без полей группировки → как раньше', () => {
+      const model: QueryModel = {
+        ...plain,
+        grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
+      };
+      expect(generate(model)).toBe(expected);
+    });
+
+    it('multiple без непустых наборов → как раньше', () => {
+      const model: QueryModel = {
+        ...plain,
+        grouping: { multiple: true, groupFields: [], groupSets: [[]], aggregates: [] },
+      };
+      expect(generate(model)).toBe(expected);
+    });
+  });
+});
+
+describe('generate — условия (ГДЕ)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [
+      { tableId: 't1', path: 'Код', alias: 'Код' },
+      { tableId: 't1', path: 'Наименование', alias: 'Наименование' },
+    ],
+  });
+
+  it('одно простое условие → оператор и параметр по умолчанию', () => {
+    const model = base();
+    model.conditions = [{ custom: false, tableId: 't1', path: 'Код' }];
+    const text = generate(model);
+    expect(text).toContain('ГДЕ\n\tВалюты.Код = &Код');
+  });
+
+  it('два простых условия → соединены через И (эталон)', () => {
+    const model = base();
+    model.conditions = [
+      { custom: false, tableId: 't1', path: 'Код' },
+      { custom: false, tableId: 't1', path: 'Наименование' },
+    ];
+    const text = generate(model);
+    expect(text).toContain(
+      'ГДЕ\n' +
+      '\tВалюты.Код = &Код\n' +
+      '\tИ Валюты.Наименование = &Наименование'
+    );
+  });
+
+  it('нестандартный оператор и явный параметр', () => {
+    const model = base();
+    model.conditions = [
+      { custom: false, tableId: 't1', path: 'Код', operator: '>=', param: '&МинКод' },
+    ];
+    expect(generate(model)).toContain('ГДЕ\n\tВалюты.Код >= &МинКод');
+  });
+
+  it('произвольное условие рендерится как есть', () => {
+    const model = base();
+    model.conditions = [{ custom: true, expression: 'Валюты.Код В (&Список)' }];
+    expect(generate(model)).toContain('ГДЕ\n\tВалюты.Код В (&Список)');
+  });
+
+  it('пустое произвольное условие и условие без path пропускаются', () => {
+    const model = base();
+    model.conditions = [
+      { custom: true, expression: '   ' },
+      { custom: false, tableId: 't1' },
+    ];
+    const text = generate(model);
+    expect(text).not.toContain('ГДЕ');
+  });
+
+  it('lastSegment берётся из последнего сегмента пути', () => {
+    const model = base();
+    model.conditions = [{ custom: false, tableId: 't1', path: 'Владелец.Код' }];
+    expect(generate(model)).toContain('\tВалюты.Владелец.Код = &Код');
+  });
+
+  it('псевдоним берётся из tableId, если не разрешён', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код', alias: 'Код' }],
+      conditions: [{ custom: false, tableId: 'unknown', path: 'Код' }],
+    };
+    expect(generate(model)).toContain('\tunknown.Код = &Код');
+  });
+
+  it('ГДЕ располагается после ИЗ и до СГРУППИРОВАТЬ ПО', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      conditions: [{ custom: false, tableId: 't1', path: 'Код' }],
+      grouping: {
+        multiple: false,
+        groupFields: [{ tableId: 't1', path: 'Код' }],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    };
+    const text = generate(model);
+    const iz = text.indexOf('ИЗ');
+    const where = text.indexOf('ГДЕ');
+    const group = text.indexOf('СГРУППИРОВАТЬ ПО');
+    expect(iz).toBeGreaterThanOrEqual(0);
+    expect(where).toBeGreaterThan(iz);
+    expect(group).toBeGreaterThan(where);
+  });
+
+  describe('пустые условия не меняют вывод', () => {
+    const plain: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код' }],
+    };
+    const expected = 'ВЫБРАТЬ\n\tВалюты.Код\nИЗ\n\tСправочник.Валюты КАК Валюты';
+
+    it('conditions undefined → как раньше', () => {
+      expect(generate(plain)).toBe(expected);
+    });
+
+    it('conditions [] → как раньше', () => {
+      expect(generate({ ...plain, conditions: [] })).toBe(expected);
+    });
+
+    it('только нерендерящиеся условия → как раньше', () => {
+      expect(
+        generate({ ...plain, conditions: [{ custom: true, expression: '' }, { custom: false }] })
+      ).toBe(expected);
+    });
+  });
+
+  it('валидный SDBL', async () => {
+    const model = base();
+    model.conditions = [
+      { custom: false, tableId: 't1', path: 'Код' },
+      { custom: false, tableId: 't1', path: 'Наименование' },
+    ];
+    await assertValidSdbl(generate(model));
+  });
+});
+
+describe('generate — дополнительно (фаза 5.3)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const expectedPlain =
+    'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты';
+
+  describe('ВЫБРАТЬ модификаторы', () => {
+    it('ПЕРВЫЕ N', () => {
+      expect(generate({ ...base(), selection: { top: 2 } })).toBe(
+        'ВЫБРАТЬ ПЕРВЫЕ 2\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('РАЗЛИЧНЫЕ', () => {
+      expect(generate({ ...base(), selection: { distinct: true } })).toBe(
+        'ВЫБРАТЬ РАЗЛИЧНЫЕ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('РАЗРЕШЕННЫЕ', () => {
+      expect(generate({ ...base(), selection: { allowed: true } })).toBe(
+        'ВЫБРАТЬ РАЗРЕШЕННЫЕ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('комбинация в порядке РАЗРЕШЕННЫЕ РАЗЛИЧНЫЕ ПЕРВЫЕ', () => {
+      expect(
+        generate({ ...base(), selection: { allowed: true, distinct: true, top: 2 } })
+      ).toBe(
+        'ВЫБРАТЬ РАЗРЕШЕННЫЕ РАЗЛИЧНЫЕ ПЕРВЫЕ 2\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('top <= 0 не добавляет ПЕРВЫЕ', () => {
+      expect(generate({ ...base(), selection: { top: 0 } })).toBe(expectedPlain);
+    });
+
+    it('пустой selection → как раньше', () => {
+      expect(generate({ ...base(), selection: {} })).toBe(expectedPlain);
+    });
+  });
+
+  describe('ПОМЕСТИТЬ / ДОБАВИТЬ', () => {
+    it('ПОМЕСТИТЬ перед ИЗ', () => {
+      expect(
+        generate({ ...base(), queryType: 'createTemp', tempTableName: 'ВремТаб' })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nПОМЕСТИТЬ ВремТаб\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('ДОБАВИТЬ перед ИЗ', () => {
+      expect(
+        generate({ ...base(), queryType: 'appendTemp', tempTableName: 'ВремТаб' })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nДОБАВИТЬ ВремТаб\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('createTemp без имени → как раньше', () => {
+      expect(generate({ ...base(), queryType: 'createTemp' })).toBe(expectedPlain);
+      expect(generate({ ...base(), queryType: 'createTemp', tempTableName: '' })).toBe(
+        expectedPlain
+      );
+    });
+
+    it('валидный SDBL с ПОМЕСТИТЬ', async () => {
+      await assertValidSdbl(
+        generate({ ...base(), queryType: 'createTemp', tempTableName: 'ВремТаб' })
+      );
+    });
+  });
+
+  describe('УНИЧТОЖИТЬ', () => {
+    it('УНИЧТОЖИТЬ как единственная строка', () => {
+      expect(
+        generate({ ...base(), queryType: 'dropTemp', tempTableName: 'ВремТаб' })
+      ).toBe('УНИЧТОЖИТЬ ВремТаб');
+    });
+
+    it('dropTemp без имени → пустая строка', () => {
+      expect(generate({ ...base(), queryType: 'dropTemp' })).toBe('');
+    });
+
+    it('dropTemp игнорирует отсутствие таблиц/полей', () => {
+      expect(
+        generate({ tables: [], fields: [], queryType: 'dropTemp', tempTableName: 'ВремТаб' })
+      ).toBe('УНИЧТОЖИТЬ ВремТаб');
+    });
+  });
+
+  describe('ДЛЯ ИЗМЕНЕНИЯ', () => {
+    it('одна таблица с пустой строкой-разделителем (эталон)', () => {
+      expect(
+        generate({ ...base(), lockForUpdate: ['Справочник.Валюты'] })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты\n\nДЛЯ ИЗМЕНЕНИЯ\n\tСправочник.Валюты'
+      );
+    });
+
+    it('две таблицы', () => {
+      expect(
+        generate({ ...base(), lockForUpdate: ['Справочник.Валюты', 'Справочник.Контрагенты'] })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты\n\nДЛЯ ИЗМЕНЕНИЯ\n\tСправочник.Валюты\n\tСправочник.Контрагенты'
+      );
+    });
+
+    it('пустой lockForUpdate → как раньше', () => {
+      expect(generate({ ...base(), lockForUpdate: [] })).toBe(expectedPlain);
+    });
+
+    it('валидный SDBL с ДЛЯ ИЗМЕНЕНИЯ', async () => {
+      await assertValidSdbl(generate({ ...base(), lockForUpdate: ['Справочник.Валюты'] }));
+    });
+  });
+
+  describe('комбинации и порядок секций', () => {
+    it('модификаторы + ГДЕ + СГРУППИРОВАТЬ ПО + ДЛЯ ИЗМЕНЕНИЯ в правильном порядке', () => {
+      const model: QueryModel = {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+        selection: { distinct: true },
+        conditions: [{ custom: false, tableId: 't1', path: 'Код' }],
+        grouping: { multiple: false, groupFields: [{ tableId: 't1', path: 'Ссылка' }], groupSets: [], aggregates: [] },
+        lockForUpdate: ['Справочник.Валюты'],
+      };
+      expect(generate(model)).toBe(
+        [
+          'ВЫБРАТЬ РАЗЛИЧНЫЕ',
+          '\tВалюты.Ссылка КАК Ссылка',
+          'ИЗ',
+          '\tСправочник.Валюты КАК Валюты',
+          'ГДЕ',
+          '\tВалюты.Код = &Код',
+          'СГРУППИРОВАТЬ ПО',
+          '\tВалюты.Ссылка',
+          '',
+          'ДЛЯ ИЗМЕНЕНИЯ',
+          '\tСправочник.Валюты',
+        ].join('\n')
+      );
+    });
+
+    it('новые поля undefined → байт-в-байт как раньше', () => {
+      expect(generate(base())).toBe(expectedPlain);
+    });
+  });
+
+  describe('generateDocument (объединения)', () => {
+    // Участник 0: Справочник.Валюты с полями Ссылка, Код и ДЛЯ ИЗМЕНЕНИЯ.
+    const valuteMember = () => ({
+      name: 'Запрос 1',
+      distinct: false,
+      model: {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [
+          { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+          { tableId: 't1', path: 'Код', alias: 'Код' },
+        ],
+        lockForUpdate: ['Справочник.Валюты'],
+      } as QueryModel,
+    });
+
+    // Участник 1: Справочник.ВариантыОтветовАнкет с полями Ссылка, Наименование.
+    const variantMember = (distinct = false) => ({
+      name: 'Запрос 2',
+      distinct,
+      model: {
+        tables: [{ id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' }],
+        fields: [
+          { tableId: 't2', path: 'Ссылка', alias: 'Ссылка' },
+          { tableId: 't2', path: 'Наименование', alias: 'Наименование' },
+        ],
+      } as QueryModel,
+    });
+
+    it('пустой документ → пустая строка', () => {
+      expect(generateDocument({ members: [] })).toBe('');
+    });
+
+    it('один участник → идентично generate(model)', () => {
+      const doc: QueryDocument = { members: [valuteMember()] };
+      expect(generateDocument(doc)).toBe(generate(valuteMember().model));
+    });
+
+    it('два участника воспроизводят эталон tmp/объединения.md', async () => {
+      const doc: QueryDocument = { members: [valuteMember(), variantMember()] };
+      const expected = [
+        'ВЫБРАТЬ',
+        '\tВалюты.Ссылка КАК Ссылка,',
+        '\tВалюты.Код КАК Код,',
+        '\tNULL КАК Наименование',
+        'ИЗ',
+        '\tСправочник.Валюты КАК Валюты',
+        '',
+        'ДЛЯ ИЗМЕНЕНИЯ',
+        '\tСправочник.Валюты',
+        '',
+        'ОБЪЕДИНИТЬ ВСЕ',
+        '',
+        'ВЫБРАТЬ',
+        '\tВариантыОтветовАнкет.Ссылка,',
+        '\tNULL,',
+        '\tВариантыОтветовАнкет.Наименование',
+        'ИЗ',
+        '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет',
+      ].join('\n');
+      expect(generateDocument(doc)).toBe(expected);
+      await assertValidSdbl(generateDocument(doc));
+    });
+
+    it('distinct=true у участника → ОБЪЕДИНИТЬ (без ВСЕ)', () => {
+      const doc: QueryDocument = { members: [valuteMember(), variantMember(true)] };
+      const text = generateDocument(doc);
+      expect(text).toContain('\n\nОБЪЕДИНИТЬ\n\n');
+      expect(text).not.toContain('ОБЪЕДИНИТЬ ВСЕ');
+    });
+
+    it('переименование общего псевдонима → одна колонка, КАК только у участника 0', async () => {
+      const m0 = valuteMember();
+      m0.model.fields[0].alias = 'Труляля';
+      const m1 = variantMember();
+      m1.model.fields[0].alias = 'Труляля';
+      const doc: QueryDocument = { members: [m0, m1] };
+      const expected = [
+        'ВЫБРАТЬ',
+        '\tВалюты.Ссылка КАК Труляля,',
+        '\tВалюты.Код КАК Код,',
+        '\tNULL КАК Наименование',
+        'ИЗ',
+        '\tСправочник.Валюты КАК Валюты',
+        '',
+        'ДЛЯ ИЗМЕНЕНИЯ',
+        '\tСправочник.Валюты',
+        '',
+        'ОБЪЕДИНИТЬ ВСЕ',
+        '',
+        'ВЫБРАТЬ',
+        '\tВариантыОтветовАнкет.Ссылка,',
+        '\tNULL,',
+        '\tВариантыОтветовАнкет.Наименование',
+        'ИЗ',
+        '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет',
+      ].join('\n');
+      expect(generateDocument(doc)).toBe(expected);
+      await assertValidSdbl(generateDocument(doc));
     });
   });
 });
