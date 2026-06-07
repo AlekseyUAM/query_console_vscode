@@ -213,4 +213,13 @@ describe('generate', () => {
     };
     expect(generate(model)).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, , Месяц) КАК РегистрНакопленияОстОбороты');
   });
+
+  it('uses object name (not concat) as virtual table alias', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.Остатки', virtual: { period: '&П' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Остаток' }],
+    };
+    expect(generate(model)).toContain('КАК РегистрНакопленияОст');
+    expect(generate(model)).not.toContain('РегистрНакопленияОстОстатки КАК');
+  });
 });

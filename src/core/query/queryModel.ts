@@ -5,6 +5,14 @@ export interface VirtualParams {
   periodicity?: string;  // Период|Запись|Регистратор|Секунда|…|Авто
   fillMethod?: string;   // Движения|ДвиженияИГраницыПериода (ОстаткиИОбороты)
   condition?: string;
+  // регистр бухгалтерии:
+  accountCondition?: string;     // УсловиеСчета
+  corrAccountCondition?: string; // УсловиеКорСчета (Обороты corr)
+  accountDtCondition?: string;   // УсловиеСчетаДт (ОборотыДтКт)
+  accountKtCondition?: string;   // УсловиеСчетаКт (ОборотыДтКт)
+  order?: string;                // Порядок (ДвиженияССубконто)
+  top?: string;                  // Первые (ДвиженияССубконто)
+  correspondence?: boolean;      // проброшен из метаданных при добавлении ВТ
 }
 
 export interface SelectedTable {
@@ -36,15 +44,14 @@ export interface QueryModel {
 
 /**
  * Псевдоним по умолчанию для таблицы выборки. Явный `alias` имеет приоритет.
- * Для виртуальной таблицы-среза с трёхсегментным fullName
- * (`РегистрСведений.Имя.СрезПоследних`) склеивает 2-й и 3-й сегменты
- * (`ИмяСрезПоследних`); иначе — 2-й сегмент (имя объекта).
+ * Для всех таблиц (реальных и виртуальных) возвращает имя объекта — 2-й
+ * сегмент `fullName`. Конкатенация имени объекта с видом ВТ (например,
+ * `ИмяСрезПоследних`) была убрана: 1С использует только имя объекта.
  * Используется и генератором SDBL, и webview (списки полей), чтобы префиксы
  * полей совпадали с псевдонимом в тексте запроса.
  */
 export function defaultTableAlias(t: SelectedTable): string {
   if (t.alias) return t.alias;
   const parts = t.fullName.split('.');
-  if (t.virtual && parts.length >= 3) return parts[1] + parts[2];
   return parts[1] ?? t.fullName;
 }
