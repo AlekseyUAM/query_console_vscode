@@ -19,13 +19,13 @@ export function parseBusinessProcess(objectEl: any): ParsedObject | null {
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
   std('ВерсияДанных', [{ kind: 'timestamp' }]);
   std('ПометкаУдаления', [{ kind: 'Булево' }]);
-  std('Дата', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   if (numberLength > 0) {
     std('Номер', [{ kind: 'Строка', length: numberLength }]);
   }
-  std('Старт', [{ kind: 'Булево' }]);
+  std('Дата', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   std('Завершен', [{ kind: 'Булево' }]);
-  std('ГоловнаяЗадача', [{ kind: 'unknown' }]);
+  std('ВедущаяЗадача', [{ kind: 'unknown' }]);
+  std('Стартован', [{ kind: 'Булево' }]);
 
   const { attributes, tabularSections } = parseChildObjects(objectEl);
   fields.push(...attributes);

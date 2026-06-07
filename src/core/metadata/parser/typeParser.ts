@@ -17,10 +17,22 @@ const REF_PREFIX: Record<string, string> = {
   EnumRef: 'Перечисление',
 };
 
-const MD_PREFIX: Record<string, string> = {
+export const MD_PREFIX: Record<string, string> = {
   Catalog: 'Справочник',
   Document: 'Документ',
   Enum: 'Перечисление',
+  ChartOfCharacteristicTypes: 'ПланВидовХарактеристик',
+  ChartOfAccounts: 'ПланСчетов',
+  ChartOfCalculationTypes: 'ПланВидовРасчета',
+  ExchangePlan: 'ПланОбмена',
+  BusinessProcess: 'БизнесПроцесс',
+  Task: 'Задача',
+  InformationRegister: 'РегистрСведений',
+  AccumulationRegister: 'РегистрНакопления',
+  AccountingRegister: 'РегистрБухгалтерии',
+  CalculationRegister: 'РегистрРасчета',
+  Constant: 'Константа',
+  DocumentJournal: 'ЖурналДокументов',
 };
 
 interface Qualifiers {

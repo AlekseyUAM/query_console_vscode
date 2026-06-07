@@ -1,6 +1,6 @@
-import { childByLocalName, nodeText } from './dom';
-import { parseChildObjects } from './attribute';
-import type { ParsedObject, ParsedField, ParsedType } from './model';
+import { childByLocalName, childrenByLocalName, nodeText } from './dom';
+import { parseChildObjects, parseAttribute } from './attribute';
+import type { ParsedObject, ParsedField, ParsedType, ParsedTabularSection } from './model';
 
 export function parseChartOfAccounts(objectEl: any): ParsedObject | null {
   const props = childByLocalName(objectEl, 'Properties');
@@ -24,21 +24,50 @@ export function parseChartOfAccounts(objectEl: any): ParsedObject | null {
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
   std('ВерсияДанных', [{ kind: 'timestamp' }]);
   std('ПометкаУдаления', [{ kind: 'Булево' }]);
-  std('Предопределенный', [{ kind: 'Булево' }]);
-  std('ИмяПредопределенныхДанных', [{ kind: 'Строка', length: 255 }]);
+  std('Родитель', [{ kind: 'ref', ref: fullName }]);
   if (codeLength > 0) {
     std('Код', [{ kind: 'Строка', length: codeLength }]);
   }
   if (descriptionLength > 0) {
     std('Наименование', [{ kind: 'Строка', length: descriptionLength }]);
   }
-  std('ЭтоГруппа', [{ kind: 'Булево' }]);
-  std('Родитель', [{ kind: 'ref', ref: fullName }]);
-  std('ВидСчета', [{ kind: 'unknown' }]);
-  std('ПризнакАктивности', [{ kind: 'Булево' }]);
+  std('Вид', [{ kind: 'unknown' }]);
+  std('Забалансовый', [{ kind: 'Булево' }]);
+  // Предопределенный / ИмяПредопределенныхДанных переносятся в конец (после ТЧ)
+  // на уровне buildSelectAllModel, но эмитируются как стандартные поля.
+  std('Предопределенный', [{ kind: 'Булево' }]);
+  std('ИмяПредопределенныхДанных', [{ kind: 'Строка', length: 255 }]);
 
   const { attributes, tabularSections } = parseChildObjects(objectEl);
   fields.push(...attributes);
+
+  // Признаки учёта субконто (ExtDimensionAccountingFlag) — это колонки
+  // стандартной табличной части ВидыСубконто. Сама ТЧ состоит из стандартных
+  // колонок (ВидСубконто, Предопределенное, ТолькоОбороты) + признаков учёта.
+  const accountingFlags: ParsedField[] = [];
+  const child = childByLocalName(objectEl, 'ChildObjects');
+  if (child) {
+    for (const f of childrenByLocalName(child, 'ExtDimensionAccountingFlag')) {
+      const parsed = parseAttribute(f);
+      if (parsed) accountingFlags.push(parsed);
+    }
+  }
+
+  const extTabSections: ParsedTabularSection[] = [];
+  if (extDimensionTypes) {
+    extTabSections.push({
+      name: extDimensionTypes,
+      uuid: '',
+      fields: [
+        { name: 'НомерСтроки', category: 'standard', types: [{ kind: 'Число', digits: 5, fractionDigits: 0 }] },
+        { name: 'ВидСубконто', category: 'standard', types: [{ kind: 'unknown' }] },
+        { name: 'Предопределенное', category: 'standard', types: [{ kind: 'Булево' }] },
+        { name: 'ТолькоОбороты', category: 'standard', types: [{ kind: 'Булево' }] },
+        ...accountingFlags,
+      ],
+    });
+  }
+  const allTabSections = [...tabularSections, ...extTabSections];
 
   return {
     version: 1,
@@ -47,7 +76,7 @@ export function parseChartOfAccounts(objectEl: any): ParsedObject | null {
     fullName,
     uuid,
     fields,
-    ...(tabularSections.length ? { tabularSections } : {}),
+    ...(allTabSections.length ? { tabularSections: allTabSections } : {}),
     properties: { maxExtDimensionCount, extDimensionTypes },
   };
 }

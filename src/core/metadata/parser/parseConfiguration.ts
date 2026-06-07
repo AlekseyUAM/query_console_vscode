@@ -19,7 +19,8 @@ import { parseCalculationRegister } from './calculationRegister';
 import { parseSequence } from './sequence';
 import { parseDocumentJournal } from './documentJournal';
 import { parseFilterCriteria } from './filterCriteria';
-import type { ParsedObject } from './model';
+import { parseCommonAttribute } from './commonAttribute';
+import type { ParsedObject, ParsedCommonAttribute } from './model';
 
 interface TypeHandler {
   subdir: string;
@@ -98,11 +99,35 @@ export function parseConfiguration(cfPath: string, outPath: string): ParseSummar
     }
   }
 
-  writeConfigurationIndex(cfPath, outCfDir, objects);
+  const commonAttributes = parseCommonAttributes(cfPath);
+
+  writeConfigurationIndex(cfPath, outCfDir, objects, commonAttributes);
   return { counts, skipped, outCfDir };
 }
 
-function writeConfigurationIndex(cfPath: string, outCfDir: string, objects: IndexEntry[]): void {
+function parseCommonAttributes(cfPath: string): ParsedCommonAttribute[] {
+  const dir = path.join(cfPath, 'CommonAttributes');
+  if (!fs.existsSync(dir)) return [];
+  const result: ParsedCommonAttribute[] = [];
+  for (const file of fs.readdirSync(dir).sort()) {
+    if (!file.endsWith('.xml')) continue;
+    try {
+      const xml = fs.readFileSync(path.join(dir, file), 'utf8');
+      const doc = parseXml(xml);
+      const el = doc ? firstElementChild(doc.documentElement) : null;
+      const ca = el ? parseCommonAttribute(el) : null;
+      if (ca) result.push(ca);
+    } catch { /* пропустить нечитаемый общий реквизит */ }
+  }
+  return result;
+}
+
+function writeConfigurationIndex(
+  cfPath: string,
+  outCfDir: string,
+  objects: IndexEntry[],
+  commonAttributes: ParsedCommonAttribute[],
+): void {
   let name = '';
   let synonym: string | undefined;
   const confXml = path.join(cfPath, 'Configuration.xml');
@@ -117,5 +142,8 @@ function writeConfigurationIndex(cfPath: string, outCfDir: string, objects: Inde
       synonym = item ? nodeText(childByLocalName(item, 'content')) || undefined : undefined;
     }
   }
-  writeYaml(path.join(outCfDir, 'configuration.yaml'), clean({ version: 1, name, synonym, objects }));
+  writeYaml(
+    path.join(outCfDir, 'configuration.yaml'),
+    clean({ version: 1, name, synonym, objects, commonAttributes: commonAttributes.length ? commonAttributes : undefined }),
+  );
 }

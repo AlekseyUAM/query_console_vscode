@@ -40,6 +40,8 @@ export interface QueryModel {
   tables: SelectedTable[];
   fields: SelectedField[];
   tabSectionFields?: SelectedTabSectionField[];
+  /** Поля, которые должны быть отрисованы ПОСЛЕ табличных частей (Предопределенный, ИмяПредопределенныхДанных). */
+  trailingFields?: SelectedField[];
 }
 
 /**
