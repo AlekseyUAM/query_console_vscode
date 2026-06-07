@@ -130,12 +130,12 @@ describe('parseChartOfAccounts', () => {
     expect(result?.kind).toBe('ПланСчетов');
   });
 
-  it('includes ВидСчета and ПризнакАктивности standard fields', () => {
+  it('includes Вид and Забалансовый standard fields', () => {
     const el = readObjectEl('ChartsOfAccounts', 'ПланСчетов1.xml');
     const result = parseChartOfAccounts(el)!;
     const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
-    expect(stdNames).toContain('ВидСчета');
-    expect(stdNames).toContain('ПризнакАктивности');
+    expect(stdNames).toContain('Вид');
+    expect(stdNames).toContain('Забалансовый');
     expect(stdNames).toContain('Ссылка');
   });
 });
@@ -180,9 +180,9 @@ describe('parseBusinessProcess', () => {
     const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
     expect(stdNames).toContain('Ссылка');
     expect(stdNames).toContain('Дата');
-    expect(stdNames).toContain('Старт');
+    expect(stdNames).toContain('Стартован');
     expect(stdNames).toContain('Завершен');
-    expect(stdNames).toContain('ГоловнаяЗадача');
+    expect(stdNames).toContain('ВедущаяЗадача');
   });
 
   it('includes Номер when NumberLength > 0', () => {
