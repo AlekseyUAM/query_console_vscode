@@ -617,4 +617,101 @@ describe('queryStore — union document layer (multiple sub-queries)', () => {
       expect(s.savedQueries[0]!.queryType).toBe('select');
     });
   });
+
+  describe('REMOVE_TABLE cascades into grouping/conditions/lockForUpdate', () => {
+    it('prunes grouping/conditions/lock entries of the removed table, leaves others intact', () => {
+      // Two tables: t1 (Валюты) и t2 (СчётНаОплату).
+      let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+      const t1 = s.selectedTables[0].id;
+      s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+      const t2 = s.selectedTables[1].id;
+
+      // Поля выборки обеих таблиц.
+      s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Код' });
+      s = reducer(s, { type: 'ADD_FIELD', tableId: t2, fieldPath: 'Дата' });
+
+      // Группировка: groupFields, aggregates, наборы — ссылки на обе таблицы.
+      s = reducer(s, { type: 'ADD_GROUP_FIELD', tableId: t1, path: 'Код' });
+      s = reducer(s, { type: 'ADD_GROUP_FIELD', tableId: t2, path: 'Дата' });
+      s = reducer(s, { type: 'ADD_SUMMABLE_FIELD', tableId: t1, path: 'Наименование', func: 'Сумма' });
+      s = reducer(s, { type: 'ADD_SUMMABLE_FIELD', tableId: t2, path: 'Сумма', func: 'Сумма' });
+      s = reducer(s, { type: 'ADD_GROUP_SET' });
+      s = reducer(s, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: t1, path: 'Код' });
+      s = reducer(s, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: t2, path: 'Дата' });
+
+      // Условия: простое условие на t1, простое условие на t2, произвольное (custom).
+      s = reducer(s, { type: 'ADD_CONDITION', tableId: t1, path: 'Код' });
+      s = reducer(s, { type: 'ADD_CONDITION', tableId: t2, path: 'Дата' });
+      const customIdx = s.conditions.length;
+      s = reducer(s, { type: 'ADD_CONDITION', tableId: t2, path: 'Дата' });
+      s = reducer(s, { type: 'SET_CONDITION_CUSTOM', index: customIdx, custom: true });
+      s = reducer(s, { type: 'SET_CONDITION_EXPRESSION', index: customIdx, expression: 'ИСТИНА' });
+
+      // Блокировка для обеих таблиц.
+      s = reducer(s, { type: 'SET_LOCK_ENABLED', enabled: true });
+      s = reducer(s, { type: 'ADD_LOCK_TABLE', fullName: mockTable.fullName });
+      s = reducer(s, { type: 'ADD_LOCK_TABLE', fullName: mockTable2.fullName });
+
+      // Удаляем t1.
+      s = reducer(s, { type: 'REMOVE_TABLE', tableId: t1 });
+
+      // groupFields: только t2 остался.
+      expect(s.grouping.groupFields).toEqual([{ tableId: t2, path: 'Дата' }]);
+      // aggregates: только t2 остался.
+      expect(s.grouping.aggregates).toEqual([{ tableId: t2, path: 'Сумма', func: 'Сумма' }]);
+      // groupSets: набор теперь содержит только t2.
+      expect(s.grouping.groupSets).toEqual([[{ tableId: t2, path: 'Дата' }]]);
+      // conditions: простое условие t1 удалено, простое t2 и custom остались.
+      expect(s.conditions.filter(c => !c.custom && c.tableId === t1)).toEqual([]);
+      expect(s.conditions.some(c => !c.custom && c.tableId === t2)).toBe(true);
+      expect(s.conditions.some(c => c.custom && c.expression === 'ИСТИНА')).toBe(true);
+      // lockForUpdate: запись t1 (Валюты) удалена, t2 (СчётНаОплату) остался.
+      expect(s.lockForUpdate).toEqual([mockTable2.fullName]);
+      // selectedTables/selectedFields пруны как раньше.
+      expect(s.selectedTables.map(t => t.id)).toEqual([t2]);
+      expect(s.selectedFields).toEqual([{ tableId: t2, path: 'Дата' }]);
+    });
+
+    it('drops a groupSet that becomes empty after removing its only table', () => {
+      let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+      const t1 = s.selectedTables[0].id;
+      s = reducer(s, { type: 'ADD_GROUP_SET' });
+      s = reducer(s, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: t1, path: 'Код' });
+      s = reducer(s, { type: 'REMOVE_TABLE', tableId: t1 });
+      expect(s.grouping.groupSets).toEqual([]);
+    });
+  });
+
+  describe('REMOVE_FIELD cascades into grouping (not conditions)', () => {
+    it('prunes the removed field from groupFields/aggregates/sets, leaves others and conditions', () => {
+      let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+      const t1 = s.selectedTables[0].id;
+      s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Код' });          // idx 0
+      s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Наименование' }); // idx 1
+
+      // Группировка ссылается на оба поля.
+      s = reducer(s, { type: 'ADD_GROUP_FIELD', tableId: t1, path: 'Код' });
+      s = reducer(s, { type: 'ADD_SUMMABLE_FIELD', tableId: t1, path: 'Наименование', func: 'Сумма' });
+      s = reducer(s, { type: 'ADD_GROUP_SET' });
+      s = reducer(s, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: t1, path: 'Код' });
+      s = reducer(s, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: t1, path: 'Наименование' });
+
+      // Условие на удаляемое поле — должно ОСТАТЬСЯ.
+      s = reducer(s, { type: 'ADD_CONDITION', tableId: t1, path: 'Код' });
+
+      // Удаляем поле idx 0 (Код).
+      s = reducer(s, { type: 'REMOVE_FIELD', fieldIdx: 0 });
+
+      // Поле выборки удалено.
+      expect(s.selectedFields).toEqual([{ tableId: t1, path: 'Наименование' }]);
+      // groupFields: Код удалён.
+      expect(s.grouping.groupFields).toEqual([]);
+      // aggregates (Наименование) не тронуты.
+      expect(s.grouping.aggregates).toEqual([{ tableId: t1, path: 'Наименование', func: 'Сумма' }]);
+      // groupSets: Код удалён из набора, Наименование остался.
+      expect(s.grouping.groupSets).toEqual([[{ tableId: t1, path: 'Наименование' }]]);
+      // conditions НЕ тронуты при удалении поля.
+      expect(s.conditions).toEqual([{ custom: false, tableId: t1, path: 'Код', operator: '=', param: '&Код' }]);
+    });
+  });
 });

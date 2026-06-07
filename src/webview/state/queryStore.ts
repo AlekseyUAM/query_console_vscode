@@ -250,10 +250,23 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     }
 
     case 'REMOVE_TABLE': {
+      const removed = state.selectedTables.find(t => t.id === action.tableId);
       const filtered = state.selectedTables.filter(t => t.id !== action.tableId);
       const fields = state.selectedFields.filter(f => f.tableId !== action.tableId);
       const tabSectionFields = state.tabSectionFields.filter(ts => ts.tableId !== action.tableId);
-      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, focusedSelectedTableId: null };
+      const grouping: Grouping = {
+        ...state.grouping,
+        groupFields: state.grouping.groupFields.filter(f => f.tableId !== action.tableId),
+        aggregates: state.grouping.aggregates.filter(a => a.tableId !== action.tableId),
+        groupSets: state.grouping.groupSets
+          .map(set => set.filter(f => f.tableId !== action.tableId))
+          .filter(set => set.length > 0),
+      };
+      const conditions = state.conditions.filter(c => c.custom || c.tableId !== action.tableId);
+      const lockForUpdate = removed
+        ? state.lockForUpdate.filter(n => n !== removed.fullName)
+        : state.lockForUpdate;
+      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, lockForUpdate, focusedSelectedTableId: null };
     }
 
     case 'ADD_FIELD': {
@@ -341,8 +354,22 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     }
 
     case 'REMOVE_FIELD': {
+      const removed = state.selectedFields[action.fieldIdx];
       const fields = state.selectedFields.filter((_, i) => i !== action.fieldIdx);
-      return { ...state, selectedFields: fields, focusedSelectedFieldIdx: null };
+      // Выражения (path === '') не имеют ссылок в группировке — нечего пруны.
+      if (!removed || removed.path === '') {
+        return { ...state, selectedFields: fields, focusedSelectedFieldIdx: null };
+      }
+      const { tableId, path } = removed;
+      const grouping: Grouping = {
+        ...state.grouping,
+        groupFields: state.grouping.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        aggregates: state.grouping.aggregates.filter(a => !(a.tableId === tableId && a.path === path)),
+        groupSets: state.grouping.groupSets
+          .map(set => set.filter(f => !(f.tableId === tableId && f.path === path)))
+          .filter(set => set.length > 0),
+      };
+      return { ...state, selectedFields: fields, grouping, focusedSelectedFieldIdx: null };
     }
 
     case 'FOCUS_SELECTED_TABLE':

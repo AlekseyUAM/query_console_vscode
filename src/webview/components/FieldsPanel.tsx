@@ -1,21 +1,13 @@
 import * as React from 'react';
-import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, Grouping, Condition, Selection, QueryType } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { generateDocument, formatAsBslString } from '../../core/query/sdblGenerator';
 import type { UnionMember } from '../../core/query/unionModel';
 
 interface Props {
-  metaTables: MetaTable[];
   selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
   tabSectionFields: SelectedTabSectionField[];
-  grouping: Grouping;
-  conditions: Condition[];
-  selection: Selection;
-  queryType: QueryType;
-  tempTableName: string;
-  lockForUpdate: string[];
   /** Участники объединения (весь документ) — источник текста при нажатии ОК. */
   members: UnionMember[];
   focusedSelectedFieldIdx: number | null;
@@ -53,8 +45,7 @@ const REMOVE_BTN: React.CSSProperties = {
 };
 
 export function FieldsPanel({
-  metaTables, selectedTables, selectedFields, tabSectionFields, grouping, conditions,
-  selection, queryType, tempTableName, lockForUpdate, members, focusedSelectedFieldIdx,
+  selectedTables, selectedFields, tabSectionFields, members, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
   onFocusField, onInsert, onCancel, canAddExpression, onAddExpression,
 }: Props): React.ReactElement {

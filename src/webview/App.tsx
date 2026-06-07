@@ -200,16 +200,9 @@ export function App(): React.ReactElement {
         </div>
         <div style={panelStyle}>
           <FieldsPanel
-            metaTables={state.tables}
             selectedTables={state.selectedTables}
             selectedFields={state.selectedFields}
             tabSectionFields={state.tabSectionFields}
-            grouping={state.grouping}
-            conditions={state.conditions}
-            selection={state.selection}
-            queryType={state.queryType}
-            tempTableName={state.tempTableName}
-            lockForUpdate={state.lockForUpdate}
             members={members}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
