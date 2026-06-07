@@ -37,30 +37,42 @@ function accumVtFields(t: MetaTable, periodicity?: string): SelectedField[] {
 }
 
 /**
- * Строит QueryModel «выбрать все поля» для таблицы метаданных `t`.
- * Порядок полей соответствует конструктору 1С.
- *
- * @param t          - описатор таблицы из MetadataModel
- * @param periodicity - периодичность (для ВТ РегистраНакопления)
+ * Строит список полей для виртуальной таблицы РегистраБухгалтерии.
+ * Для Обороты/ОстаткиИОбороты/ОборотыДтКт: период-поля ПЕРЕД остальными полями ВТ.
+ * Для Остатки/ДвиженияССубконто: поля ВТ в естественном порядке (t.fields as-is).
  */
+function accountingVtFields(t: MetaTable, periodicity?: string): SelectedField[] {
+  const toField = (f: { name: string }) => ({ tableId: 't1', path: f.name, alias: f.name });
+  const slice = t.virtual?.slice;
+  const needsPeriod = slice === 'Обороты' || slice === 'ОстаткиИОбороты' || slice === 'ОборотыДтКт';
+  if (needsPeriod) {
+    const periods = accumPeriodFields(periodicity);
+    return [...periods, ...t.fields].map(toField);
+  }
+  return t.fields.map(toField);
+}
+
 /**
  * Строит QueryModel «выбрать все поля» для таблицы метаданных `t`.
  * Порядок полей соответствует конструктору 1С:
  *   основные поля → табличные части → завершающие стандартные (Предопределенный, ИмяПредопределенныхДанных).
  *
  * @param t          - описатор таблицы из MetadataModel
- * @param periodicity - периодичность (для ВТ РегистраНакопления)
+ * @param periodicity - периодичность (для ВТ РегистраНакопления и РегистраБухгалтерии)
  */
 export function buildSelectAllModel(t: MetaTable, periodicity?: string): QueryModel {
-  const isAccumVt = !!t.virtual && (
+  const isAccumVt = !!t.virtual && t.kind === 'РегистрНакопления' && (
     ['Остатки', 'Обороты', 'ОстаткиИОбороты'].includes(t.virtual.slice)
   );
+  const isAccountingVt = !!t.virtual && t.kind === 'РегистрБухгалтерии';
 
   let fields: SelectedField[];
   let trailingFields: SelectedField[] | undefined;
 
   if (isAccumVt) {
     fields = accumVtFields(t, periodicity);
+  } else if (isAccountingVt) {
+    fields = accountingVtFields(t, periodicity);
   } else {
     const split = splitRealObjectFields(t);
     fields = split.main;
@@ -68,6 +80,7 @@ export function buildSelectAllModel(t: MetaTable, periodicity?: string): QueryMo
   }
 
   // Поля табличной части — по одному разу, как в конструкторе 1С.
+  // Виртуальные таблицы не имеют табличных частей.
   const tabSectionFields: SelectedTabSectionField[] = (t.tabularSections ?? []).map(ts => ({
     tableId: 't1',
     tsName: ts.name,
@@ -75,12 +88,24 @@ export function buildSelectAllModel(t: MetaTable, periodicity?: string): QueryMo
     fields: ts.fields.map(f => f.name),
   }));
 
-  // Для ВТ Обороты/ОстаткиИОбороты периодичность идёт в источник (3-я позиция),
+  // Для ВТ Обороты/ОстаткиИОбороты/ОборотыДтКт периодичность идёт в источник (3-я позиция),
   // поэтому прокидываем её в параметры виртуальной таблицы. Для остальных ВТ
   // параметры пустые (источник без скобок).
   const slice = t.virtual?.slice;
-  const passPeriodicity = (slice === 'Обороты' || slice === 'ОстаткиИОбороты') && !!periodicity;
-  const virtual = t.virtual ? (passPeriodicity ? { periodicity } : {}) : undefined;
+  const sliceNeedsPeriodicity = slice === 'Обороты' || slice === 'ОстаткиИОбороты' || slice === 'ОборотыДтКт';
+  const passPeriodicity = sliceNeedsPeriodicity && !!periodicity;
+
+  let virtual: Record<string, unknown> | undefined;
+  if (t.virtual) {
+    const params: Record<string, unknown> = {};
+    if (passPeriodicity) params.periodicity = periodicity;
+    // Для РегистраБухгалтерии прокидываем correspondence — генератор использует его
+    // для выбора арности источника (Обороты corr vs non-corr).
+    if (isAccountingVt && t.virtual.correspondence !== undefined) {
+      params.correspondence = t.virtual.correspondence;
+    }
+    virtual = params;
+  }
 
   return {
     tables: [{ id: 't1', fullName: t.fullName, ...(virtual ? { virtual } : {}) }],
