@@ -18,24 +18,50 @@ function resolveAliases(tables: SelectedTable[]): Map<string, string> {
   return result;
 }
 
+function accountingPositions(slice: string, v: SelectedTable['virtual'] & {}): string[] {
+  const s = (x?: string) => x ?? '';
+  switch (slice) {
+    case 'Остатки':
+      return [s(v.period), s(v.accountCondition), '', s(v.condition)];
+    case 'Обороты':
+      return v.correspondence
+        ? [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.accountCondition), '', s(v.condition), s(v.corrAccountCondition), '']
+        : [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.accountCondition), '', s(v.condition)];
+    case 'ОборотыДтКт':
+      return [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.accountDtCondition), '', s(v.accountKtCondition), '', s(v.condition)];
+    case 'ОстаткиИОбороты':
+      return [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.fillMethod), s(v.accountCondition), '', s(v.condition)];
+    case 'ДвиженияССубконто':
+      return [s(v.startPeriod), s(v.endPeriod), s(v.condition), s(v.order), s(v.top)];
+    default:
+      return [];
+  }
+}
+
 function renderSource(t: SelectedTable): string {
   if (!t.virtual) return t.fullName;
   const v = t.virtual;
-  const slice = t.fullName.split('.')[2];
+  const parts = t.fullName.split('.');
+  const kind = parts[0];
+  const slice = parts[2];
 
-  // Позиционные параметры зависят от вида виртуальной таблицы.
+  // Регистр бухгалтерии: фиксированная арность, хвостовые пустые позиции сохраняются,
+  // скобки — только если задан хоть один параметр.
+  if (kind === 'РегистрБухгалтерии') {
+    const positions = accountingPositions(slice, v);
+    if (!positions.some(p => p !== '')) return t.fullName;
+    return `${t.fullName}(${positions.join(', ')})`;
+  }
+
+  // Регистры сведений/накопления: хвостовые пустые позиции отбрасываются.
   let positions: string[];
   if (slice === 'Обороты') {
     positions = [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.condition ?? ''];
   } else if (slice === 'ОстаткиИОбороты') {
     positions = [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.fillMethod ?? '', v.condition ?? ''];
   } else {
-    // СрезПервых / СрезПоследних / Остатки
     positions = [v.period ?? '', v.condition ?? ''];
   }
-
-  // Хвостовые пустые позиции отбрасываются; пустые позиции в середине сохраняются
-  // (ведущая/средняя запятая). Все позиции пусты → вызов без скобок.
   let last = positions.length - 1;
   while (last >= 0 && positions[last] === '') last--;
   if (last < 0) return t.fullName;

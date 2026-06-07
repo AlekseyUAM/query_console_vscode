@@ -222,4 +222,49 @@ describe('generate', () => {
     expect(generate(model)).toContain('КАК РегистрНакопленияОст');
     expect(generate(model)).not.toContain('РегистрНакопленияОстОстатки КАК');
   });
+
+  describe('accounting register virtual table source', () => {
+    const mk = (slice: string, virtual: any) => ({
+      tables: [{ id: 't1', fullName: `РегистрБухгалтерии.РБ1.${slice}`, virtual }],
+      fields: [{ tableId: 't1', path: 'Счет' }],
+    } as QueryModel);
+
+    it('Остатки без параметров — без скобок', () => {
+      expect(generate(mk('Остатки', {}))).toContain('РегистрБухгалтерии.РБ1.Остатки КАК РБ1');
+    });
+
+    it('Остатки с периодом и условием счёта (арность 4)', () => {
+      const text = generate(mk('Остатки', { period: '&П', accountCondition: 'Счет = &С' }));
+      expect(text).toContain('РегистрБухгалтерии.РБ1.Остатки(&П, Счет = &С, , ) КАК РБ1');
+    });
+
+    it('Обороты corr: периодичность в поз.3, фикс. арность 8, хвост сохранён', () => {
+      const text = generate(mk('Обороты', { periodicity: 'Период', correspondence: true }));
+      expect(text).toContain('РегистрБухгалтерии.РБ1.Обороты(, , Период, , , , , ) КАК РБ1');
+    });
+
+    it('Обороты non-corr: арность 6', () => {
+      const text = generate(mk('Обороты', { periodicity: 'Авто', correspondence: false }));
+      expect(text).toContain('РегистрБухгалтерии.РБ1.Обороты(, , Авто, , , ) КАК РБ1');
+    });
+
+    it('ОборотыДтКт: арность 8', () => {
+      const text = generate(mk('ОборотыДтКт', { periodicity: 'Период' }));
+      expect(text).toContain('РегистрБухгалтерии.РБ1.ОборотыДтКт(, , Период, , , , , ) КАК РБ1');
+    });
+
+    it('ОстаткиИОбороты: арность 7, метод дополнения в поз.4', () => {
+      const text = generate(mk('ОстаткиИОбороты', { periodicity: 'Период', fillMethod: 'ДвиженияИГраницыПериода' }));
+      expect(text).toContain('РегистрБухгалтерии.РБ1.ОстаткиИОбороты(, , Период, ДвиженияИГраницыПериода, , , ) КАК РБ1');
+    });
+
+    it('ДвиженияССубконто без параметров — без скобок', () => {
+      expect(generate(mk('ДвиженияССубконто', {}))).toContain('РегистрБухгалтерии.РБ1.ДвиженияССубконто КАК РБ1');
+    });
+
+    it('ДвиженияССубконто с параметром Первые (арность 5)', () => {
+      const text = generate(mk('ДвиженияССубконто', { top: '3' }));
+      expect(text).toContain('РегистрБухгалтерии.РБ1.ДвиженияССубконто(, , , , 3) КАК РБ1');
+    });
+  });
 });
