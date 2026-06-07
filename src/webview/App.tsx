@@ -82,7 +82,7 @@ export function App(): React.ReactElement {
     if (!meta) return [];
     const alias = defaultTableAlias(sel);
     const periodFields: MetaField[] =
-      meta.virtual && (meta.virtual.slice === 'Обороты' || meta.virtual.slice === 'ОстаткиИОбороты')
+      meta.virtual && ['Обороты', 'ОборотыДтКт', 'ОстаткиИОбороты'].includes(meta.virtual.slice)
         ? accumPeriodFields(sel.virtual?.periodicity)
         : [];
     return [...periodFields, ...meta.fields].map((f: MetaField) => qualified ? `${alias}.${f.name}` : f.name);
@@ -95,6 +95,8 @@ export function App(): React.ReactElement {
     : null;
   const vtMeta = vtSel ? state.tables.find(m => m.fullName === vtSel.fullName) : undefined;
   const vtSlice = vtMeta?.virtual?.slice ?? 'СрезПоследних';
+  const vtKind = vtMeta?.kind ?? 'РегистрСведений';
+  const vtCorr = vtMeta?.virtual?.correspondence ?? false;
 
   const panelStyle: React.CSSProperties = {
     flex: 1,
@@ -194,6 +196,8 @@ export function App(): React.ReactElement {
       {vtDialogTableId !== null && vtSel && (
         <VirtualTableParamsDialog
           slice={vtSlice}
+          kind={vtKind}
+          correspondence={vtCorr}
           initial={vtSel.virtual ?? {}}
           onOpenConditionBuilder={(current, apply) => {
             setExprBuilder({

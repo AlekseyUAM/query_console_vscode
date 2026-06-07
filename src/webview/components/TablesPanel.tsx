@@ -204,7 +204,7 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
               {isExpanded && meta && (
                 <>
                   {(
-                    meta.virtual && (meta.virtual.slice === 'Обороты' || meta.virtual.slice === 'ОстаткиИОбороты')
+                    meta.virtual && ['Обороты', 'ОборотыДтКт', 'ОстаткиИОбороты'].includes(meta.virtual.slice)
                       ? [...accumPeriodFields(t.virtual?.periodicity), ...meta.fields]
                       : meta.fields
                   ).map(field => (
