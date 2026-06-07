@@ -1,7 +1,30 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
+import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
+
+/** Метаданные одного запроса-участника объединения. */
+export interface QueryMeta {
+  name: string;
+  distinct: boolean;
+}
+
+/**
+ * Сериализуемое состояние одного запроса (working set без общих/транзитных полей).
+ * Хранится в `savedQueries` для всех неактивных запросов; активный живёт в плоских полях.
+ */
+export interface SavedQuery {
+  selectedTables: SelectedTable[];
+  selectedFields: SelectedField[];
+  tabSectionFields: SelectedTabSectionField[];
+  grouping: Grouping;
+  conditions: Condition[];
+  selection: Selection;
+  queryType: QueryType;
+  tempTableName: string;
+  lockForUpdate: string[];
+}
 
 export interface QueryState {
   tables: MetaTable[];
@@ -20,6 +43,13 @@ export interface QueryState {
   focusedDbFieldPath: string | null;
   focusedSelectedTableId: string | null;
   focusedSelectedFieldIdx: number | null;
+  // --- слой документа объединения ---
+  /** Метаданные всех запросов-участников (включая активный). */
+  queryList: QueryMeta[];
+  /** Индекс активного запроса (его working set живёт в плоских полях выше). */
+  activeQuery: number;
+  /** Снимок working set каждого запроса; слот активного запроса = null (живёт в плоских полях). */
+  savedQueries: (SavedQuery | null)[];
 }
 
 export type QueryAction =
@@ -62,7 +92,14 @@ export type QueryAction =
   | { type: 'SET_TEMP_TABLE_NAME'; name: string }
   | { type: 'SET_LOCK_ENABLED'; enabled: boolean }
   | { type: 'ADD_LOCK_TABLE'; fullName: string }
-  | { type: 'REMOVE_LOCK_TABLE'; fullName: string };
+  | { type: 'REMOVE_LOCK_TABLE'; fullName: string }
+  // --- слой документа объединения ---
+  | { type: 'ADD_QUERY' }
+  | { type: 'SET_ACTIVE_QUERY'; index: number }
+  | { type: 'REMOVE_QUERY'; index: number }
+  | { type: 'RENAME_QUERY'; index: number; name: string }
+  | { type: 'SET_QUERY_DISTINCT'; index: number; distinct: boolean }
+  | { type: 'SET_COLUMN_ALIAS'; alias: string; newAlias: string };
 
 export function initialState(): QueryState {
   return {
@@ -82,10 +119,100 @@ export function initialState(): QueryState {
     focusedDbFieldPath: null,
     focusedSelectedTableId: null,
     focusedSelectedFieldIdx: null,
+    queryList: [{ name: 'Запрос 1', distinct: false }],
+    activeQuery: 0,
+    savedQueries: [null],
   };
 }
 
 let _tableCounter = 0;
+
+// ============================================================================
+// Слой документа объединения: снимок/восстановление активного запроса.
+// ============================================================================
+
+/** Извлечь working set активного запроса (плоские поля) в сериализуемый SavedQuery. */
+export function snapshotActive(state: QueryState): SavedQuery {
+  return {
+    selectedTables: state.selectedTables,
+    selectedFields: state.selectedFields,
+    tabSectionFields: state.tabSectionFields,
+    grouping: state.grouping,
+    conditions: state.conditions,
+    selection: state.selection,
+    queryType: state.queryType,
+    tempTableName: state.tempTableName,
+    lockForUpdate: state.lockForUpdate,
+  };
+}
+
+/**
+ * Восстановить плоские поля из снимка (или пустые значения по умолчанию при null).
+ * Транзитные поля фокуса всегда сбрасываются.
+ */
+export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Partial<QueryState> {
+  const base = saved ?? {
+    selectedTables: [],
+    selectedFields: [],
+    tabSectionFields: [],
+    grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] } as Grouping,
+    conditions: [],
+    selection: {},
+    queryType: 'select' as QueryType,
+    tempTableName: '',
+    lockForUpdate: [],
+  };
+  return {
+    selectedTables: base.selectedTables,
+    selectedFields: base.selectedFields,
+    tabSectionFields: base.tabSectionFields,
+    grouping: base.grouping,
+    conditions: base.conditions,
+    selection: base.selection,
+    queryType: base.queryType,
+    tempTableName: base.tempTableName,
+    lockForUpdate: base.lockForUpdate,
+    lockEnabled: base.lockForUpdate.length > 0,
+    focusedSelectedTableId: null,
+    focusedSelectedFieldIdx: null,
+  };
+}
+
+/** Собрать QueryModel из снимка (или из плоских полей активного запроса). */
+export function buildModelFromFlat(flat: SavedQuery): QueryModel {
+  return {
+    tables: flat.selectedTables,
+    fields: flat.selectedFields,
+    tabSectionFields: flat.tabSectionFields,
+    grouping: flat.grouping,
+    conditions: flat.conditions,
+    selection: flat.selection,
+    queryType: flat.queryType,
+    tempTableName: flat.tempTableName,
+    lockForUpdate: flat.lockForUpdate,
+  };
+}
+
+/**
+ * Собрать участников объединения: модель из (i === activeQuery ? живые плоские поля
+ * : savedQueries[i]); имя/distinct из queryList[i].
+ */
+export function assembleMembers(state: QueryState): UnionMember[] {
+  return state.queryList.map((meta, i) => {
+    const saved = i === state.activeQuery ? snapshotActive(state) : state.savedQueries[i];
+    const flat = saved ?? snapshotActive(state); // savedQueries[i] не должен быть null для неактивного
+    return {
+      name: meta.name,
+      distinct: meta.distinct,
+      model: buildModelFromFlat(flat),
+    };
+  });
+}
+
+/** Применить переименование псевдонима колонки к списку полей одного запроса. */
+function applyColumnAlias(fields: SelectedField[], alias: string, newAlias: string): SelectedField[] {
+  return fields.map(f => (fieldAlias(f) === alias ? { ...f, alias: newAlias } : f));
+}
 
 export function reducer(state: QueryState, action: QueryAction): QueryState {
   switch (action.type) {
@@ -406,6 +533,92 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
 
     case 'REMOVE_LOCK_TABLE':
       return { ...state, lockForUpdate: state.lockForUpdate.filter(n => n !== action.fullName) };
+
+    case 'ADD_QUERY': {
+      // Сохранить активный запрос в его слот, добавить новый пустой запрос и сделать его активным.
+      const savedQueries = [...state.savedQueries];
+      savedQueries[state.activeQuery] = snapshotActive(state);
+      savedQueries.push(null);
+      const queryList = [...state.queryList, { name: `Запрос ${state.queryList.length + 1}`, distinct: false }];
+      const activeQuery = queryList.length - 1;
+      return {
+        ...state,
+        queryList,
+        savedQueries,
+        activeQuery,
+        ...restoreSaved(state, null),
+      };
+    }
+
+    case 'SET_ACTIVE_QUERY': {
+      const { index } = action;
+      if (index === state.activeQuery) return state;
+      if (index < 0 || index >= state.queryList.length) return state;
+      // Сохранить текущий активный, загрузить целевой, целевой слот делаем live (null).
+      const savedQueries = [...state.savedQueries];
+      savedQueries[state.activeQuery] = snapshotActive(state);
+      const target = savedQueries[index];
+      savedQueries[index] = null;
+      return {
+        ...state,
+        savedQueries,
+        activeQuery: index,
+        ...restoreSaved(state, target),
+      };
+    }
+
+    case 'REMOVE_QUERY': {
+      const { index } = action;
+      if (state.queryList.length === 1) return state; // нельзя удалить последний
+      if (index < 0 || index >= state.queryList.length) return state;
+
+      const queryList = state.queryList.filter((_, i) => i !== index);
+      const savedQueries = state.savedQueries.filter((_, i) => i !== index);
+
+      if (index === state.activeQuery) {
+        // Удаляем активный → выбрать соседа новым активным и загрузить его.
+        const newActive = index >= queryList.length ? queryList.length - 1 : index;
+        const target = savedQueries[newActive];
+        savedQueries[newActive] = null;
+        return {
+          ...state,
+          queryList,
+          savedQueries,
+          activeQuery: newActive,
+          ...restoreSaved(state, target),
+        };
+      }
+
+      // Удаляем неактивный → активный остаётся live, поправить индекс при сдвиге.
+      const activeQuery = index < state.activeQuery ? state.activeQuery - 1 : state.activeQuery;
+      return { ...state, queryList, savedQueries, activeQuery };
+    }
+
+    case 'RENAME_QUERY': {
+      const queryList = state.queryList.map((q, i) =>
+        i === action.index ? { ...q, name: action.name } : q
+      );
+      return { ...state, queryList };
+    }
+
+    case 'SET_QUERY_DISTINCT': {
+      const queryList = state.queryList.map((q, i) =>
+        i === action.index ? { ...q, distinct: action.distinct } : q
+      );
+      return { ...state, queryList };
+    }
+
+    case 'SET_COLUMN_ALIAS': {
+      const { alias, newAlias } = action;
+      // Активный запрос — в плоских полях; остальные — в snapshot'ах.
+      const selectedFields = applyColumnAlias(state.selectedFields, alias, newAlias);
+      const savedQueries = state.savedQueries.map((sq, i) =>
+        i === state.activeQuery || sq === null
+          ? sq
+          : { ...sq, selectedFields: applyColumnAlias(sq.selectedFields, alias, newAlias) }
+      );
+      return { ...state, selectedFields, savedQueries };
+    }
 
     default:
       return state;

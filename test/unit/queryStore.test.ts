@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { reducer, initialState } from '../../src/webview/state/queryStore';
+import {
+  reducer,
+  initialState,
+  snapshotActive,
+  restoreSaved,
+  buildModelFromFlat,
+  assembleMembers,
+} from '../../src/webview/state/queryStore';
+import { deriveUnionColumns } from '../../src/core/query/unionModel';
 import type { MetaTable } from '../../src/core/metadata/types';
 
 const mockTable: MetaTable = {
@@ -394,5 +402,219 @@ describe('queryStore reducer — Дополнительно (selection / query t
     s = reducer(s, { type: 'ADD_LOCK_TABLE', fullName: 'Документ.СчетНаОплату' });
     s = reducer(s, { type: 'REMOVE_LOCK_TABLE', fullName: 'Справочник.Валюты' });
     expect(s.lockForUpdate).toEqual(['Документ.СчетНаОплату']);
+  });
+});
+
+describe('queryStore — union document layer (multiple sub-queries)', () => {
+  // Helper: a flat state with one field added, via ADD_FIELD_WITH_TABLE.
+  function withField(state = initialState(), full = 'Справочник.Валюты', path = 'Код') {
+    return reducer(state, { type: 'ADD_FIELD_WITH_TABLE', tableFullName: full, fieldPath: path });
+  }
+
+  describe('initialState', () => {
+    it('has one default sub-query, active 0, savedQueries [null]', () => {
+      const s = initialState();
+      expect(s.queryList).toEqual([{ name: 'Запрос 1', distinct: false }]);
+      expect(s.activeQuery).toBe(0);
+      expect(s.savedQueries).toEqual([null]);
+      expect(s.selectedFields).toEqual([]);
+    });
+  });
+
+  describe('snapshotActive / restoreSaved / buildModelFromFlat', () => {
+    it('snapshotActive captures the per-query working set', () => {
+      const s = withField();
+      const snap = snapshotActive(s);
+      expect(snap.selectedFields).toHaveLength(1);
+      expect(snap.selectedTables).toHaveLength(1);
+      expect(snap.queryType).toBe('select');
+      // shared / transient fields not part of the snapshot
+      expect((snap as Record<string, unknown>).tables).toBeUndefined();
+      expect((snap as Record<string, unknown>).expandedRefs).toBeUndefined();
+    });
+
+    it('restoreSaved(null) yields empty defaults and resets focus', () => {
+      const restored = restoreSaved(initialState(), null);
+      expect(restored.selectedFields).toEqual([]);
+      expect(restored.selectedTables).toEqual([]);
+      expect(restored.focusedSelectedFieldIdx).toBeNull();
+      expect(restored.focusedSelectedTableId).toBeNull();
+    });
+
+    it('snapshot → restore round-trips the working set', () => {
+      const s = withField();
+      const snap = snapshotActive(s);
+      const restored = restoreSaved(initialState(), snap);
+      expect(restored.selectedFields).toEqual(s.selectedFields);
+      expect(restored.selectedTables).toEqual(s.selectedTables);
+    });
+
+    it('buildModelFromFlat assembles a QueryModel', () => {
+      const s = withField();
+      const model = buildModelFromFlat(snapshotActive(s));
+      expect(model.tables).toEqual(s.selectedTables);
+      expect(model.fields).toEqual(s.selectedFields);
+      expect(model.queryType).toBe('select');
+    });
+  });
+
+  describe('ADD_QUERY', () => {
+    it('grows queryList, moves active to new, empties flat state, preserves prior in savedQueries', () => {
+      const s0 = withField(); // active query 0 has a field
+      const s1 = reducer(s0, { type: 'ADD_QUERY' });
+      expect(s1.queryList).toHaveLength(2);
+      expect(s1.queryList[1]).toEqual({ name: 'Запрос 2', distinct: false });
+      expect(s1.activeQuery).toBe(1);
+      expect(s1.savedQueries).toHaveLength(2);
+      // new active slot is live (null), old slot has snapshot
+      expect(s1.savedQueries[1]).toBeNull();
+      expect(s1.savedQueries[0]).not.toBeNull();
+      expect(s1.savedQueries[0]!.selectedFields).toHaveLength(1);
+      // flat state empty
+      expect(s1.selectedFields).toEqual([]);
+    });
+  });
+
+  describe('SET_ACTIVE_QUERY', () => {
+    it('no-op when index === activeQuery', () => {
+      const s = withField();
+      expect(reducer(s, { type: 'SET_ACTIVE_QUERY', index: 0 })).toBe(s);
+    });
+
+    it('round-trips snapshot/restore between two sub-queries', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // query 0: Код
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // query 1: Дата
+      // switch back to 0
+      s = reducer(s, { type: 'SET_ACTIVE_QUERY', index: 0 });
+      expect(s.activeQuery).toBe(0);
+      expect(s.selectedFields).toHaveLength(1);
+      expect(s.selectedFields[0].path).toBe('Код');
+      expect(s.savedQueries[0]).toBeNull();
+      expect(s.savedQueries[1]).not.toBeNull();
+      // switch to 1
+      s = reducer(s, { type: 'SET_ACTIVE_QUERY', index: 1 });
+      expect(s.activeQuery).toBe(1);
+      expect(s.selectedFields).toHaveLength(1);
+      expect(s.selectedFields[0].path).toBe('Дата');
+      // savedQueries length stays in sync with queryList
+      expect(s.savedQueries).toHaveLength(s.queryList.length);
+    });
+  });
+
+  describe('REMOVE_QUERY', () => {
+    it('cannot remove the last remaining query', () => {
+      const s = withField();
+      expect(reducer(s, { type: 'REMOVE_QUERY', index: 0 })).toBe(s);
+    });
+
+    it('removing the active query picks a neighbor and loads it', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата (active)
+      s = reducer(s, { type: 'REMOVE_QUERY', index: 1 });
+      expect(s.queryList).toHaveLength(1);
+      expect(s.savedQueries).toHaveLength(1);
+      expect(s.activeQuery).toBe(0);
+      // neighbor (query 0) becomes live
+      expect(s.savedQueries[0]).toBeNull();
+      expect(s.selectedFields[0].path).toBe('Код');
+    });
+
+    it('removing a non-active query before active shifts the active index down', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код
+      s = reducer(s, { type: 'ADD_QUERY' }); // 1
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата
+      s = reducer(s, { type: 'ADD_QUERY' }); // 2 (active)
+      s = withField(s, 'Справочник.Валюты', 'Наименование'); // 2: Наименование
+      expect(s.activeQuery).toBe(2);
+      // remove query 0 (non-active, before active)
+      s = reducer(s, { type: 'REMOVE_QUERY', index: 0 });
+      expect(s.queryList).toHaveLength(2);
+      expect(s.activeQuery).toBe(1);
+      // active stays live and unchanged
+      expect(s.savedQueries[s.activeQuery]).toBeNull();
+      expect(s.selectedFields[0].path).toBe('Наименование');
+      // remaining saved query (former #1) preserved
+      expect(s.savedQueries[0]!.selectedFields[0].path).toBe('Дата');
+    });
+
+    it('removing a non-active query after active keeps active index', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код (will stay active)
+      s = reducer(s, { type: 'ADD_QUERY' }); // 1
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата
+      s = reducer(s, { type: 'SET_ACTIVE_QUERY', index: 0 }); // active 0
+      s = reducer(s, { type: 'REMOVE_QUERY', index: 1 });
+      expect(s.queryList).toHaveLength(1);
+      expect(s.activeQuery).toBe(0);
+      expect(s.selectedFields[0].path).toBe('Код');
+    });
+  });
+
+  describe('RENAME_QUERY / SET_QUERY_DISTINCT', () => {
+    it('RENAME_QUERY updates the name', () => {
+      let s = reducer(initialState(), { type: 'ADD_QUERY' });
+      s = reducer(s, { type: 'RENAME_QUERY', index: 0, name: 'Основной' });
+      expect(s.queryList[0].name).toBe('Основной');
+      expect(s.queryList[1].name).toBe('Запрос 2');
+    });
+
+    it('SET_QUERY_DISTINCT updates the distinct flag', () => {
+      let s = reducer(initialState(), { type: 'ADD_QUERY' });
+      s = reducer(s, { type: 'SET_QUERY_DISTINCT', index: 1, distinct: true });
+      expect(s.queryList[1].distinct).toBe(true);
+      expect(s.queryList[0].distinct).toBe(false);
+    });
+  });
+
+  describe('assembleMembers', () => {
+    it('reflects the live active query plus saved others', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата (active)
+      const members = assembleMembers(s);
+      expect(members).toHaveLength(2);
+      expect(members[0].name).toBe('Запрос 1');
+      expect(members[0].model.fields[0].path).toBe('Код');
+      expect(members[1].name).toBe('Запрос 2');
+      expect(members[1].model.fields[0].path).toBe('Дата');
+    });
+
+    it('carries distinct flags from queryList', () => {
+      let s = reducer(initialState(), { type: 'SET_QUERY_DISTINCT', index: 0, distinct: true });
+      const members = assembleMembers(s);
+      expect(members[0].distinct).toBe(true);
+    });
+  });
+
+  describe('SET_COLUMN_ALIAS', () => {
+    it('renames the matching field across every member and merges into one column', () => {
+      // two members each with a field aliased "Код" (member 0 path Код, member 1 path Code via alias)
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: path Код → alias Код
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Код'); // 1: path Код → alias Код (active)
+      // rename column "Код" → "Идентификатор"
+      s = reducer(s, { type: 'SET_COLUMN_ALIAS', alias: 'Код', newAlias: 'Идентификатор' });
+      // active (member 1) field gets alias in flat state
+      expect(s.selectedFields[0].alias).toBe('Идентификатор');
+      // saved (member 0) field gets alias in snapshot
+      expect(s.savedQueries[0]!.selectedFields[0].alias).toBe('Идентификатор');
+      // derive columns → single merged column with new alias
+      const cols = deriveUnionColumns(assembleMembers(s));
+      expect(cols).toHaveLength(1);
+      expect(cols[0].alias).toBe('Идентификатор');
+      expect(cols[0].cells.every(c => c !== null)).toBe(true);
+    });
+  });
+
+  describe('existing actions still operate on the active query', () => {
+    it('ADD_QUERY then editing affects only the new active query', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0
+      s = reducer(s, { type: 'ADD_QUERY' }); // 1 active, empty
+      s = reducer(s, { type: 'SET_QUERY_TYPE', queryType: 'createTemp' });
+      expect(s.queryType).toBe('createTemp');
+      // query 0 snapshot retains its own (default) queryType
+      expect(s.savedQueries[0]!.queryType).toBe('select');
+    });
   });
 });
