@@ -7,3 +7,4 @@ tmp/
 src/cf/
 .claude/worktrees/
 .claire/
+.mcp.json

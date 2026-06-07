@@ -17,13 +17,18 @@ export function parseInformationRegister(objectEl: any): ParsedObject | null {
   const std = (n: string, types: ParsedType[]) =>
     fields.push({ name: n, category: 'standard', types });
 
-  std('НомерСтроки', [{ kind: 'Число', digits: 9, fractionDigits: 0 }]);
-  std('Активность', [{ kind: 'Булево' }]);
-  if (periodicity && periodicity !== 'Nonperiodical') {
-    std('Период', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
-  }
-  if (writeMode && writeMode !== 'Independent') {
-    std('Регистратор', [{ kind: 'unknown' }]);
+  // Состав и порядок стандартных полей — как в конструкторе запроса 1С:
+  //  - подчинённый регистратору (WriteMode != Independent): Регистратор, [Период],
+  //    НомерСтроки, Активность;
+  //  - независимый: только [Период] (Регистратора/НомерСтроки/Активности нет).
+  const subordinate = !!writeMode && writeMode !== 'Independent';
+  const periodic = !!periodicity && periodicity !== 'Nonperiodical';
+
+  if (subordinate) std('Регистратор', [{ kind: 'unknown' }]);
+  if (periodic) std('Период', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
+  if (subordinate) {
+    std('НомерСтроки', [{ kind: 'Число', digits: 9, fractionDigits: 0 }]);
+    std('Активность', [{ kind: 'Булево' }]);
   }
 
   const { dimensions, resources, attributes } = parseChildObjects(objectEl);

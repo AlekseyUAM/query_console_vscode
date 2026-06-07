@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/uam/projects/tree-sitter-bsl/**)",
+      "Read(//home/uam/projects/vscode-1c-platform-tools/**)",
+      "Bash(npx vitest *)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "1c-platform",
+    "1c-copilot-proxy",
+    "1c-md"
+  ]
+}

@@ -19,16 +19,18 @@ export function parseDocument(objectEl: any): ParsedObject | null {
   const std = (n: string, types: ParsedType[]) =>
     fields.push({ name: n, category: 'standard', types });
 
+  // Порядок стандартных полей — как в конструкторе запроса 1С:
+  // Ссылка, ВерсияДанных, ПометкаУдаления, Номер, Дата, Проведен.
   std('Ссылка', [{ kind: 'ref', ref: fullName }]);
   std('ВерсияДанных', [{ kind: 'timestamp' }]);
   std('ПометкаУдаления', [{ kind: 'Булево' }]);
-  std('Дата', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   if (numberLength > 0) {
     const numStr: ParsedType = { kind: 'Строка', length: numberLength, allowedLength: numberAllowedLength };
     const num: ParsedType =
       numberType === 'Number' ? { kind: 'Число', digits: numberLength } : clean(numStr);
     std('Номер', [num]);
   }
+  std('Дата', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   if (posting === 'Allow') {
     std('Проведен', [{ kind: 'Булево' }]);
   }
