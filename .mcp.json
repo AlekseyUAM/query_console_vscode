@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "1c-md": {
-      "type": "http",
-      "url": "http://host.docker.internal/ssl_plus/hs/mcp"
-    }
-  }
-}
