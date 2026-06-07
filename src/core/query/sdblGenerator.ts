@@ -86,7 +86,22 @@ function renderSource(t: SelectedTable): string {
   return `${t.fullName}(${positions.slice(0, last + 1).join(', ')})`;
 }
 
+/** Модификаторы выборки записей: РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N. */
+function selectionModifiers(selection: QueryModel['selection']): string {
+  if (!selection) return '';
+  let m = '';
+  if (selection.allowed) m += ' РАЗРЕШЕННЫЕ';
+  if (selection.distinct) m += ' РАЗЛИЧНЫЕ';
+  if (typeof selection.top === 'number' && selection.top > 0) m += ` ПЕРВЫЕ ${selection.top}`;
+  return m;
+}
+
 export function generate(model: QueryModel): string {
+  // УНИЧТОЖИТЬ — самостоятельный запрос, до всех остальных проверок.
+  if (model.queryType === 'dropTemp') {
+    return model.tempTableName ? `УНИЧТОЖИТЬ ${model.tempTableName}` : '';
+  }
+
   if (model.tables.length === 0) return '';
   const hasFields = model.fields.length > 0 || (model.tabSectionFields?.length ?? 0) > 0;
   if (!hasFields) return '';
@@ -148,7 +163,29 @@ export function generate(model: QueryModel): string {
   const conditionLines = renderConditions(model.conditions, aliases);
   const groupingLines = renderGrouping(model.grouping, aliases);
 
-  return ['ВЫБРАТЬ', ...fieldLines, 'ИЗ', ...tableLines, ...conditionLines, ...groupingLines].join('\n');
+  // ПОМЕСТИТЬ/ДОБАВИТЬ <ВТ> между списком полей и ИЗ.
+  const placeLines: string[] =
+    model.queryType === 'createTemp' && model.tempTableName
+      ? ['ПОМЕСТИТЬ ' + model.tempTableName]
+      : model.queryType === 'appendTemp' && model.tempTableName
+        ? ['ДОБАВИТЬ ' + model.tempTableName]
+        : [];
+
+  // ДЛЯ ИЗМЕНЕНИЯ <таблицы> — в самом конце, с пустой строкой-разделителем.
+  const lockLines: string[] = model.lockForUpdate?.length
+    ? ['', 'ДЛЯ ИЗМЕНЕНИЯ', ...model.lockForUpdate.map(name => '\t' + name)]
+    : [];
+
+  return [
+    'ВЫБРАТЬ' + selectionModifiers(model.selection),
+    ...fieldLines,
+    ...placeLines,
+    'ИЗ',
+    ...tableLines,
+    ...conditionLines,
+    ...groupingLines,
+    ...lockLines,
+  ].join('\n');
 }
 
 /** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */

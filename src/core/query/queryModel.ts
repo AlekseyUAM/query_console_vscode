@@ -77,6 +77,19 @@ export interface Condition {
   expression?: string;
 }
 
+/** Модификаторы выборки записей (ВЫБРАТЬ ...). */
+export interface Selection {
+  /** ПЕРВЫЕ N — ограничение количества первых записей. */
+  top?: number;
+  /** РАЗЛИЧНЫЕ — без повторяющихся. */
+  distinct?: boolean;
+  /** РАЗРЕШЕННЫЕ — только разрешённые данные. */
+  allowed?: boolean;
+}
+
+/** Тип запроса: обычная выборка или работа с временной таблицей. */
+export type QueryType = 'select' | 'createTemp' | 'appendTemp' | 'dropTemp';
+
 export interface QueryModel {
   tables: SelectedTable[];
   fields: SelectedField[];
@@ -86,6 +99,14 @@ export interface QueryModel {
   grouping?: Grouping;
   /** Условия отбора (секция ГДЕ). */
   conditions?: Condition[];
+  /** Модификаторы выборки записей (ПЕРВЫЕ/РАЗЛИЧНЫЕ/РАЗРЕШЕННЫЕ). */
+  selection?: Selection;
+  /** Тип запроса (по умолчанию обычная выборка). */
+  queryType?: QueryType;
+  /** Имя временной таблицы для ПОМЕСТИТЬ/ДОБАВИТЬ/УНИЧТОЖИТЬ. */
+  tempTableName?: string;
+  /** Таблицы для секции ДЛЯ ИЗМЕНЕНИЯ (полные имена). */
+  lockForUpdate?: string[];
 }
 
 /**

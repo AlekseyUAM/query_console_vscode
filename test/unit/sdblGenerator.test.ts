@@ -574,3 +574,156 @@ describe('generate — условия (ГДЕ)', () => {
     await assertValidSdbl(generate(model));
   });
 });
+
+describe('generate — дополнительно (фаза 5.3)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const expectedPlain =
+    'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты';
+
+  describe('ВЫБРАТЬ модификаторы', () => {
+    it('ПЕРВЫЕ N', () => {
+      expect(generate({ ...base(), selection: { top: 2 } })).toBe(
+        'ВЫБРАТЬ ПЕРВЫЕ 2\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('РАЗЛИЧНЫЕ', () => {
+      expect(generate({ ...base(), selection: { distinct: true } })).toBe(
+        'ВЫБРАТЬ РАЗЛИЧНЫЕ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('РАЗРЕШЕННЫЕ', () => {
+      expect(generate({ ...base(), selection: { allowed: true } })).toBe(
+        'ВЫБРАТЬ РАЗРЕШЕННЫЕ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('комбинация в порядке РАЗРЕШЕННЫЕ РАЗЛИЧНЫЕ ПЕРВЫЕ', () => {
+      expect(
+        generate({ ...base(), selection: { allowed: true, distinct: true, top: 2 } })
+      ).toBe(
+        'ВЫБРАТЬ РАЗРЕШЕННЫЕ РАЗЛИЧНЫЕ ПЕРВЫЕ 2\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('top <= 0 не добавляет ПЕРВЫЕ', () => {
+      expect(generate({ ...base(), selection: { top: 0 } })).toBe(expectedPlain);
+    });
+
+    it('пустой selection → как раньше', () => {
+      expect(generate({ ...base(), selection: {} })).toBe(expectedPlain);
+    });
+  });
+
+  describe('ПОМЕСТИТЬ / ДОБАВИТЬ', () => {
+    it('ПОМЕСТИТЬ перед ИЗ', () => {
+      expect(
+        generate({ ...base(), queryType: 'createTemp', tempTableName: 'ВремТаб' })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nПОМЕСТИТЬ ВремТаб\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('ДОБАВИТЬ перед ИЗ', () => {
+      expect(
+        generate({ ...base(), queryType: 'appendTemp', tempTableName: 'ВремТаб' })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nДОБАВИТЬ ВремТаб\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('createTemp без имени → как раньше', () => {
+      expect(generate({ ...base(), queryType: 'createTemp' })).toBe(expectedPlain);
+      expect(generate({ ...base(), queryType: 'createTemp', tempTableName: '' })).toBe(
+        expectedPlain
+      );
+    });
+
+    it('валидный SDBL с ПОМЕСТИТЬ', async () => {
+      await assertValidSdbl(
+        generate({ ...base(), queryType: 'createTemp', tempTableName: 'ВремТаб' })
+      );
+    });
+  });
+
+  describe('УНИЧТОЖИТЬ', () => {
+    it('УНИЧТОЖИТЬ как единственная строка', () => {
+      expect(
+        generate({ ...base(), queryType: 'dropTemp', tempTableName: 'ВремТаб' })
+      ).toBe('УНИЧТОЖИТЬ ВремТаб');
+    });
+
+    it('dropTemp без имени → пустая строка', () => {
+      expect(generate({ ...base(), queryType: 'dropTemp' })).toBe('');
+    });
+
+    it('dropTemp игнорирует отсутствие таблиц/полей', () => {
+      expect(
+        generate({ tables: [], fields: [], queryType: 'dropTemp', tempTableName: 'ВремТаб' })
+      ).toBe('УНИЧТОЖИТЬ ВремТаб');
+    });
+  });
+
+  describe('ДЛЯ ИЗМЕНЕНИЯ', () => {
+    it('одна таблица с пустой строкой-разделителем (эталон)', () => {
+      expect(
+        generate({ ...base(), lockForUpdate: ['Справочник.Валюты'] })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты\n\nДЛЯ ИЗМЕНЕНИЯ\n\tСправочник.Валюты'
+      );
+    });
+
+    it('две таблицы', () => {
+      expect(
+        generate({ ...base(), lockForUpdate: ['Справочник.Валюты', 'Справочник.Контрагенты'] })
+      ).toBe(
+        'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты\n\nДЛЯ ИЗМЕНЕНИЯ\n\tСправочник.Валюты\n\tСправочник.Контрагенты'
+      );
+    });
+
+    it('пустой lockForUpdate → как раньше', () => {
+      expect(generate({ ...base(), lockForUpdate: [] })).toBe(expectedPlain);
+    });
+
+    it('валидный SDBL с ДЛЯ ИЗМЕНЕНИЯ', async () => {
+      await assertValidSdbl(generate({ ...base(), lockForUpdate: ['Справочник.Валюты'] }));
+    });
+  });
+
+  describe('комбинации и порядок секций', () => {
+    it('модификаторы + ГДЕ + СГРУППИРОВАТЬ ПО + ДЛЯ ИЗМЕНЕНИЯ в правильном порядке', () => {
+      const model: QueryModel = {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+        selection: { distinct: true },
+        conditions: [{ custom: false, tableId: 't1', path: 'Код' }],
+        grouping: { multiple: false, groupFields: [{ tableId: 't1', path: 'Ссылка' }], groupSets: [], aggregates: [] },
+        lockForUpdate: ['Справочник.Валюты'],
+      };
+      expect(generate(model)).toBe(
+        [
+          'ВЫБРАТЬ РАЗЛИЧНЫЕ',
+          '\tВалюты.Ссылка КАК Ссылка',
+          'ИЗ',
+          '\tСправочник.Валюты КАК Валюты',
+          'ГДЕ',
+          '\tВалюты.Код = &Код',
+          'СГРУППИРОВАТЬ ПО',
+          '\tВалюты.Ссылка',
+          '',
+          'ДЛЯ ИЗМЕНЕНИЯ',
+          '\tСправочник.Валюты',
+        ].join('\n')
+      );
+    });
+
+    it('новые поля undefined → байт-в-байт как раньше', () => {
+      expect(generate(base())).toBe(expectedPlain);
+    });
+  });
+});
