@@ -355,6 +355,29 @@ describe('parseAccountingRegister', () => {
     expect(res?.category).toBe('resource');
     expect(attr?.category).toBe('attribute');
   });
+
+  it('reads Correspondence and ChartOfAccounts name into properties', () => {
+    const el = readObjectEl('AccountingRegisters', 'РегистрБухгалтерии1.xml');
+    const r = parseAccountingRegister(el)!;
+    expect((r.properties as any).correspondence).toBe(true);
+    expect((r.properties as any).chartOfAccounts).toBe('ПланСчетов1');
+  });
+
+  it('base table of a correspondence register has СчетДт/СчетКт, no ВидДвижения', () => {
+    const el = readObjectEl('AccountingRegisters', 'РегистрБухгалтерии1.xml');
+    const names = parseAccountingRegister(el)!.fields.map(f => f.name);
+    expect(names.slice(0, 6)).toEqual(['Период', 'Регистратор', 'НомерСтроки', 'Активность', 'СчетДт', 'СчетКт']);
+    expect(names).not.toContain('ВидДвижения');
+    expect(names).not.toContain('Счет');
+  });
+
+  it('base table of a non-correspondence register has ВидДвижения + Счет', () => {
+    const el = readObjectEl('AccountingRegisters', 'РегистрБухгалтерии2.xml');
+    const r = parseAccountingRegister(el)!;
+    expect((r.properties as any).correspondence).toBe(false);
+    const names = r.fields.map(f => f.name);
+    expect(names.slice(0, 6)).toEqual(['Период', 'Регистратор', 'НомерСтроки', 'Активность', 'ВидДвижения', 'Счет']);
+  });
 });
 
 describe('parseCalculationRegister', () => {
