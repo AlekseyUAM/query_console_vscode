@@ -20,8 +20,10 @@ export interface MetaField {
 }
 
 export interface VirtualTableInfo {
-  slice: 'СрезПервых' | 'СрезПоследних' | 'Обороты' | 'Остатки' | 'ОстаткиИОбороты';
+  slice: 'СрезПервых' | 'СрезПоследних' | 'Обороты' | 'Остатки' | 'ОстаткиИОбороты'
+       | 'ОборотыДтКт' | 'ДвиженияССубконто';
   baseFullName: string;
+  correspondence?: boolean; // регистр бухгалтерии: состав/арность Обороты, наличие ОборотыДтКт
 }
 
 export interface MetaTable {
