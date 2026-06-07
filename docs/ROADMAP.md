@@ -218,7 +218,7 @@
 - План: [`plans/2026-06-07-phase4.5-query-text-testing.md`](superpowers/plans/2026-06-07-phase4.5-query-text-testing.md)
 - Матрица валидации: [`specs/2026-06-07-phase4.5-validation-matrix.md`](superpowers/specs/2026-06-07-phase4.5-validation-matrix.md)
 
-### 🚧 Фаза 5. Вкладки конструктора
+### ✅ Фаза 5. Вкладки конструктора
 
 Поверх стабильного ядра `QueryModel` и контракта сообщений — **по одной фиче на
 вкладку**. Каждая вкладка расширяет `QueryModel` своей секцией, генератор SDBL
