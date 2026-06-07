@@ -1,5 +1,17 @@
-import type { QueryModel, SelectedTable } from './queryModel';
+import type { QueryModel, SelectedTable, AggregateFunction, FieldRef } from './queryModel';
 import { defaultTableAlias } from './queryModel';
+
+/** Оборачивает выражение в SDBL-функцию агрегирования. */
+function wrapAggregate(func: AggregateFunction, expr: string): string {
+  switch (func) {
+    case 'Сумма': return `СУММА(${expr})`;
+    case 'Количество': return `КОЛИЧЕСТВО(${expr})`;
+    case 'КоличествоРазличных': return `КОЛИЧЕСТВО(РАЗЛИЧНЫЕ ${expr})`;
+    case 'Максимум': return `МАКСИМУМ(${expr})`;
+    case 'Минимум': return `МИНИМУМ(${expr})`;
+    case 'Среднее': return `СРЕДНЕЕ(${expr})`;
+  }
+}
 
 function resolveAliases(tables: SelectedTable[]): Map<string, string> {
   const seen = new Set<string>();
@@ -81,6 +93,10 @@ export function generate(model: QueryModel): string {
 
   const aliases = resolveAliases(model.tables);
 
+  const aggregates = model.grouping?.aggregates ?? [];
+  const aggregateFunc = (tableId: string, path: string): AggregateFunction | undefined =>
+    aggregates.find(a => a.tableId === tableId && a.path === path)?.func;
+
   const allLines: string[] = [];
   // Счётчик автопсевдонимов произвольных полей. Не проверяет коллизии с явными
   // псевдонимами — допустимо для фазы 4.2 (UI не смешивает их с полями «Поле{n}»).
@@ -93,7 +109,11 @@ export function generate(model: QueryModel): string {
       continue;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
-    const expr = f.alias ? `${tableAlias}.${f.path} КАК ${f.alias}` : `${tableAlias}.${f.path}`;
+    const func = aggregateFunc(f.tableId, f.path);
+    const lhs = func
+      ? wrapAggregate(func, `${tableAlias}.${f.path}`)
+      : `${tableAlias}.${f.path}`;
+    const expr = f.alias ? `${lhs} КАК ${f.alias}` : lhs;
     allLines.push(`\t${expr}`);
   }
 
@@ -125,7 +145,48 @@ export function generate(model: QueryModel): string {
     return `\t${renderSource(t)} КАК ${alias}${comma}`;
   });
 
-  return ['ВЫБРАТЬ', ...fieldLines, 'ИЗ', ...tableLines].join('\n');
+  const groupingLines = renderGrouping(model.grouping, aliases);
+
+  return ['ВЫБРАТЬ', ...fieldLines, 'ИЗ', ...tableLines, ...groupingLines].join('\n');
+}
+
+/** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */
+function fieldRefExpr(f: FieldRef, aliases: Map<string, string>): string {
+  const tableAlias = aliases.get(f.tableId) ?? f.tableId;
+  return `${tableAlias}.${f.path}`;
+}
+
+/**
+ * Секция СГРУППИРОВАТЬ ПО (или ГРУППИРУЮЩИМ НАБОРАМ). Возвращает [] если
+ * группировка не задана или неактивна — тогда вывод байт-в-байт как раньше.
+ */
+function renderGrouping(
+  grouping: QueryModel['grouping'],
+  aliases: Map<string, string>
+): string[] {
+  if (!grouping) return [];
+
+  if (!grouping.multiple) {
+    if (grouping.groupFields.length === 0) return [];
+    const lines = grouping.groupFields.map((f, i) => {
+      const comma = i < grouping.groupFields.length - 1 ? ',' : '';
+      return `\t${fieldRefExpr(f, aliases)}${comma}`;
+    });
+    return ['СГРУППИРОВАТЬ ПО', ...lines];
+  }
+
+  // multiple=true: наборы группировки
+  const sets = grouping.groupSets.filter(s => s.length > 0);
+  if (sets.length === 0) return [];
+  const setLines = sets.map((set, i) => {
+    const fields = set.map(f => fieldRefExpr(f, aliases));
+    const inner = fields
+      .map((expr, j) => `\t${j === 0 ? '(' : '\t'}${expr}${j < fields.length - 1 ? ',' : ')'}`)
+      .join('\n');
+    const comma = i < sets.length - 1 ? ',' : '';
+    return inner + comma;
+  });
+  return ['СГРУППИРОВАТЬ ПО ГРУППИРУЮЩИМ НАБОРАМ', '(', ...setLines, ')'];
 }
 
 export function formatAsBslString(text: string): string {

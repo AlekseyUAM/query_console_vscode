@@ -36,12 +36,37 @@ export interface SelectedTabSectionField {
   fields: string[];
 }
 
+export type AggregateFunction =
+  | 'Сумма' | 'Количество' | 'КоличествоРазличных'
+  | 'Максимум' | 'Минимум' | 'Среднее';
+
+export interface FieldRef {
+  tableId: string;
+  path: string;
+}
+
+export interface SummableField extends FieldRef {
+  func: AggregateFunction;
+}
+
+export interface Grouping {
+  /** «Использовать несколько группировок». */
+  multiple: boolean;
+  /** Поля группировки (режим single), в порядке добавления. */
+  groupFields: FieldRef[];
+  /** Наборы группировки (режим multiple=true). */
+  groupSets: FieldRef[][];
+  /** Суммируемые поля с функцией агрегирования. */
+  aggregates: SummableField[];
+}
+
 export interface QueryModel {
   tables: SelectedTable[];
   fields: SelectedField[];
   tabSectionFields?: SelectedTabSectionField[];
   /** Поля, которые должны быть отрисованы ПОСЛЕ табличных частей (Предопределенный, ИмяПредопределенныхДанных). */
   trailingFields?: SelectedField[];
+  grouping?: Grouping;
 }
 
 /**

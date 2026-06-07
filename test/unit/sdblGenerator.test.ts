@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generate } from '../../src/core/query/sdblGenerator';
 import type { QueryModel } from '../../src/core/query/queryModel';
+import { assertValidSdbl } from '../helpers/assertValidSdbl';
 
 describe('generate', () => {
   it('returns empty string when no tables', () => {
@@ -265,6 +266,186 @@ describe('generate', () => {
     it('ДвиженияССубконто с параметром Первые (арность 5)', () => {
       const text = generate(mk('ДвиженияССубконто', { top: '3' }));
       expect(text).toContain('РегистрБухгалтерии.РБ1.ДвиженияССубконто(, , , , 3) КАК РБ1');
+    });
+  });
+});
+
+describe('generate — группировка', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Наценка', alias: 'Наценка' }],
+  });
+
+  describe('агрегатные обёртки в ВЫБРАТЬ', () => {
+    const cases: Array<[string, string]> = [
+      ['Сумма', 'СУММА(Валюты.Наценка) КАК Наценка'],
+      ['Количество', 'КОЛИЧЕСТВО(Валюты.Наценка) КАК Наценка'],
+      ['КоличествоРазличных', 'КОЛИЧЕСТВО(РАЗЛИЧНЫЕ Валюты.Наценка) КАК Наценка'],
+      ['Максимум', 'МАКСИМУМ(Валюты.Наценка) КАК Наценка'],
+      ['Минимум', 'МИНИМУМ(Валюты.Наценка) КАК Наценка'],
+      ['Среднее', 'СРЕДНЕЕ(Валюты.Наценка) КАК Наценка'],
+    ];
+    for (const [func, expected] of cases) {
+      it(`${func} → ${expected}`, () => {
+        const model = base();
+        model.grouping = {
+          multiple: false,
+          groupFields: [],
+          groupSets: [],
+          aggregates: [{ tableId: 't1', path: 'Наценка', func: func as any }],
+        };
+        expect(generate(model)).toContain(`\t${expected}`);
+      });
+    }
+
+    it('суммируемое поле без псевдонима — без КАК', () => {
+      const model: QueryModel = {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [{ tableId: 't1', path: 'Наценка' }],
+        grouping: {
+          multiple: false,
+          groupFields: [],
+          groupSets: [],
+          aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+        },
+      };
+      const text = generate(model);
+      expect(text).toContain('\tСУММА(Валюты.Наценка)\n');
+      expect(text).not.toContain('СУММА(Валюты.Наценка) КАК');
+    });
+
+    it('не оборачивает поля с expression', () => {
+      const model: QueryModel = {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [{ tableId: 't1', path: '', expression: 'Валюты.Наценка', alias: 'Наценка' }],
+        grouping: {
+          multiple: false,
+          groupFields: [{ tableId: 't1', path: 'Код' }],
+          groupSets: [],
+          aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+        },
+      };
+      // expression-поле остаётся как есть, без СУММА(...)
+      expect(generate(model)).toContain('\tВалюты.Наценка КАК Наценка');
+    });
+  });
+
+  describe('одна группировка', () => {
+    const model = (): QueryModel => ({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+      ],
+      grouping: {
+        multiple: false,
+        groupFields: [
+          { tableId: 't1', path: 'Ссылка' },
+          { tableId: 't1', path: 'Код' },
+        ],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+
+    it('добавляет секцию СГРУППИРОВАТЬ ПО после ИЗ', () => {
+      const text = generate(model());
+      expect(text).toBe(
+        'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка,\n' +
+        '\tСУММА(Валюты.Наценка) КАК Наценка,\n' +
+        '\tВалюты.Код КАК Код\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты\n' +
+        'СГРУППИРОВАТЬ ПО\n' +
+        '\tВалюты.Ссылка,\n' +
+        '\tВалюты.Код'
+      );
+    });
+
+    it('валидный SDBL', async () => {
+      await assertValidSdbl(generate(model()));
+    });
+  });
+
+  describe('несколько группировок', () => {
+    const model = (): QueryModel => ({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'ОсновнаяВалюта', alias: 'ОсновнаяВалюта' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Представление', alias: 'Представление' },
+      ],
+      grouping: {
+        multiple: true,
+        groupFields: [],
+        groupSets: [
+          [
+            { tableId: 't1', path: 'ОсновнаяВалюта' },
+            { tableId: 't1', path: 'Ссылка' },
+          ],
+          [{ tableId: 't1', path: 'Код' }],
+          [{ tableId: 't1', path: 'Представление' }],
+        ],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+
+    it('добавляет секцию ГРУППИРУЮЩИМ НАБОРАМ с 3 наборами', () => {
+      const text = generate(model());
+      expect(text).toContain('СГРУППИРОВАТЬ ПО ГРУППИРУЮЩИМ НАБОРАМ');
+      expect(text).toContain('(Валюты.ОсновнаяВалюта,');
+      expect(text).toContain('Валюты.Ссылка)');
+      expect(text).toContain('(Валюты.Код)');
+      expect(text).toContain('(Валюты.Представление)');
+      expect(text).toContain('СУММА(Валюты.Наценка) КАК Наценка');
+    });
+
+    it('пропускает пустые наборы', () => {
+      const m = model();
+      m.grouping!.groupSets = [
+        [{ tableId: 't1', path: 'Код' }],
+        [],
+        [{ tableId: 't1', path: 'Представление' }],
+      ];
+      const text = generate(m);
+      expect(text).toContain('(Валюты.Код)');
+      expect(text).toContain('(Валюты.Представление)');
+      expect(text).not.toContain('()');
+    });
+
+    it('валидный SDBL', async () => {
+      await assertValidSdbl(generate(model()));
+    });
+  });
+
+  describe('неактивная группировка не меняет вывод', () => {
+    const plain: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код' }],
+    };
+    const expected = 'ВЫБРАТЬ\n\tВалюты.Код\nИЗ\n\tСправочник.Валюты КАК Валюты';
+
+    it('grouping undefined → как раньше', () => {
+      expect(generate(plain)).toBe(expected);
+    });
+
+    it('single без полей группировки → как раньше', () => {
+      const model: QueryModel = {
+        ...plain,
+        grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
+      };
+      expect(generate(model)).toBe(expected);
+    });
+
+    it('multiple без непустых наборов → как раньше', () => {
+      const model: QueryModel = {
+        ...plain,
+        grouping: { multiple: true, groupFields: [], groupSets: [[]], aggregates: [] },
+      };
+      expect(generate(model)).toBe(expected);
     });
   });
 });
