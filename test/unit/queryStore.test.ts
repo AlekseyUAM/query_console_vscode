@@ -246,3 +246,67 @@ describe('queryStore reducer — grouping', () => {
     expect(state.grouping.groupSets[0]).toEqual([{ tableId: 't1', path: 'Наименование' }]);
   });
 });
+
+describe('queryStore reducer — conditions', () => {
+  it('initialState has empty conditions', () => {
+    expect(initialState().conditions).toEqual([]);
+  });
+
+  it('ADD_CONDITION appends with default operator and param from last path segment', () => {
+    const state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    expect(state.conditions).toEqual([
+      { custom: false, tableId: 't1', path: 'Код', operator: '=', param: '&Код' },
+    ]);
+  });
+
+  it('ADD_CONDITION derives param from the last segment of a composite path', () => {
+    const state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Валюта.Код' });
+    expect(state.conditions[0].param).toBe('&Код');
+  });
+
+  it('ADD_CONDITION allows duplicates (each drop adds a row)', () => {
+    let state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    expect(state.conditions).toHaveLength(2);
+  });
+
+  it('REMOVE_CONDITION removes by index', () => {
+    let state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'ADD_CONDITION', tableId: 't1', path: 'Наименование' });
+    state = reducer(state, { type: 'REMOVE_CONDITION', index: 0 });
+    expect(state.conditions).toHaveLength(1);
+    expect(state.conditions[0].path).toBe('Наименование');
+  });
+
+  it('SET_CONDITION_CUSTOM toggles the custom flag of a row', () => {
+    let state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'SET_CONDITION_CUSTOM', index: 0, custom: true });
+    expect(state.conditions[0].custom).toBe(true);
+    state = reducer(state, { type: 'SET_CONDITION_CUSTOM', index: 0, custom: false });
+    expect(state.conditions[0].custom).toBe(false);
+  });
+
+  it('SET_CONDITION_OPERATOR sets the operator of a row', () => {
+    let state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'SET_CONDITION_OPERATOR', index: 0, operator: '<>' });
+    expect(state.conditions[0].operator).toBe('<>');
+  });
+
+  it('SET_CONDITION_PARAM sets the param of a row', () => {
+    let state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'SET_CONDITION_PARAM', index: 0, param: '&МойКод' });
+    expect(state.conditions[0].param).toBe('&МойКод');
+  });
+
+  it('SET_CONDITION_EXPRESSION sets the expression of a row', () => {
+    let state = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'SET_CONDITION_EXPRESSION', index: 0, expression: 'Валюты.Код = &Код' });
+    expect(state.conditions[0].expression).toBe('Валюты.Код = &Код');
+  });
+
+  it('condition actions on a missing index are no-ops', () => {
+    const base = reducer(initialState(), { type: 'ADD_CONDITION', tableId: 't1', path: 'Код' });
+    expect(reducer(base, { type: 'SET_CONDITION_OPERATOR', index: 9, operator: '<>' }).conditions[0].operator).toBe('=');
+    expect(reducer(base, { type: 'REMOVE_CONDITION', index: 9 }).conditions).toHaveLength(1);
+  });
+});

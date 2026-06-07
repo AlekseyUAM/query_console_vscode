@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 
@@ -9,6 +9,7 @@ export interface QueryState {
   selectedFields: SelectedField[];
   tabSectionFields: SelectedTabSectionField[];
   grouping: Grouping;
+  conditions: Condition[];
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
   focusedDbFieldPath: string | null;
@@ -42,7 +43,13 @@ export type QueryAction =
   | { type: 'ADD_GROUP_SET' }
   | { type: 'REMOVE_GROUP_SET'; index: number }
   | { type: 'ADD_FIELD_TO_SET'; index: number; tableId: string; path: string }
-  | { type: 'REMOVE_FIELD_FROM_SET'; index: number; tableId: string; path: string };
+  | { type: 'REMOVE_FIELD_FROM_SET'; index: number; tableId: string; path: string }
+  | { type: 'ADD_CONDITION'; tableId: string; path: string }
+  | { type: 'REMOVE_CONDITION'; index: number }
+  | { type: 'SET_CONDITION_CUSTOM'; index: number; custom: boolean }
+  | { type: 'SET_CONDITION_OPERATOR'; index: number; operator: ConditionOperator }
+  | { type: 'SET_CONDITION_PARAM'; index: number; param: string }
+  | { type: 'SET_CONDITION_EXPRESSION'; index: number; expression: string };
 
 export function initialState(): QueryState {
   return {
@@ -51,6 +58,7 @@ export function initialState(): QueryState {
     selectedFields: [],
     tabSectionFields: [],
     grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
+    conditions: [],
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
     focusedDbFieldPath: null,
@@ -302,6 +310,46 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         i === index ? s.filter(f => !(f.tableId === tableId && f.path === path)) : s
       );
       return { ...state, grouping: { ...state.grouping, groupSets } };
+    }
+
+    case 'ADD_CONDITION': {
+      const { tableId, path } = action;
+      const param = `&${path.split('.').pop()}`;
+      const condition: Condition = { custom: false, tableId, path, operator: '=', param };
+      return { ...state, conditions: [...state.conditions, condition] };
+    }
+
+    case 'REMOVE_CONDITION': {
+      const conditions = state.conditions.filter((_, i) => i !== action.index);
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_CUSTOM': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, custom: action.custom } : c
+      );
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_OPERATOR': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, operator: action.operator } : c
+      );
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_PARAM': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, param: action.param } : c
+      );
+      return { ...state, conditions };
+    }
+
+    case 'SET_CONDITION_EXPRESSION': {
+      const conditions = state.conditions.map((c, i) =>
+        i === action.index ? { ...c, expression: action.expression } : c
+      );
+      return { ...state, conditions };
     }
 
     default:

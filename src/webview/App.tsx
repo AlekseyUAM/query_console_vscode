@@ -5,6 +5,7 @@ import { DbTreePanel } from './components/DbTreePanel';
 import { TablesPanel } from './components/TablesPanel';
 import { FieldsPanel } from './components/FieldsPanel';
 import { GroupingTab } from './components/GroupingTab';
+import { ConditionsTab } from './components/ConditionsTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -67,6 +68,7 @@ export function App(): React.ReactElement {
       fields: state.selectedFields,
       tabSectionFields: state.tabSectionFields,
       grouping: state.grouping,
+      conditions: state.conditions,
     });
     setQueryModalText(text || '-- нет полей для генерации запроса');
   }
@@ -89,6 +91,12 @@ export function App(): React.ReactElement {
         ? accumPeriodFields(sel.virtual?.periodicity)
         : [];
     return [...periodFields, ...meta.fields].map((f: MetaField) => qualified ? `${alias}.${f.name}` : f.name);
+  }
+
+  // Квалифицированные поля (Alias.Поле) по всем выбранным таблицам — для
+  // конструктора произвольного условия.
+  function qualifiedFieldsAllTables(): string[] {
+    return state.selectedTables.flatMap(t => fieldsForTable(t.id, true));
   }
 
   // Выбранная таблица для окна «Параметры виртуальной таблицы» (null, если строка
@@ -163,6 +171,7 @@ export function App(): React.ReactElement {
             selectedFields={state.selectedFields}
             tabSectionFields={state.tabSectionFields}
             grouping={state.grouping}
+            conditions={state.conditions}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -213,7 +222,30 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && (
+      {activeTab === 'Условия' && (
+        <ConditionsTab
+          selectedTables={state.selectedTables}
+          metaTables={state.tables}
+          conditions={state.conditions}
+          onAddCondition={(tableId, path) => dispatch({ type: 'ADD_CONDITION', tableId, path })}
+          onRemoveCondition={index => dispatch({ type: 'REMOVE_CONDITION', index })}
+          onSetCustom={(index, custom) => dispatch({ type: 'SET_CONDITION_CUSTOM', index, custom })}
+          onSetOperator={(index, operator) => dispatch({ type: 'SET_CONDITION_OPERATOR', index, operator })}
+          onSetParam={(index, param) => dispatch({ type: 'SET_CONDITION_PARAM', index, param })}
+          onOpenExpressionBuilder={(index, currentText) => {
+            setExprBuilder({
+              fields: qualifiedFieldsAllTables(),
+              initial: currentText,
+              onOk: text => {
+                dispatch({ type: 'SET_CONDITION_EXPRESSION', index, expression: text });
+                setExprBuilder(null);
+              },
+            });
+          }}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && activeTab !== 'Условия' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
