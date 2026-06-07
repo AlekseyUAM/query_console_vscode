@@ -7,6 +7,7 @@ import { FieldsPanel } from './components/FieldsPanel';
 import { GroupingTab } from './components/GroupingTab';
 import { ConditionsTab } from './components/ConditionsTab';
 import { AdditionalTab } from './components/AdditionalTab';
+import { UnionsTab } from './components/UnionsTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -14,8 +15,9 @@ import { defaultTableAlias } from '../core/query/queryModel';
 import type { MetaField, MetaTable } from '../core/metadata/types';
 import { accumPeriodFields } from '../core/query/accumVirtualFields';
 import { postToHost, onHostMessage } from './bridge';
-import { initialState, reducer } from './state/queryStore';
-import { generate } from '../core/query/sdblGenerator';
+import { initialState, reducer, assembleMembers } from './state/queryStore';
+import { generateDocument } from '../core/query/sdblGenerator';
+import { deriveUnionColumns } from '../core/query/unionModel';
 
 const BTN: React.CSSProperties = {
   padding: '4px 12px',
@@ -64,17 +66,7 @@ export function App(): React.ReactElement {
   }
 
   function handleShowQuery() {
-    const text = generate({
-      tables: state.selectedTables,
-      fields: state.selectedFields,
-      tabSectionFields: state.tabSectionFields,
-      grouping: state.grouping,
-      conditions: state.conditions,
-      selection: state.selection,
-      queryType: state.queryType,
-      tempTableName: state.tempTableName,
-      lockForUpdate: state.lockForUpdate,
-    });
+    const text = generateDocument({ members: assembleMembers(state) });
     setQueryModalText(text || '-- нет полей для генерации запроса');
   }
 
@@ -123,6 +115,41 @@ export function App(): React.ReactElement {
     flexDirection: 'column',
   };
 
+  // Участники объединения и производные колонки — общий источник для генерации
+  // и вкладки «Объединения/Псевдонимы».
+  const members = assembleMembers(state);
+  const unionColumns = deriveUnionColumns(members);
+
+  // Вертикальная полоса боковых вкладок запросов (только если запросов > 1 и
+  // активна одна из конструкторских вкладок, кроме «Объединения/Псевдонимы»).
+  const showSideTabs = state.queryList.length > 1 && activeTab !== 'Объединения/Псевдонимы';
+  const sideTabsStrip = showSideTabs ? (
+    <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
+      {state.queryList.map((q, i) => {
+        const isActive = i === state.activeQuery;
+        return (
+          <div
+            key={i}
+            onClick={() => dispatch({ type: 'SET_ACTIVE_QUERY', index: i })}
+            title={q.name}
+            style={{
+              writingMode: 'vertical-rl',
+              padding: '12px 6px',
+              cursor: 'pointer',
+              borderLeft: isActive ? '2px solid var(--vscode-focusBorder, #007fd4)' : '2px solid transparent',
+              color: isActive ? 'var(--vscode-tab-activeForeground, #fff)' : 'var(--vscode-tab-inactiveForeground, #999)',
+              background: isActive ? 'var(--vscode-tab-activeBackground, #1e1e1e)' : 'transparent',
+              fontSize: 13,
+              userSelect: 'none',
+            }}
+          >
+            {q.name}
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
       <TabsBar active={activeTab} onSelect={setActiveTab} />
@@ -141,6 +168,8 @@ export function App(): React.ReactElement {
           </span>
         )}
       </div>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
       {activeTab === 'Таблицы и поля' && (
       <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
         <div style={panelStyle}>
@@ -181,6 +210,7 @@ export function App(): React.ReactElement {
             queryType={state.queryType}
             tempTableName={state.tempTableName}
             lockForUpdate={state.lockForUpdate}
+            members={members}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -273,11 +303,28 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && (
+      {activeTab === 'Объединения/Псевдонимы' && (
+        <UnionsTab
+          queryList={state.queryList}
+          activeQuery={state.activeQuery}
+          columns={unionColumns}
+          onAddQuery={() => dispatch({ type: 'ADD_QUERY' })}
+          onRemoveQuery={index => dispatch({ type: 'REMOVE_QUERY', index })}
+          onSetActiveQuery={index => dispatch({ type: 'SET_ACTIVE_QUERY', index })}
+          onRenameQuery={(index, name) => dispatch({ type: 'RENAME_QUERY', index, name })}
+          onSetQueryDistinct={(index, distinct) => dispatch({ type: 'SET_QUERY_DISTINCT', index, distinct })}
+          onSetColumnAlias={(alias, newAlias) => dispatch({ type: 'SET_COLUMN_ALIAS', alias, newAlias })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
       )}
+      </div>
+      {sideTabsStrip}
+      </div>
 
       {/* Bottom bar */}
       <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
