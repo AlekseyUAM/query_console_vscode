@@ -15,10 +15,16 @@ export function parseAccumulationRegister(objectEl: any): ParsedObject | null {
   const std = (n: string, types: ParsedType[]) =>
     fields.push({ name: n, category: 'standard', types });
 
-  std('НомерСтроки', [{ kind: 'Число', digits: 9, fractionDigits: 0 }]);
+  // Порядок стандартных полей реальной таблицы — как в конструкторе 1С:
+  // Период, Регистратор, НомерСтроки, Активность [, ВидДвижения]. ВидДвижения
+  // (приход/расход) есть только у регистра вида Остатки (Balance), не у Оборотов.
   std('Период', [{ kind: 'Дата', dateFractions: 'DateTime' }]);
   std('Регистратор', [{ kind: 'unknown' }]);
-  std('ВидДвижения', [{ kind: 'unknown' }]);
+  std('НомерСтроки', [{ kind: 'Число', digits: 9, fractionDigits: 0 }]);
+  std('Активность', [{ kind: 'Булево' }]);
+  if (registerType !== 'Turnovers') {
+    std('ВидДвижения', [{ kind: 'unknown' }]);
+  }
 
   const { dimensions, resources } = parseChildObjects(objectEl);
   fields.push(...dimensions);

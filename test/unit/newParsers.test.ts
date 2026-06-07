@@ -300,14 +300,20 @@ describe('parseAccumulationRegister', () => {
     expect(result?.kind).toBe('РегистрНакопления');
   });
 
-  it('always includes НомерСтроки, Период, Регистратор, ВидДвижения', () => {
+  it('standard fields of a turnovers register: Период, Регистратор, НомерСтроки, Активность (no ВидДвижения)', () => {
     const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОбор.xml');
     const result = parseAccumulationRegister(el)!;
     const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
-    expect(stdNames).toContain('НомерСтроки');
-    expect(stdNames).toContain('Период');
-    expect(stdNames).toContain('Регистратор');
-    expect(stdNames).toContain('ВидДвижения');
+    // Порядок как в конструкторе 1С; ВидДвижения только у регистра вида Остатки (Balance).
+    expect(stdNames).toEqual(['Период', 'Регистратор', 'НомерСтроки', 'Активность']);
+    expect(stdNames).not.toContain('ВидДвижения');
+  });
+
+  it('balance register includes ВидДвижения after Активность', () => {
+    const el = readObjectEl('AccumulationRegisters', 'РегистрНакопленияОст.xml');
+    const result = parseAccumulationRegister(el)!;
+    const stdNames = result.fields.filter(f => f.category === 'standard').map(f => f.name);
+    expect(stdNames).toEqual(['Период', 'Регистратор', 'НомерСтроки', 'Активность', 'ВидДвижения']);
   });
 
   it('includes dimension and resource fields', () => {

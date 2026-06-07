@@ -130,7 +130,7 @@ function buildAccumRegSlices(obj: ParsedObject, base: MetaTable): MetaTable[] {
   result.push(makeVT('Обороты', expandResources(resources, oborotSuffixes)));
   if (isBalance) {
     result.push(makeVT('ОстаткиИОбороты',
-      expandResources(resources, ['НачальныйОстаток', 'КонечныйОстаток', 'Оборот', 'Приход', 'Расход'])));
+      expandResources(resources, ['НачальныйОстаток', 'Оборот', 'Приход', 'Расход', 'КонечныйОстаток'])));
   }
   return result;
 }

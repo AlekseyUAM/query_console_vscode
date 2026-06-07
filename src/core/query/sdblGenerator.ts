@@ -53,15 +53,21 @@ function renderSource(t: SelectedTable): string {
     return `${t.fullName}(${positions.join(', ')})`;
   }
 
-  // Регистры сведений/накопления: хвостовые пустые позиции отбрасываются.
-  let positions: string[];
-  if (slice === 'Обороты') {
-    positions = [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.condition ?? ''];
-  } else if (slice === 'ОстаткиИОбороты') {
-    positions = [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.fillMethod ?? '', v.condition ?? ''];
-  } else {
-    positions = [v.period ?? '', v.condition ?? ''];
+  // Обороты/ОстаткиИОбороты регистра накопления — фиксированная арность (как у
+  // регистра бухгалтерии и по эталону конструктора 1С): хвостовые пустые позиции
+  // сохраняются, скобки — только если задан хоть один параметр.
+  //   Обороты:          (НачалоПериода, КонецПериода, Периодичность, Условие)        — 4
+  //   ОстаткиИОбороты:  (НачалоПериода, КонецПериода, Периодичность, МетодДополнения, Условие) — 5
+  if (slice === 'Обороты' || slice === 'ОстаткиИОбороты') {
+    const positions = slice === 'Обороты'
+      ? [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.condition ?? '']
+      : [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.fillMethod ?? '', v.condition ?? ''];
+    if (!positions.some(p => p !== '')) return t.fullName;
+    return `${t.fullName}(${positions.join(', ')})`;
   }
+
+  // Остатки/срезы регистра сведений: хвостовые пустые позиции отбрасываются.
+  const positions = [v.period ?? '', v.condition ?? ''];
   let last = positions.length - 1;
   while (last >= 0 && positions[last] === '') last--;
   if (last < 0) return t.fullName;

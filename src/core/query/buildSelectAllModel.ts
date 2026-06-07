@@ -75,8 +75,15 @@ export function buildSelectAllModel(t: MetaTable, periodicity?: string): QueryMo
     fields: ts.fields.map(f => f.name),
   }));
 
+  // Для ВТ Обороты/ОстаткиИОбороты периодичность идёт в источник (3-я позиция),
+  // поэтому прокидываем её в параметры виртуальной таблицы. Для остальных ВТ
+  // параметры пустые (источник без скобок).
+  const slice = t.virtual?.slice;
+  const passPeriodicity = (slice === 'Обороты' || slice === 'ОстаткиИОбороты') && !!periodicity;
+  const virtual = t.virtual ? (passPeriodicity ? { periodicity } : {}) : undefined;
+
   return {
-    tables: [{ id: 't1', fullName: t.fullName, ...(t.virtual ? { virtual: {} } : {}) }],
+    tables: [{ id: 't1', fullName: t.fullName, ...(virtual ? { virtual } : {}) }],
     fields,
     ...(tabSectionFields.length ? { tabSectionFields } : {}),
     ...(trailingFields ? { trailingFields } : {}),

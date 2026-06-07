@@ -198,20 +198,20 @@ describe('generate', () => {
     );
   });
 
-  it('drops trailing empty positions for Обороты (only start/end period set)', () => {
+  it('keeps fixed arity 4 for Обороты (only start/end period set, trailing empties kept)', () => {
     const model: QueryModel = {
       tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.Обороты', virtual: { startPeriod: '&Нач', endPeriod: '&Кон' } }],
       fields: [{ tableId: 't1', path: 'Ресурс1Оборот' }],
     };
-    expect(generate(model)).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, &Кон) КАК РегистрНакопленияОст');
+    expect(generate(model)).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, &Кон, , ) КАК РегистрНакопленияОст');
   });
 
-  it('keeps empty middle position for Обороты (start + periodicity, no end)', () => {
+  it('keeps empty middle and trailing positions for Обороты (start + periodicity, no end)', () => {
     const model: QueryModel = {
       tables: [{ id: 't1', fullName: 'РегистрНакопления.РегистрНакопленияОст.Обороты', virtual: { startPeriod: '&Нач', periodicity: 'Месяц' } }],
       fields: [{ tableId: 't1', path: 'Ресурс1Оборот' }],
     };
-    expect(generate(model)).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, , Месяц) КАК РегистрНакопленияОст');
+    expect(generate(model)).toContain('РегистрНакопления.РегистрНакопленияОст.Обороты(&Нач, , Месяц, ) КАК РегистрНакопленияОст');
   });
 
   it('uses object name (not concat) as virtual table alias', () => {
