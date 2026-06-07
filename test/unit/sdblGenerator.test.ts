@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { generate } from '../../src/core/query/sdblGenerator';
+import { generate, generateDocument } from '../../src/core/query/sdblGenerator';
+import type { QueryDocument } from '../../src/core/query/unionModel';
 import type { QueryModel } from '../../src/core/query/queryModel';
 import { assertValidSdbl } from '../helpers/assertValidSdbl';
 
@@ -724,6 +725,107 @@ describe('generate — дополнительно (фаза 5.3)', () => {
 
     it('новые поля undefined → байт-в-байт как раньше', () => {
       expect(generate(base())).toBe(expectedPlain);
+    });
+  });
+
+  describe('generateDocument (объединения)', () => {
+    // Участник 0: Справочник.Валюты с полями Ссылка, Код и ДЛЯ ИЗМЕНЕНИЯ.
+    const valuteMember = () => ({
+      name: 'Запрос 1',
+      distinct: false,
+      model: {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [
+          { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+          { tableId: 't1', path: 'Код', alias: 'Код' },
+        ],
+        lockForUpdate: ['Справочник.Валюты'],
+      } as QueryModel,
+    });
+
+    // Участник 1: Справочник.ВариантыОтветовАнкет с полями Ссылка, Наименование.
+    const variantMember = (distinct = false) => ({
+      name: 'Запрос 2',
+      distinct,
+      model: {
+        tables: [{ id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' }],
+        fields: [
+          { tableId: 't2', path: 'Ссылка', alias: 'Ссылка' },
+          { tableId: 't2', path: 'Наименование', alias: 'Наименование' },
+        ],
+      } as QueryModel,
+    });
+
+    it('пустой документ → пустая строка', () => {
+      expect(generateDocument({ members: [] })).toBe('');
+    });
+
+    it('один участник → идентично generate(model)', () => {
+      const doc: QueryDocument = { members: [valuteMember()] };
+      expect(generateDocument(doc)).toBe(generate(valuteMember().model));
+    });
+
+    it('два участника воспроизводят эталон tmp/объединения.md', async () => {
+      const doc: QueryDocument = { members: [valuteMember(), variantMember()] };
+      const expected = [
+        'ВЫБРАТЬ',
+        '\tВалюты.Ссылка КАК Ссылка,',
+        '\tВалюты.Код КАК Код,',
+        '\tNULL КАК Наименование',
+        'ИЗ',
+        '\tСправочник.Валюты КАК Валюты',
+        '',
+        'ДЛЯ ИЗМЕНЕНИЯ',
+        '\tСправочник.Валюты',
+        '',
+        'ОБЪЕДИНИТЬ ВСЕ',
+        '',
+        'ВЫБРАТЬ',
+        '\tВариантыОтветовАнкет.Ссылка,',
+        '\tNULL,',
+        '\tВариантыОтветовАнкет.Наименование',
+        'ИЗ',
+        '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет',
+      ].join('\n');
+      expect(generateDocument(doc)).toBe(expected);
+      await assertValidSdbl(generateDocument(doc));
+    });
+
+    it('distinct=true у участника → ОБЪЕДИНИТЬ (без ВСЕ)', () => {
+      const doc: QueryDocument = { members: [valuteMember(), variantMember(true)] };
+      const text = generateDocument(doc);
+      expect(text).toContain('\n\nОБЪЕДИНИТЬ\n\n');
+      expect(text).not.toContain('ОБЪЕДИНИТЬ ВСЕ');
+    });
+
+    it('переименование общего псевдонима → одна колонка, КАК только у участника 0', async () => {
+      const m0 = valuteMember();
+      m0.model.fields[0].alias = 'Труляля';
+      const m1 = variantMember();
+      m1.model.fields[0].alias = 'Труляля';
+      const doc: QueryDocument = { members: [m0, m1] };
+      const expected = [
+        'ВЫБРАТЬ',
+        '\tВалюты.Ссылка КАК Труляля,',
+        '\tВалюты.Код КАК Код,',
+        '\tNULL КАК Наименование',
+        'ИЗ',
+        '\tСправочник.Валюты КАК Валюты',
+        '',
+        'ДЛЯ ИЗМЕНЕНИЯ',
+        '\tСправочник.Валюты',
+        '',
+        'ОБЪЕДИНИТЬ ВСЕ',
+        '',
+        'ВЫБРАТЬ',
+        '\tВариантыОтветовАнкет.Ссылка,',
+        '\tNULL,',
+        '\tВариантыОтветовАнкет.Наименование',
+        'ИЗ',
+        '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет',
+      ].join('\n');
+      expect(generateDocument(doc)).toBe(expected);
+      await assertValidSdbl(generateDocument(doc));
     });
   });
 });

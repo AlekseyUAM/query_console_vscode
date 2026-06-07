@@ -1,5 +1,7 @@
-import type { QueryModel, SelectedTable, AggregateFunction, FieldRef, Condition } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition } from './queryModel';
 import { defaultTableAlias } from './queryModel';
+import type { QueryDocument } from './unionModel';
+import { deriveUnionColumns } from './unionModel';
 
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
@@ -13,7 +15,7 @@ function wrapAggregate(func: AggregateFunction, expr: string): string {
   }
 }
 
-function resolveAliases(tables: SelectedTable[]): Map<string, string> {
+export function resolveAliases(tables: SelectedTable[]): Map<string, string> {
   const seen = new Set<string>();
   const result = new Map<string, string>();
   for (const t of tables) {
@@ -96,18 +98,62 @@ function selectionModifiers(selection: QueryModel['selection']): string {
   return m;
 }
 
-export function generate(model: QueryModel): string {
-  // УНИЧТОЖИТЬ — самостоятельный запрос, до всех остальных проверок.
-  if (model.queryType === 'dropTemp') {
-    return model.tempTableName ? `УНИЧТОЖИТЬ ${model.tempTableName}` : '';
-  }
+/**
+ * Сборка блока одного запроса из ГОТОВЫХ строк полей (без хвостовых запятых).
+ * Используется как обычным `generate`, так и генератором объединений
+ * `generateDocument` (где список полей формируется из колонок объединения, а не
+ * из `model.fields`). Возвращает текст блока (ВЫБРАТЬ … ИЗ … ГДЕ … и т.д.).
+ *
+ * `fieldLines` — строки элементов выборки БЕЗ запятых; запятые добавляются здесь.
+ * Не обрабатывает случай `dropTemp` (он самостоятельный — см. `generate`).
+ */
+function buildQueryBlock(
+  model: QueryModel,
+  fieldLines: string[],
+  aliases: Map<string, string>
+): string {
+  const lines = fieldLines.map((l, i) => (i < fieldLines.length - 1 ? l + ',' : l));
 
-  if (model.tables.length === 0) return '';
-  const hasFields = model.fields.length > 0 || (model.tabSectionFields?.length ?? 0) > 0;
-  if (!hasFields) return '';
+  const tableLines = model.tables.map((t, i) => {
+    const alias = aliases.get(t.id) ?? t.id;
+    const comma = i < model.tables.length - 1 ? ',' : '';
+    return `\t${renderSource(t)} КАК ${alias}${comma}`;
+  });
 
-  const aliases = resolveAliases(model.tables);
+  const conditionLines = renderConditions(model.conditions, aliases);
+  const groupingLines = renderGrouping(model.grouping, aliases);
 
+  // ПОМЕСТИТЬ/ДОБАВИТЬ <ВТ> между списком полей и ИЗ.
+  const placeLines: string[] =
+    model.queryType === 'createTemp' && model.tempTableName
+      ? ['ПОМЕСТИТЬ ' + model.tempTableName]
+      : model.queryType === 'appendTemp' && model.tempTableName
+        ? ['ДОБАВИТЬ ' + model.tempTableName]
+        : [];
+
+  // ДЛЯ ИЗМЕНЕНИЯ <таблицы> — в самом конце, с пустой строкой-разделителем.
+  const lockLines: string[] = model.lockForUpdate?.length
+    ? ['', 'ДЛЯ ИЗМЕНЕНИЯ', ...model.lockForUpdate.map(name => '\t' + name)]
+    : [];
+
+  return [
+    'ВЫБРАТЬ' + selectionModifiers(model.selection),
+    ...lines,
+    ...placeLines,
+    'ИЗ',
+    ...tableLines,
+    ...conditionLines,
+    ...groupingLines,
+    ...lockLines,
+  ].join('\n');
+}
+
+/**
+ * Строки элементов выборки (БЕЗ хвостовых запятых) из собственных полей модели:
+ * `model.fields`, табличные части и хвостовые поля. Совпадает байт-в-байт с тем,
+ * что раньше формировал `generate`.
+ */
+function buildFieldLines(model: QueryModel, aliases: Map<string, string>): string[] {
   const aggregates = model.grouping?.aggregates ?? [];
   const aggregateFunc = (tableId: string, path: string): AggregateFunction | undefined =>
     aggregates.find(a => a.tableId === tableId && a.path === path)?.func;
@@ -152,40 +198,74 @@ export function generate(model: QueryModel): string {
     allLines.push(`\t${expr}`);
   }
 
-  const fieldLines = allLines.map((l, i) => i < allLines.length - 1 ? l + ',' : l);
+  return allLines;
+}
 
-  const tableLines = model.tables.map((t, i) => {
-    const alias = aliases.get(t.id) ?? t.id;
-    const comma = i < model.tables.length - 1 ? ',' : '';
-    return `\t${renderSource(t)} КАК ${alias}${comma}`;
+/**
+ * Выражение элемента выборки для одного поля БЕЗ части `КАК <псевдоним>`:
+ * `${псевдонимТаблицы}.${path}` (с обёрткой агрегата, если поле суммируемое),
+ * либо сырое `expression` для произвольного поля. Карта псевдонимов
+ * вычисляется по `resolveAliases(model.tables)` — ровно та же, что у `generate`.
+ * Используется генератором объединений для формирования ячеек колонок.
+ */
+export function fieldExpr(model: QueryModel, field: SelectedField): string {
+  if (field.expression) return field.expression;
+  const aliases = resolveAliases(model.tables);
+  const tableAlias = aliases.get(field.tableId) ?? field.tableId;
+  const func = (model.grouping?.aggregates ?? []).find(
+    a => a.tableId === field.tableId && a.path === field.path
+  )?.func;
+  const lhs = `${tableAlias}.${field.path}`;
+  return func ? wrapAggregate(func, lhs) : lhs;
+}
+
+export function generate(model: QueryModel): string {
+  // УНИЧТОЖИТЬ — самостоятельный запрос, до всех остальных проверок.
+  if (model.queryType === 'dropTemp') {
+    return model.tempTableName ? `УНИЧТОЖИТЬ ${model.tempTableName}` : '';
+  }
+
+  if (model.tables.length === 0) return '';
+  const hasFields = model.fields.length > 0 || (model.tabSectionFields?.length ?? 0) > 0;
+  if (!hasFields) return '';
+
+  const aliases = resolveAliases(model.tables);
+  const fieldLines = buildFieldLines(model, aliases);
+  return buildQueryBlock(model, fieldLines, aliases);
+}
+
+/**
+ * Текст объединённого запроса по документу конструктора.
+ * - 0 участников → ''.
+ * - 1 участник → ровно `generate(members[0].model)` (объединение игнорируется).
+ * - иначе: список выборки каждого участника формируется из колонок объединения
+ *   (а ИЗ/ГДЕ/СГРУППИРОВАТЬ/ДЛЯ ИЗМЕНЕНИЯ/модификаторы — из его собственной
+ *   модели). У участника 0 каждый элемент с `КАК <псевдоним>`, у остальных — без.
+ *   Разделитель между участниками: `ОБЪЕДИНИТЬ ВСЕ` или `ОБЪЕДИНИТЬ`
+ *   (если у следующего участника `distinct === true`), с пустыми строками вокруг.
+ */
+export function generateDocument(doc: QueryDocument): string {
+  const members = doc.members;
+  if (members.length === 0) return '';
+  if (members.length === 1) return generate(members[0].model);
+
+  const columns = deriveUnionColumns(members);
+
+  const blocks = members.map((m, i) => {
+    const fieldLines = columns.map(col => {
+      const expr = col.cells[i] ?? 'NULL';
+      return i === 0 ? `\t${expr} КАК ${col.alias}` : `\t${expr}`;
+    });
+    const aliases = resolveAliases(m.model.tables);
+    return buildQueryBlock(m.model, fieldLines, aliases);
   });
 
-  const conditionLines = renderConditions(model.conditions, aliases);
-  const groupingLines = renderGrouping(model.grouping, aliases);
-
-  // ПОМЕСТИТЬ/ДОБАВИТЬ <ВТ> между списком полей и ИЗ.
-  const placeLines: string[] =
-    model.queryType === 'createTemp' && model.tempTableName
-      ? ['ПОМЕСТИТЬ ' + model.tempTableName]
-      : model.queryType === 'appendTemp' && model.tempTableName
-        ? ['ДОБАВИТЬ ' + model.tempTableName]
-        : [];
-
-  // ДЛЯ ИЗМЕНЕНИЯ <таблицы> — в самом конце, с пустой строкой-разделителем.
-  const lockLines: string[] = model.lockForUpdate?.length
-    ? ['', 'ДЛЯ ИЗМЕНЕНИЯ', ...model.lockForUpdate.map(name => '\t' + name)]
-    : [];
-
-  return [
-    'ВЫБРАТЬ' + selectionModifiers(model.selection),
-    ...fieldLines,
-    ...placeLines,
-    'ИЗ',
-    ...tableLines,
-    ...conditionLines,
-    ...groupingLines,
-    ...lockLines,
-  ].join('\n');
+  let out = blocks[0];
+  for (let i = 1; i < blocks.length; i++) {
+    const keyword = members[i].distinct ? 'ОБЪЕДИНИТЬ' : 'ОБЪЕДИНИТЬ ВСЕ';
+    out += `\n\n${keyword}\n\n${blocks[i]}`;
+  }
+  return out;
 }
 
 /** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */
