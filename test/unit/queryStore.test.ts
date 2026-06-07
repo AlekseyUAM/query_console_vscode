@@ -159,3 +159,90 @@ describe('queryStore reducer', () => {
     expect(state.selectedFields[0].tableId).toBe(tableId);
   });
 });
+
+describe('queryStore reducer — grouping', () => {
+  it('initialState has empty grouping', () => {
+    const g = initialState().grouping;
+    expect(g).toEqual({ multiple: false, groupFields: [], groupSets: [], aggregates: [] });
+  });
+
+  it('SET_GROUPING_MULTIPLE toggles multiple', () => {
+    let state = reducer(initialState(), { type: 'SET_GROUPING_MULTIPLE', multiple: true });
+    expect(state.grouping.multiple).toBe(true);
+    state = reducer(state, { type: 'SET_GROUPING_MULTIPLE', multiple: false });
+    expect(state.grouping.multiple).toBe(false);
+  });
+
+  it('ADD_GROUP_FIELD appends and dedupes', () => {
+    let state = reducer(initialState(), { type: 'ADD_GROUP_FIELD', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'ADD_GROUP_FIELD', tableId: 't1', path: 'Код' });
+    expect(state.grouping.groupFields).toEqual([{ tableId: 't1', path: 'Код' }]);
+  });
+
+  it('REMOVE_GROUP_FIELD removes the matching field', () => {
+    let state = reducer(initialState(), { type: 'ADD_GROUP_FIELD', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'ADD_GROUP_FIELD', tableId: 't1', path: 'Наименование' });
+    state = reducer(state, { type: 'REMOVE_GROUP_FIELD', tableId: 't1', path: 'Код' });
+    expect(state.grouping.groupFields).toEqual([{ tableId: 't1', path: 'Наименование' }]);
+  });
+
+  it('ADD_SUMMABLE_FIELD appends with func and dedupes', () => {
+    let state = reducer(initialState(), { type: 'ADD_SUMMABLE_FIELD', tableId: 't1', path: 'Сумма', func: 'Сумма' });
+    state = reducer(state, { type: 'ADD_SUMMABLE_FIELD', tableId: 't1', path: 'Сумма', func: 'Количество' });
+    expect(state.grouping.aggregates).toEqual([{ tableId: 't1', path: 'Сумма', func: 'Сумма' }]);
+  });
+
+  it('SET_SUMMABLE_FUNC changes func of an existing aggregate', () => {
+    let state = reducer(initialState(), { type: 'ADD_SUMMABLE_FIELD', tableId: 't1', path: 'Сумма', func: 'Сумма' });
+    state = reducer(state, { type: 'SET_SUMMABLE_FUNC', tableId: 't1', path: 'Сумма', func: 'Среднее' });
+    expect(state.grouping.aggregates[0].func).toBe('Среднее');
+  });
+
+  it('REMOVE_SUMMABLE_FIELD removes the matching aggregate', () => {
+    let state = reducer(initialState(), { type: 'ADD_SUMMABLE_FIELD', tableId: 't1', path: 'Сумма', func: 'Сумма' });
+    state = reducer(state, { type: 'REMOVE_SUMMABLE_FIELD', tableId: 't1', path: 'Сумма' });
+    expect(state.grouping.aggregates).toHaveLength(0);
+  });
+
+  it('group/summable are mutually exclusive: ADD_SUMMABLE removes from groupFields', () => {
+    let state = reducer(initialState(), { type: 'ADD_GROUP_FIELD', tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'ADD_SUMMABLE_FIELD', tableId: 't1', path: 'Код', func: 'Количество' });
+    expect(state.grouping.groupFields).toHaveLength(0);
+    expect(state.grouping.aggregates).toEqual([{ tableId: 't1', path: 'Код', func: 'Количество' }]);
+  });
+
+  it('group/summable are mutually exclusive: ADD_GROUP_FIELD removes from aggregates', () => {
+    let state = reducer(initialState(), { type: 'ADD_SUMMABLE_FIELD', tableId: 't1', path: 'Код', func: 'Количество' });
+    state = reducer(state, { type: 'ADD_GROUP_FIELD', tableId: 't1', path: 'Код' });
+    expect(state.grouping.aggregates).toHaveLength(0);
+    expect(state.grouping.groupFields).toEqual([{ tableId: 't1', path: 'Код' }]);
+  });
+
+  it('ADD_GROUP_SET / REMOVE_GROUP_SET manage sets', () => {
+    let state = reducer(initialState(), { type: 'ADD_GROUP_SET' });
+    state = reducer(state, { type: 'ADD_GROUP_SET' });
+    expect(state.grouping.groupSets).toHaveLength(2);
+    state = reducer(state, { type: 'REMOVE_GROUP_SET', index: 0 });
+    expect(state.grouping.groupSets).toHaveLength(1);
+  });
+
+  it('ADD_FIELD_TO_SET appends to the right set and dedupes within set', () => {
+    let state = reducer(initialState(), { type: 'ADD_GROUP_SET' });
+    state = reducer(state, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: 't1', path: 'Код' });
+    expect(state.grouping.groupSets[0]).toEqual([{ tableId: 't1', path: 'Код' }]);
+  });
+
+  it('ADD_FIELD_TO_SET on a missing index is a no-op', () => {
+    const state = reducer(initialState(), { type: 'ADD_FIELD_TO_SET', index: 5, tableId: 't1', path: 'Код' });
+    expect(state.grouping.groupSets).toHaveLength(0);
+  });
+
+  it('REMOVE_FIELD_FROM_SET removes the field from its set', () => {
+    let state = reducer(initialState(), { type: 'ADD_GROUP_SET' });
+    state = reducer(state, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: 't1', path: 'Код' });
+    state = reducer(state, { type: 'ADD_FIELD_TO_SET', index: 0, tableId: 't1', path: 'Наименование' });
+    state = reducer(state, { type: 'REMOVE_FIELD_FROM_SET', index: 0, tableId: 't1', path: 'Код' });
+    expect(state.grouping.groupSets[0]).toEqual([{ tableId: 't1', path: 'Наименование' }]);
+  });
+});

@@ -4,6 +4,7 @@ import { TabsBar } from './components/TabsBar';
 import { DbTreePanel } from './components/DbTreePanel';
 import { TablesPanel } from './components/TablesPanel';
 import { FieldsPanel } from './components/FieldsPanel';
+import { GroupingTab } from './components/GroupingTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -28,6 +29,7 @@ type RefreshState = 'idle' | 'loading' | { ok: boolean; message: string };
 
 export function App(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
+  const [activeTab, setActiveTab] = useState('Таблицы и поля');
   const [queryModalText, setQueryModalText] = useState<string | null>(null);
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
   const [vtDialogTableId, setVtDialogTableId] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export function App(): React.ReactElement {
       tables: state.selectedTables,
       fields: state.selectedFields,
       tabSectionFields: state.tabSectionFields,
+      grouping: state.grouping,
     });
     setQueryModalText(text || '-- нет полей для генерации запроса');
   }
@@ -109,7 +112,7 @@ export function App(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
-      <TabsBar />
+      <TabsBar active={activeTab} onSelect={setActiveTab} />
       {/* Cache toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
         <button
@@ -125,6 +128,7 @@ export function App(): React.ReactElement {
           </span>
         )}
       </div>
+      {activeTab === 'Таблицы и поля' && (
       <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
         <div style={panelStyle}>
           <DbTreePanel
@@ -158,6 +162,7 @@ export function App(): React.ReactElement {
             selectedTables={state.selectedTables}
             selectedFields={state.selectedFields}
             tabSectionFields={state.tabSectionFields}
+            grouping={state.grouping}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -187,6 +192,33 @@ export function App(): React.ReactElement {
           />
         </div>
       </div>
+      )}
+
+      {activeTab === 'Группировка' && (
+        <GroupingTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          metaTables={state.tables}
+          grouping={state.grouping}
+          onSetMultiple={multiple => dispatch({ type: 'SET_GROUPING_MULTIPLE', multiple })}
+          onAddGroupField={(tableId, path) => dispatch({ type: 'ADD_GROUP_FIELD', tableId, path })}
+          onRemoveGroupField={(tableId, path) => dispatch({ type: 'REMOVE_GROUP_FIELD', tableId, path })}
+          onAddSummableField={(tableId, path, func) => dispatch({ type: 'ADD_SUMMABLE_FIELD', tableId, path, func })}
+          onRemoveSummableField={(tableId, path) => dispatch({ type: 'REMOVE_SUMMABLE_FIELD', tableId, path })}
+          onSetSummableFunc={(tableId, path, func) => dispatch({ type: 'SET_SUMMABLE_FUNC', tableId, path, func })}
+          onAddGroupSet={() => dispatch({ type: 'ADD_GROUP_SET' })}
+          onRemoveGroupSet={index => dispatch({ type: 'REMOVE_GROUP_SET', index })}
+          onAddFieldToSet={(index, tableId, path) => dispatch({ type: 'ADD_FIELD_TO_SET', index, tableId, path })}
+          onRemoveFieldFromSet={(index, tableId, path) => dispatch({ type: 'REMOVE_FIELD_FROM_SET', index, tableId, path })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
+          Вкладка в разработке
+        </div>
+      )}
+
       {/* Bottom bar */}
       <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
         <button style={BTN} onClick={handleShowQuery}>Запрос</button>

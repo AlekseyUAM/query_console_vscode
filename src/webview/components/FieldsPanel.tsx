@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, Grouping } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { generate, formatAsBslString } from '../../core/query/sdblGenerator';
 
@@ -9,6 +9,7 @@ interface Props {
   selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
   tabSectionFields: SelectedTabSectionField[];
+  grouping: Grouping;
   focusedSelectedFieldIdx: number | null;
   onDropField: (tableFullName: string, fieldPath: string) => void;
   onDropTabSection: (parentTableFullName: string, tsName: string, tsFullName: string, tsFields: string[]) => void;
@@ -44,7 +45,7 @@ const REMOVE_BTN: React.CSSProperties = {
 };
 
 export function FieldsPanel({
-  metaTables, selectedTables, selectedFields, tabSectionFields, focusedSelectedFieldIdx,
+  metaTables, selectedTables, selectedFields, tabSectionFields, grouping, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
   onFocusField, onInsert, onCancel, canAddExpression, onAddExpression,
 }: Props): React.ReactElement {
@@ -99,7 +100,7 @@ export function FieldsPanel({
   }
 
   function handleOk() {
-    const text = generate({ tables: selectedTables, fields: selectedFields, tabSectionFields });
+    const text = generate({ tables: selectedTables, fields: selectedFields, tabSectionFields, grouping });
     if (text) onInsert(formatAsBslString(text));
   }
 

@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 
@@ -8,6 +8,7 @@ export interface QueryState {
   selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
   tabSectionFields: SelectedTabSectionField[];
+  grouping: Grouping;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
   focusedDbFieldPath: string | null;
@@ -31,7 +32,17 @@ export type QueryAction =
   | { type: 'FOCUS_SELECTED_TABLE'; id: string }
   | { type: 'FOCUS_SELECTED_FIELD'; idx: number }
   | { type: 'SET_VIRTUAL_PARAMS'; tableId: string; params: VirtualParams }
-  | { type: 'ADD_EXPRESSION_FIELD'; tableId: string; expression: string; alias?: string };
+  | { type: 'ADD_EXPRESSION_FIELD'; tableId: string; expression: string; alias?: string }
+  | { type: 'SET_GROUPING_MULTIPLE'; multiple: boolean }
+  | { type: 'ADD_GROUP_FIELD'; tableId: string; path: string }
+  | { type: 'REMOVE_GROUP_FIELD'; tableId: string; path: string }
+  | { type: 'ADD_SUMMABLE_FIELD'; tableId: string; path: string; func: AggregateFunction }
+  | { type: 'REMOVE_SUMMABLE_FIELD'; tableId: string; path: string }
+  | { type: 'SET_SUMMABLE_FUNC'; tableId: string; path: string; func: AggregateFunction }
+  | { type: 'ADD_GROUP_SET' }
+  | { type: 'REMOVE_GROUP_SET'; index: number }
+  | { type: 'ADD_FIELD_TO_SET'; index: number; tableId: string; path: string }
+  | { type: 'REMOVE_FIELD_FROM_SET'; index: number; tableId: string; path: string };
 
 export function initialState(): QueryState {
   return {
@@ -39,6 +50,7 @@ export function initialState(): QueryState {
     selectedTables: [],
     selectedFields: [],
     tabSectionFields: [],
+    grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
     focusedDbFieldPath: null,
@@ -199,6 +211,97 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       const field: SelectedField = { tableId: action.tableId, path: '', expression: action.expression };
       if (action.alias) field.alias = action.alias;
       return { ...state, selectedFields: [...state.selectedFields, field] };
+    }
+
+    case 'SET_GROUPING_MULTIPLE':
+      return { ...state, grouping: { ...state.grouping, multiple: action.multiple } };
+
+    case 'ADD_GROUP_FIELD': {
+      const { tableId, path } = action;
+      if (state.grouping.groupFields.some(f => f.tableId === tableId && f.path === path)) return state;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          groupFields: [...state.grouping.groupFields, { tableId, path }],
+          aggregates: state.grouping.aggregates.filter(a => !(a.tableId === tableId && a.path === path)),
+        },
+      };
+    }
+
+    case 'REMOVE_GROUP_FIELD': {
+      const { tableId, path } = action;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          groupFields: state.grouping.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        },
+      };
+    }
+
+    case 'ADD_SUMMABLE_FIELD': {
+      const { tableId, path, func } = action;
+      if (state.grouping.aggregates.some(a => a.tableId === tableId && a.path === path)) return state;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          aggregates: [...state.grouping.aggregates, { tableId, path, func }],
+          groupFields: state.grouping.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        },
+      };
+    }
+
+    case 'REMOVE_SUMMABLE_FIELD': {
+      const { tableId, path } = action;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          aggregates: state.grouping.aggregates.filter(a => !(a.tableId === tableId && a.path === path)),
+        },
+      };
+    }
+
+    case 'SET_SUMMABLE_FUNC': {
+      const { tableId, path, func } = action;
+      return {
+        ...state,
+        grouping: {
+          ...state.grouping,
+          aggregates: state.grouping.aggregates.map(a =>
+            a.tableId === tableId && a.path === path ? { ...a, func } : a
+          ),
+        },
+      };
+    }
+
+    case 'ADD_GROUP_SET':
+      return { ...state, grouping: { ...state.grouping, groupSets: [...state.grouping.groupSets, []] } };
+
+    case 'REMOVE_GROUP_SET': {
+      const groupSets = state.grouping.groupSets.filter((_, i) => i !== action.index);
+      return { ...state, grouping: { ...state.grouping, groupSets } };
+    }
+
+    case 'ADD_FIELD_TO_SET': {
+      const { index, tableId, path } = action;
+      const set = state.grouping.groupSets[index];
+      if (!set) return state;
+      if (set.some(f => f.tableId === tableId && f.path === path)) return state;
+      const groupSets = state.grouping.groupSets.map((s, i) =>
+        i === index ? [...s, { tableId, path }] : s
+      );
+      return { ...state, grouping: { ...state.grouping, groupSets } };
+    }
+
+    case 'REMOVE_FIELD_FROM_SET': {
+      const { index, tableId, path } = action;
+      const groupSets = state.grouping.groupSets.map((s, i) =>
+        i === index ? s.filter(f => !(f.tableId === tableId && f.path === path)) : s
+      );
+      return { ...state, grouping: { ...state.grouping, groupSets } };
     }
 
     default:
