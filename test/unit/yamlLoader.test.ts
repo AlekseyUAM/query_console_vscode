@@ -582,6 +582,42 @@ describe('loadMetadataFromYaml', () => {
     ]);
   });
 
+  it('emits 5 accounting VTs (corr) resolving subconto count from chart of accounts', () => {
+    writeCfYaml(tmpDir, 'configuration.yaml', {
+      version: 1, name: 'TestConf',
+      objects: [
+        { type: 'ПланСчетов', name: 'ПланСчетов1', fullName: 'ПланСчетов.ПланСчетов1', file: 'ChartsOfAccounts/ПланСчетов1.yaml' },
+        { type: 'РегистрБухгалтерии', name: 'РБ1', fullName: 'РегистрБухгалтерии.РБ1', file: 'AccountingRegisters/РБ1.yaml' },
+      ],
+    });
+    writeCfYaml(tmpDir, 'ChartsOfAccounts/ПланСчетов1.yaml', {
+      version: 1, kind: 'ПланСчетов', name: 'ПланСчетов1', fullName: 'ПланСчетов.ПланСчетов1',
+      properties: { maxExtDimensionCount: 3, extDimensionTypes: 'ВидыСубконто' },
+      fields: [{ name: 'Ссылка', category: 'standard', types: [{ kind: 'ref', ref: 'ПланСчетов.ПланСчетов1' }] }],
+    });
+    writeCfYaml(tmpDir, 'AccountingRegisters/РБ1.yaml', {
+      version: 1, kind: 'РегистрБухгалтерии', name: 'РБ1', fullName: 'РегистрБухгалтерии.РБ1',
+      properties: { correspondence: true, chartOfAccounts: 'ПланСчетов1' },
+      fields: [
+        { name: 'Период', category: 'standard', types: [{ kind: 'Дата' }] },
+        { name: 'СчетДт', category: 'standard', types: [{ kind: 'ref', ref: 'ПланСчетов.ПланСчетов1' }] },
+        { name: 'СчетКт', category: 'standard', types: [{ kind: 'ref', ref: 'ПланСчетов.ПланСчетов1' }] },
+        { name: 'Организация', category: 'dimension', types: [{ kind: 'Строка' }] },
+        { name: 'Сумма', category: 'resource', types: [{ kind: 'Число' }] },
+      ],
+    });
+
+    const result = loadMetadataFromYaml(tmpDir);
+    const vtNames = result.tables.filter(t => t.virtual).map(t => t.fullName.split('.')[2]);
+    expect(vtNames).toEqual(['Остатки', 'Обороты', 'ОборотыДтКт', 'ОстаткиИОбороты', 'ДвиженияССубконто']);
+    const ostatki = result.tables.find(t => t.fullName === 'РегистрБухгалтерии.РБ1.Остатки')!;
+    expect(ostatki.fields.map(f => f.name)).toEqual([
+      'Счет', 'Субконто1', 'Субконто2', 'Субконто3', 'Организация',
+      'СуммаОстаток', 'СуммаОстатокДт', 'СуммаОстатокКт', 'СуммаРазвернутыйОстатокДт', 'СуммаРазвернутыйОстатокКт',
+    ]);
+    expect(ostatki.virtual?.correspondence).toBe(true);
+  });
+
   it('emits only Обороты (with Оборот resource) for a turnover accumulation register', () => {
     writeCfYaml(tmpDir, 'configuration.yaml', {
       version: 1, name: 'TestConf',

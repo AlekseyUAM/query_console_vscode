@@ -3,6 +3,7 @@ import * as path from 'path';
 import { parse } from 'yaml';
 import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind, VirtualTableInfo } from './types';
 import type { ParsedObject, ParsedField, ParsedType } from './parser/model';
+import { buildAccountingRegSlices, type AccChartInfo } from './accountingVirtualTables';
 
 const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
   'Справочник', 'Документ', 'Константа', 'Перечисление',
@@ -188,6 +189,21 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
     return empty;
   }
 
+  const charts = new Map<string, AccChartInfo>();
+  for (const entry of index.objects) {
+    if (entry.type !== 'ПланСчетов') continue;
+    const fp = path.join(cfYamlDir, entry.file);
+    if (!fs.existsSync(fp)) continue;
+    try {
+      const o = parse(fs.readFileSync(fp, 'utf8')) as ParsedObject;
+      const p = o?.properties as { maxExtDimensionCount?: number; extDimensionTypes?: string } | undefined;
+      charts.set(o.name, {
+        maxExtDimensionCount: p?.maxExtDimensionCount ?? 0,
+        extDimensionTypes: p?.extDimensionTypes ?? '',
+      });
+    } catch { /* пропустить нечитаемый план счетов */ }
+  }
+
   const tables: MetaTable[] = [];
 
   for (const entry of index.objects) {
@@ -221,6 +237,10 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
     }
 
     for (const slice of buildAccumRegSlices(obj, metaTable)) {
+      tables.push(slice);
+    }
+
+    for (const slice of buildAccountingRegSlices(obj, metaTable, charts)) {
       tables.push(slice);
     }
   }
