@@ -310,3 +310,89 @@ describe('queryStore reducer — conditions', () => {
     expect(reducer(base, { type: 'REMOVE_CONDITION', index: 9 }).conditions).toHaveLength(1);
   });
 });
+
+describe('queryStore reducer — Дополнительно (selection / query type / lock)', () => {
+  it('initial state has selection/queryType/tempTableName/lock defaults', () => {
+    const s = initialState();
+    expect(s.selection).toEqual({});
+    expect(s.queryType).toBe('select');
+    expect(s.tempTableName).toBe('');
+    expect(s.lockForUpdate).toEqual([]);
+    expect(s.lockEnabled).toBe(false);
+  });
+
+  it('SET_SELECTION_TOP sets a numeric top', () => {
+    const s = reducer(initialState(), { type: 'SET_SELECTION_TOP', top: 10 });
+    expect(s.selection.top).toBe(10);
+  });
+
+  it('SET_SELECTION_TOP with undefined clears top', () => {
+    let s = reducer(initialState(), { type: 'SET_SELECTION_TOP', top: 10 });
+    s = reducer(s, { type: 'SET_SELECTION_TOP', top: undefined });
+    expect(s.selection.top).toBeUndefined();
+  });
+
+  it('SET_SELECTION_TOP with 0 clears top', () => {
+    let s = reducer(initialState(), { type: 'SET_SELECTION_TOP', top: 10 });
+    s = reducer(s, { type: 'SET_SELECTION_TOP', top: 0 });
+    expect(s.selection.top).toBeUndefined();
+  });
+
+  it('SET_SELECTION_DISTINCT toggles distinct', () => {
+    const s = reducer(initialState(), { type: 'SET_SELECTION_DISTINCT', distinct: true });
+    expect(s.selection.distinct).toBe(true);
+  });
+
+  it('SET_SELECTION_ALLOWED toggles allowed', () => {
+    const s = reducer(initialState(), { type: 'SET_SELECTION_ALLOWED', allowed: true });
+    expect(s.selection.allowed).toBe(true);
+  });
+
+  it('selection setters preserve other selection fields', () => {
+    let s = reducer(initialState(), { type: 'SET_SELECTION_TOP', top: 5 });
+    s = reducer(s, { type: 'SET_SELECTION_DISTINCT', distinct: true });
+    s = reducer(s, { type: 'SET_SELECTION_ALLOWED', allowed: true });
+    expect(s.selection).toEqual({ top: 5, distinct: true, allowed: true });
+  });
+
+  it('SET_QUERY_TYPE sets the query type', () => {
+    const s = reducer(initialState(), { type: 'SET_QUERY_TYPE', queryType: 'createTemp' });
+    expect(s.queryType).toBe('createTemp');
+  });
+
+  it('SET_TEMP_TABLE_NAME sets the temp table name', () => {
+    const s = reducer(initialState(), { type: 'SET_TEMP_TABLE_NAME', name: 'ВТ_Курсы' });
+    expect(s.tempTableName).toBe('ВТ_Курсы');
+  });
+
+  it('SET_LOCK_ENABLED true enables locking', () => {
+    const s = reducer(initialState(), { type: 'SET_LOCK_ENABLED', enabled: true });
+    expect(s.lockEnabled).toBe(true);
+  });
+
+  it('SET_LOCK_ENABLED false clears lockForUpdate', () => {
+    let s = reducer(initialState(), { type: 'SET_LOCK_ENABLED', enabled: true });
+    s = reducer(s, { type: 'ADD_LOCK_TABLE', fullName: 'Справочник.Валюты' });
+    s = reducer(s, { type: 'SET_LOCK_ENABLED', enabled: false });
+    expect(s.lockEnabled).toBe(false);
+    expect(s.lockForUpdate).toEqual([]);
+  });
+
+  it('ADD_LOCK_TABLE appends a table', () => {
+    const s = reducer(initialState(), { type: 'ADD_LOCK_TABLE', fullName: 'Справочник.Валюты' });
+    expect(s.lockForUpdate).toEqual(['Справочник.Валюты']);
+  });
+
+  it('ADD_LOCK_TABLE dedupes', () => {
+    let s = reducer(initialState(), { type: 'ADD_LOCK_TABLE', fullName: 'Справочник.Валюты' });
+    s = reducer(s, { type: 'ADD_LOCK_TABLE', fullName: 'Справочник.Валюты' });
+    expect(s.lockForUpdate).toEqual(['Справочник.Валюты']);
+  });
+
+  it('REMOVE_LOCK_TABLE removes a table', () => {
+    let s = reducer(initialState(), { type: 'ADD_LOCK_TABLE', fullName: 'Справочник.Валюты' });
+    s = reducer(s, { type: 'ADD_LOCK_TABLE', fullName: 'Документ.СчетНаОплату' });
+    s = reducer(s, { type: 'REMOVE_LOCK_TABLE', fullName: 'Справочник.Валюты' });
+    expect(s.lockForUpdate).toEqual(['Документ.СчетНаОплату']);
+  });
+});

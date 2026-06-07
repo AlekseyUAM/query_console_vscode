@@ -6,6 +6,7 @@ import { TablesPanel } from './components/TablesPanel';
 import { FieldsPanel } from './components/FieldsPanel';
 import { GroupingTab } from './components/GroupingTab';
 import { ConditionsTab } from './components/ConditionsTab';
+import { AdditionalTab } from './components/AdditionalTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -69,6 +70,10 @@ export function App(): React.ReactElement {
       tabSectionFields: state.tabSectionFields,
       grouping: state.grouping,
       conditions: state.conditions,
+      selection: state.selection,
+      queryType: state.queryType,
+      tempTableName: state.tempTableName,
+      lockForUpdate: state.lockForUpdate,
     });
     setQueryModalText(text || '-- нет полей для генерации запроса');
   }
@@ -172,6 +177,10 @@ export function App(): React.ReactElement {
             tabSectionFields={state.tabSectionFields}
             grouping={state.grouping}
             conditions={state.conditions}
+            selection={state.selection}
+            queryType={state.queryType}
+            tempTableName={state.tempTableName}
+            lockForUpdate={state.lockForUpdate}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -245,7 +254,26 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && activeTab !== 'Условия' && (
+      {activeTab === 'Дополнительно' && (
+        <AdditionalTab
+          selectedTables={state.selectedTables}
+          selection={state.selection}
+          queryType={state.queryType}
+          tempTableName={state.tempTableName}
+          lockForUpdate={state.lockForUpdate}
+          lockEnabled={state.lockEnabled}
+          onSetTop={top => dispatch({ type: 'SET_SELECTION_TOP', top })}
+          onSetDistinct={distinct => dispatch({ type: 'SET_SELECTION_DISTINCT', distinct })}
+          onSetAllowed={allowed => dispatch({ type: 'SET_SELECTION_ALLOWED', allowed })}
+          onSetQueryType={qt => dispatch({ type: 'SET_QUERY_TYPE', queryType: qt })}
+          onSetTempTableName={name => dispatch({ type: 'SET_TEMP_TABLE_NAME', name })}
+          onSetLockEnabled={enabled => dispatch({ type: 'SET_LOCK_ENABLED', enabled })}
+          onAddLockTable={fullName => dispatch({ type: 'ADD_LOCK_TABLE', fullName })}
+          onRemoveLockTable={fullName => dispatch({ type: 'REMOVE_LOCK_TABLE', fullName })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>

@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 
@@ -10,6 +10,11 @@ export interface QueryState {
   tabSectionFields: SelectedTabSectionField[];
   grouping: Grouping;
   conditions: Condition[];
+  selection: Selection;
+  queryType: QueryType;
+  tempTableName: string;
+  lockForUpdate: string[];
+  lockEnabled: boolean;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
   focusedDbFieldPath: string | null;
@@ -49,7 +54,15 @@ export type QueryAction =
   | { type: 'SET_CONDITION_CUSTOM'; index: number; custom: boolean }
   | { type: 'SET_CONDITION_OPERATOR'; index: number; operator: ConditionOperator }
   | { type: 'SET_CONDITION_PARAM'; index: number; param: string }
-  | { type: 'SET_CONDITION_EXPRESSION'; index: number; expression: string };
+  | { type: 'SET_CONDITION_EXPRESSION'; index: number; expression: string }
+  | { type: 'SET_SELECTION_TOP'; top: number | undefined }
+  | { type: 'SET_SELECTION_DISTINCT'; distinct: boolean }
+  | { type: 'SET_SELECTION_ALLOWED'; allowed: boolean }
+  | { type: 'SET_QUERY_TYPE'; queryType: QueryType }
+  | { type: 'SET_TEMP_TABLE_NAME'; name: string }
+  | { type: 'SET_LOCK_ENABLED'; enabled: boolean }
+  | { type: 'ADD_LOCK_TABLE'; fullName: string }
+  | { type: 'REMOVE_LOCK_TABLE'; fullName: string };
 
 export function initialState(): QueryState {
   return {
@@ -59,6 +72,11 @@ export function initialState(): QueryState {
     tabSectionFields: [],
     grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
     conditions: [],
+    selection: {},
+    queryType: 'select',
+    tempTableName: '',
+    lockForUpdate: [],
+    lockEnabled: false,
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
     focusedDbFieldPath: null,
@@ -351,6 +369,43 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       );
       return { ...state, conditions };
     }
+
+    case 'SET_SELECTION_TOP': {
+      const selection = { ...state.selection };
+      if (action.top === undefined || action.top === 0) {
+        delete selection.top;
+      } else {
+        selection.top = action.top;
+      }
+      return { ...state, selection };
+    }
+
+    case 'SET_SELECTION_DISTINCT':
+      return { ...state, selection: { ...state.selection, distinct: action.distinct } };
+
+    case 'SET_SELECTION_ALLOWED':
+      return { ...state, selection: { ...state.selection, allowed: action.allowed } };
+
+    case 'SET_QUERY_TYPE':
+      return { ...state, queryType: action.queryType };
+
+    case 'SET_TEMP_TABLE_NAME':
+      return { ...state, tempTableName: action.name };
+
+    case 'SET_LOCK_ENABLED':
+      return {
+        ...state,
+        lockEnabled: action.enabled,
+        lockForUpdate: action.enabled ? state.lockForUpdate : [],
+      };
+
+    case 'ADD_LOCK_TABLE': {
+      if (state.lockForUpdate.includes(action.fullName)) return state;
+      return { ...state, lockForUpdate: [...state.lockForUpdate, action.fullName] };
+    }
+
+    case 'REMOVE_LOCK_TABLE':
+      return { ...state, lockForUpdate: state.lockForUpdate.filter(n => n !== action.fullName) };
 
     default:
       return state;

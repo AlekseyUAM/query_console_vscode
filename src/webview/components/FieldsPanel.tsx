@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, Grouping, Condition } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, Grouping, Condition, Selection, QueryType } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { generate, formatAsBslString } from '../../core/query/sdblGenerator';
 
@@ -11,6 +11,10 @@ interface Props {
   tabSectionFields: SelectedTabSectionField[];
   grouping: Grouping;
   conditions: Condition[];
+  selection: Selection;
+  queryType: QueryType;
+  tempTableName: string;
+  lockForUpdate: string[];
   focusedSelectedFieldIdx: number | null;
   onDropField: (tableFullName: string, fieldPath: string) => void;
   onDropTabSection: (parentTableFullName: string, tsName: string, tsFullName: string, tsFields: string[]) => void;
@@ -46,7 +50,8 @@ const REMOVE_BTN: React.CSSProperties = {
 };
 
 export function FieldsPanel({
-  metaTables, selectedTables, selectedFields, tabSectionFields, grouping, conditions, focusedSelectedFieldIdx,
+  metaTables, selectedTables, selectedFields, tabSectionFields, grouping, conditions,
+  selection, queryType, tempTableName, lockForUpdate, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
   onFocusField, onInsert, onCancel, canAddExpression, onAddExpression,
 }: Props): React.ReactElement {
@@ -101,7 +106,7 @@ export function FieldsPanel({
   }
 
   function handleOk() {
-    const text = generate({ tables: selectedTables, fields: selectedFields, tabSectionFields, grouping, conditions });
+    const text = generate({ tables: selectedTables, fields: selectedFields, tabSectionFields, grouping, conditions, selection, queryType, tempTableName, lockForUpdate });
     if (text) onInsert(formatAsBslString(text));
   }
 
