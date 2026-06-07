@@ -137,6 +137,19 @@ describe('queryStore reducer', () => {
     expect(state.selectedTables[0].virtual).toEqual({ period: '&Период', condition: 'Валюта = &В' });
   });
 
+  it('ADD_TABLE copies correspondence into selected virtual; SET_VIRTUAL_PARAMS preserves it', () => {
+    const meta: MetaTable = {
+      kind: 'РегистрБухгалтерии', name: 'РБ1', fullName: 'РегистрБухгалтерии.РБ1.Обороты',
+      fields: [],
+      virtual: { slice: 'Обороты', baseFullName: 'РегистрБухгалтерии.РБ1', correspondence: true },
+    };
+    let st = reducer(initialState(), { type: 'ADD_TABLE', table: meta });
+    const id = st.selectedTables[0].id;
+    expect(st.selectedTables[0].virtual).toEqual({ correspondence: true });
+    st = reducer(st, { type: 'SET_VIRTUAL_PARAMS', tableId: id, params: { periodicity: 'Авто' } });
+    expect(st.selectedTables[0].virtual).toEqual({ periodicity: 'Авто', correspondence: true });
+  });
+
   it('ADD_EXPRESSION_FIELD appends an expression field', () => {
     let state = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
     const tableId = state.selectedTables[0].id;

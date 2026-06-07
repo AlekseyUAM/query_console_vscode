@@ -72,7 +72,11 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       if (alreadyIn) return state;
       const id = `t${++_tableCounter}`;
       const newTable: SelectedTable = { id, fullName: action.table.fullName };
-      if (action.table.virtual) newTable.virtual = {};
+      if (action.table.virtual) {
+        newTable.virtual = action.table.virtual.correspondence !== undefined
+          ? { correspondence: action.table.virtual.correspondence }
+          : {};
+      }
       return {
         ...state,
         selectedTables: [...state.selectedTables, newTable],
@@ -184,7 +188,9 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
 
     case 'SET_VIRTUAL_PARAMS': {
       const selectedTables = state.selectedTables.map(t =>
-        t.id === action.tableId ? { ...t, virtual: action.params } : t
+        t.id === action.tableId
+          ? { ...t, virtual: { ...action.params, ...(t.virtual?.correspondence !== undefined ? { correspondence: t.virtual.correspondence } : {}) } }
+          : t
       );
       return { ...state, selectedTables };
     }
