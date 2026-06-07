@@ -25,6 +25,16 @@ export interface ParsedTabularSection {
   fields: ParsedField[];
 }
 
+export interface ParsedCommonAttribute {
+  name: string;
+  // Русские fullName объектов, явно включённых (Use) в состав, напр. 'Справочник.ЗначенияСвойствОбъектов'.
+  content: string[];
+  // AutoUse=Use → общий реквизит-разделитель автоматически попадает в планы обмена,
+  // не перечисленные явно. dontUse — русские fullName, явно исключённые (Use=DontUse).
+  autoUse?: boolean;
+  dontUse?: string[];
+}
+
 export interface ParsedObject {
   version: 1;
   kind:

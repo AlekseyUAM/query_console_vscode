@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from 'yaml';
 import type { MetadataModel, MetaTable, MetaField, MetaType, TableKind, VirtualTableInfo } from './types';
-import type { ParsedObject, ParsedField, ParsedType } from './parser/model';
+import type { ParsedObject, ParsedField, ParsedType, ParsedCommonAttribute } from './parser/model';
 import { buildAccountingRegSlices, type AccChartInfo } from './accountingVirtualTables';
 
 const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
@@ -146,6 +146,52 @@ interface ConfigurationIndex {
   version: number;
   name?: string;
   objects?: IndexEntry[];
+  commonAttributes?: ParsedCommonAttribute[];
+}
+
+/**
+ * Добавляет поля общих реквизитов (ОбщиеРеквизиты) в состав соответствующих таблиц.
+ *
+ * Объект входит в состав общего реквизита, если он явно перечислен в `content` (Use).
+ * Для реквизита-разделителя с AutoUse=Use дополнительно действует правило 1С:
+ * планы обмена автоматически получают реквизит, если не исключены явно (`dontUse`).
+ *
+ * Поле добавляется в конец группы реквизитов (kind='attribute'), что в
+ * `buildSelectAllModel` рендерится после собственных реквизитов и перед
+ * табличными частями / завершающими стандартными полями — как в эталоне 1С.
+ * Виртуальные таблицы (срезы/итоги) и константы пропускаются.
+ */
+function mergeCommonAttributes(tables: MetaTable[], commonAttributes: ParsedCommonAttribute[]): void {
+  const byFull = new Map<string, MetaTable>();
+  for (const t of tables) {
+    if (t.virtual || t.kind === 'Константа' || t.kind === 'ТабличнаяЧасть') continue;
+    if (!byFull.has(t.fullName)) byFull.set(t.fullName, t);
+  }
+
+  const attach = (t: MetaTable, name: string): void => {
+    if (t.fields.some(f => f.name === name)) return;
+    t.fields.push({ name, kind: 'attribute', types: [] });
+  };
+
+  for (const ca of commonAttributes) {
+    const seen = new Set<string>();
+    for (const fullName of ca.content ?? []) {
+      const t = byFull.get(fullName);
+      if (t && !seen.has(fullName)) {
+        seen.add(fullName);
+        attach(t, ca.name);
+      }
+    }
+    if (ca.autoUse) {
+      const excluded = new Set(ca.dontUse ?? []);
+      for (const t of byFull.values()) {
+        if (t.kind !== 'ПланОбмена') continue;
+        if (excluded.has(t.fullName) || seen.has(t.fullName)) continue;
+        seen.add(t.fullName);
+        attach(t, ca.name);
+      }
+    }
+  }
 }
 
 export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
@@ -222,6 +268,10 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
     for (const slice of buildAccountingRegSlices(obj, metaTable, charts)) {
       tables.push(slice);
     }
+  }
+
+  if (index.commonAttributes?.length) {
+    mergeCommonAttributes(tables, index.commonAttributes);
   }
 
   return { version: 1, tables };
