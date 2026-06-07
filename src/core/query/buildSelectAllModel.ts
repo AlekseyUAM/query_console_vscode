@@ -67,9 +67,7 @@ export function buildSelectAllModel(t: MetaTable, periodicity?: string): QueryMo
     trailingFields = split.trailing.length ? split.trailing : undefined;
   }
 
-  // Поля табличной части — по одному разу. (Удвоение полей ТЧ в эталонах
-  // tmp/meta1c — артефакт скрипта-выгрузки, а не поведение конструктора 1С;
-  // см. нормализацию dedupeTabSections в golden-сьюте.)
+  // Поля табличной части — по одному разу, как в конструкторе 1С.
   const tabSectionFields: SelectedTabSectionField[] = (t.tabularSections ?? []).map(ts => ({
     tableId: 't1',
     tsName: ts.name,
