@@ -13,6 +13,10 @@ export function parseChartOfAccounts(objectEl: any): ParsedObject | null {
   const codeLength = Number(nodeText(childByLocalName(props, 'CodeLength')) || '0');
   const descriptionLength = Number(nodeText(childByLocalName(props, 'DescriptionLength')) || '0');
 
+  const maxExtDimensionCount = Number(nodeText(childByLocalName(props, 'MaxExtDimensionCount')) || '0');
+  const extRaw = nodeText(childByLocalName(props, 'ExtDimensionTypes')); // 'ChartOfCharacteristicTypes.ВидыСубконто'
+  const extDimensionTypes = extRaw.includes('.') ? extRaw.split('.').slice(1).join('.') : extRaw;
+
   const fields: ParsedField[] = [];
   const std = (n: string, types: ParsedType[]) =>
     fields.push({ name: n, category: 'standard', types });
@@ -44,5 +48,6 @@ export function parseChartOfAccounts(objectEl: any): ParsedObject | null {
     uuid,
     fields,
     ...(tabularSections.length ? { tabularSections } : {}),
+    properties: { maxExtDimensionCount, extDimensionTypes },
   };
 }

@@ -492,3 +492,12 @@ describe('parseAccumulationRegister — registerType property', () => {
     expect(result.properties?.registerType).toBe('Balance');
   });
 });
+
+describe('parseChartOfAccounts subconto', () => {
+  it('reads MaxExtDimensionCount and ExtDimensionTypes name into properties', () => {
+    const el = readObjectEl('ChartsOfAccounts', 'ПланСчетов1.xml');
+    const result = parseChartOfAccounts(el)!;
+    expect((result.properties as any).maxExtDimensionCount).toBe(3);
+    expect((result.properties as any).extDimensionTypes).toBe('ВидыСубконто');
+  });
+});
