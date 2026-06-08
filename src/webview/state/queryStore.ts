@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
@@ -25,6 +25,7 @@ export interface SavedQuery {
   queryType: QueryType;
   tempTableName: string;
   lockForUpdate: string[];
+  order: Order;
 }
 
 export interface QueryState {
@@ -39,6 +40,7 @@ export interface QueryState {
   queryType: QueryType;
   tempTableName: string;
   lockForUpdate: string[];
+  order: Order;
   lockEnabled: boolean;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
@@ -109,7 +111,12 @@ export type QueryAction =
   | { type: 'REMOVE_QUERY'; index: number }
   | { type: 'RENAME_QUERY'; index: number; name: string }
   | { type: 'SET_QUERY_DISTINCT'; index: number; distinct: boolean }
-  | { type: 'SET_COLUMN_ALIAS'; alias: string; newAlias: string };
+  | { type: 'SET_COLUMN_ALIAS'; alias: string; newAlias: string }
+  // --- порядок (УПОРЯДОЧИТЬ ПО) ---
+  | { type: 'ADD_ORDER_FIELD'; tableId: string; path: string }
+  | { type: 'REMOVE_ORDER_FIELD'; tableId: string; path: string }
+  | { type: 'SET_ORDER_DIRECTION'; tableId: string; path: string; direction: SortDirection }
+  | { type: 'SET_ORDER_AUTO'; auto: boolean };
 
 export function initialState(): QueryState {
   return {
@@ -124,6 +131,7 @@ export function initialState(): QueryState {
     queryType: 'select',
     tempTableName: '',
     lockForUpdate: [],
+    order: { fields: [], auto: false },
     lockEnabled: false,
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
@@ -155,6 +163,7 @@ export function snapshotActive(state: QueryState): SavedQuery {
     queryType: state.queryType,
     tempTableName: state.tempTableName,
     lockForUpdate: state.lockForUpdate,
+    order: state.order,
   };
 }
 
@@ -174,6 +183,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     queryType: 'select' as QueryType,
     tempTableName: '',
     lockForUpdate: [],
+    order: { fields: [], auto: false } as Order,
   };
   return {
     selectedTables: base.selectedTables,
@@ -186,6 +196,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     queryType: base.queryType,
     tempTableName: base.tempTableName,
     lockForUpdate: base.lockForUpdate,
+    order: base.order,
     lockEnabled: base.lockForUpdate.length > 0,
     focusedSelectedTableId: null,
     focusedSelectedFieldIdx: null,
@@ -205,6 +216,7 @@ export function buildModelFromFlat(flat: SavedQuery): QueryModel {
     queryType: flat.queryType,
     tempTableName: flat.tempTableName,
     lockForUpdate: flat.lockForUpdate,
+    order: flat.order,
   };
 }
 
@@ -284,7 +296,11 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       const lockForUpdate = removed
         ? state.lockForUpdate.filter(n => n !== removed.fullName)
         : state.lockForUpdate;
-      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, joins, lockForUpdate, focusedSelectedTableId: null };
+      const order: Order = {
+        ...state.order,
+        fields: state.order.fields.filter(f => f.tableId !== action.tableId),
+      };
+      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, joins, lockForUpdate, order, focusedSelectedTableId: null };
     }
 
     case 'ADD_FIELD': {
@@ -387,7 +403,11 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
           .map(set => set.filter(f => !(f.tableId === tableId && f.path === path)))
           .filter(set => set.length > 0),
       };
-      return { ...state, selectedFields: fields, grouping, focusedSelectedFieldIdx: null };
+      const order: Order = {
+        ...state.order,
+        fields: state.order.fields.filter(f => !(f.tableId === tableId && f.path === path)),
+      };
+      return { ...state, selectedFields: fields, grouping, order, focusedSelectedFieldIdx: null };
     }
 
     case 'FOCUS_SELECTED_TABLE':
@@ -729,6 +749,39 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       );
       return { ...state, selectedFields, savedQueries };
     }
+
+    case 'ADD_ORDER_FIELD': {
+      const { tableId, path } = action;
+      if (state.order.fields.some(f => f.tableId === tableId && f.path === path)) return state;
+      return {
+        ...state,
+        order: { ...state.order, fields: [...state.order.fields, { tableId, path, direction: 'asc' }] },
+      };
+    }
+
+    case 'REMOVE_ORDER_FIELD': {
+      const { tableId, path } = action;
+      return {
+        ...state,
+        order: { ...state.order, fields: state.order.fields.filter(f => !(f.tableId === tableId && f.path === path)) },
+      };
+    }
+
+    case 'SET_ORDER_DIRECTION': {
+      const { tableId, path, direction } = action;
+      return {
+        ...state,
+        order: {
+          ...state.order,
+          fields: state.order.fields.map(f =>
+            f.tableId === tableId && f.path === path ? { ...f, direction } : f
+          ),
+        },
+      };
+    }
+
+    case 'SET_ORDER_AUTO':
+      return { ...state, order: { ...state.order, auto: action.auto } };
 
     default:
       return state;

@@ -9,6 +9,7 @@ import { ConditionsTab } from './components/ConditionsTab';
 import { ConnectionsTab } from './components/ConnectionsTab';
 import { AdditionalTab } from './components/AdditionalTab';
 import { UnionsTab } from './components/UnionsTab';
+import { OrderTab } from './components/OrderTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -349,7 +350,19 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && (
+      {activeTab === 'Порядок' && (
+        <OrderTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          order={state.order}
+          onAddOrderField={(tableId, path) => dispatch({ type: 'ADD_ORDER_FIELD', tableId, path })}
+          onRemoveOrderField={(tableId, path) => dispatch({ type: 'REMOVE_ORDER_FIELD', tableId, path })}
+          onSetOrderDirection={(tableId, path, direction) => dispatch({ type: 'SET_ORDER_DIRECTION', tableId, path, direction })}
+          onSetOrderAuto={auto => dispatch({ type: 'SET_ORDER_AUTO', auto })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>

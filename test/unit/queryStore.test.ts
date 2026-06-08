@@ -818,3 +818,85 @@ describe('queryStore — связи (joins)', () => {
     expect(model.joins).toEqual(s.joins);
   });
 });
+
+describe('queryStore — порядок (order, фаза 5.6)', () => {
+  function withTwoFields() {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Код' });
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Наименование' });
+    return { s, t1 };
+  }
+
+  it('initialState содержит пустой неактивный order', () => {
+    const s = initialState();
+    expect(s.order).toEqual({ fields: [], auto: false });
+  });
+
+  it('ADD_ORDER_FIELD добавляет поле по возрастанию', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Код', direction: 'asc' }]);
+  });
+
+  it('ADD_ORDER_FIELD не дублирует существующее поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    expect(s.order.fields).toHaveLength(1);
+  });
+
+  it('SET_ORDER_DIRECTION меняет направление', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_ORDER_DIRECTION', tableId: t1, path: 'Код', direction: 'desc' });
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Код', direction: 'desc' }]);
+  });
+
+  it('REMOVE_ORDER_FIELD удаляет поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_ORDER_FIELD', tableId: t1, path: 'Код' });
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Наименование', direction: 'asc' }]);
+  });
+
+  it('SET_ORDER_AUTO переключает автоупорядочивание', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'SET_ORDER_AUTO', auto: true });
+    expect(s.order.auto).toBe(true);
+    s = reducer(s, { type: 'SET_ORDER_AUTO', auto: false });
+    expect(s.order.auto).toBe(false);
+  });
+
+  it('REMOVE_TABLE каскадно удаляет поля сортировки таблицы', () => {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+    const t2 = s.selectedTables[1].id;
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t2, path: 'Дата' });
+    s = reducer(s, { type: 'REMOVE_TABLE', tableId: t1 });
+    expect(s.order.fields).toEqual([{ tableId: t2, path: 'Дата', direction: 'asc' }]);
+  });
+
+  it('REMOVE_FIELD каскадно удаляет поле сортировки', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_FIELD', fieldIdx: 0 }); // Код
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Наименование', direction: 'asc' }]);
+  });
+
+  it('order проходит через snapshot/restore/buildModelFromFlat', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_ORDER_AUTO', auto: true });
+    const snap = snapshotActive(s);
+    expect(snap.order).toEqual(s.order);
+    const restored = restoreSaved(s, snap);
+    expect(restored.order).toEqual(s.order);
+    const model = buildModelFromFlat(snap);
+    expect(model.order).toEqual(s.order);
+  });
+});

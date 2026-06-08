@@ -995,3 +995,100 @@ describe('generate — связи (joins)', () => {
     );
   });
 });
+
+describe('generate — порядок (УПОРЯДОЧИТЬ ПО, фаза 5.6)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const head =
+    'ВЫБРАТЬ\n' +
+    '\tВалюты.Ссылка КАК Ссылка\n' +
+    'ИЗ\n' +
+    '\tСправочник.Валюты КАК Валюты';
+
+  it('возрастание: поле по псевдониму выборки без суффикса', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'asc' }], auto: false },
+    };
+    expect(generate(model)).toBe(head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('убывание: суффикс УБЫВ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'desc' }], auto: false },
+    };
+    expect(generate(model)).toBe(head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка УБЫВ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('авто + поле: строка АВТОУПОРЯДОЧИВАНИЕ после полей', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'desc' }], auto: true },
+    };
+    expect(generate(model)).toBe(head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка УБЫВ\nАВТОУПОРЯДОЧИВАНИЕ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('только авто без полей: секция = только АВТОУПОРЯДОЧИВАНИЕ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [], auto: true },
+    };
+    expect(generate(model)).toBe(head + '\n\nАВТОУПОРЯДОЧИВАНИЕ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('несколько полей: запятая после всех, кроме последнего', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+      ],
+      order: {
+        fields: [
+          { tableId: 't1', path: 'Код', direction: 'asc' },
+          { tableId: 't1', path: 'Ссылка', direction: 'desc' },
+        ],
+        auto: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Код КАК Код,\n\tВалюты.Ссылка КАК Ссылка\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты\n\n' +
+      'УПОРЯДОЧИТЬ ПО\n\tКод,\n\tСсылка УБЫВ'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('ссылка по последнему сегменту пути, если поля нет в выборке', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      order: { fields: [{ tableId: 't1', path: 'Владелец.Код', direction: 'asc' }], auto: false },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты\n\n' +
+      'УПОРЯДОЧИТЬ ПО\n\tКод'
+    );
+  });
+
+  it('неактивный order (пустой, без авто) не меняет вывод', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [], auto: false },
+    };
+    expect(generate(model)).toBe(head);
+    await assertValidSdbl(generate(model));
+  });
+
+  it('отсутствие order не меняет вывод', () => {
+    expect(generate(base())).toBe(head);
+  });
+});

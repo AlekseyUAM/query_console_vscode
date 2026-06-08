@@ -77,6 +77,21 @@ export interface Condition {
   expression?: string;
 }
 
+export type SortDirection = 'asc' | 'desc';
+
+export interface OrderField {
+  tableId: string;
+  path: string;
+  /** asc → без суффикса; desc → УБЫВ. */
+  direction: SortDirection;
+}
+
+export interface Order {
+  fields: OrderField[];
+  /** «Автоупорядочивание» → ключевое слово АВТОУПОРЯДОЧИВАНИЕ. */
+  auto: boolean;
+}
+
 /** Вид соединения после нормализации (правое сводится к левому перестановкой). */
 export type JoinKind = 'inner' | 'left' | 'full';
 
@@ -133,6 +148,8 @@ export interface QueryModel {
   tempTableName?: string;
   /** Таблицы для секции ДЛЯ ИЗМЕНЕНИЯ (полные имена). */
   lockForUpdate?: string[];
+  /** Порядок сортировки (секция УПОРЯДОЧИТЬ ПО / АВТОУПОРЯДОЧИВАНИЕ). */
+  order?: Order;
 }
 
 /**

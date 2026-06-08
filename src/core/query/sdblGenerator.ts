@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
@@ -295,6 +295,40 @@ export function fieldExpr(model: QueryModel, field: SelectedField): string {
   return func ? wrapAggregate(func, lhs) : lhs;
 }
 
+/**
+ * Псевдоним выборки для поля `(tableId, path)`: `alias` соответствующего поля из
+ * `model.fields`, иначе последний сегмент `path`. Используется секциями
+ * УПОРЯДОЧИТЬ ПО (5.6) и ИТОГИ (5.7), где поля адресуются по псевдониму выборки.
+ */
+export function selectAliasFor(model: QueryModel, tableId: string, path: string): string {
+  const match = model.fields.find(f => f.tableId === tableId && f.path === path);
+  if (match?.alias) return match.alias;
+  return path.split('.').pop() ?? path;
+}
+
+/**
+ * Секция УПОРЯДОЧИТЬ ПО (+ строка АВТОУПОРЯДОЧИВАНИЕ при `order.auto`). Без ведущей
+ * пустой строки. Возвращает [] если порядок неактивен (нет полей и нет авто) —
+ * тогда вывод байт-в-байт как раньше. Поле = `<псевдоним выборки>` + ` УБЫВ` при
+ * `direction==='desc'`; запятая после всех, кроме последнего. При `auto` без полей
+ * секция = только `['АВТОУПОРЯДОЧИВАНИЕ']`.
+ */
+function renderOrder(order: Order | undefined, model: QueryModel): string[] {
+  if (!order) return [];
+  const lines: string[] = [];
+  if (order.fields.length > 0) {
+    lines.push('УПОРЯДОЧИТЬ ПО');
+    order.fields.forEach((f, i) => {
+      const alias = selectAliasFor(model, f.tableId, f.path);
+      const suffix = f.direction === 'desc' ? ' УБЫВ' : '';
+      const comma = i < order.fields.length - 1 ? ',' : '';
+      lines.push(`\t${alias}${suffix}${comma}`);
+    });
+  }
+  if (order.auto) lines.push('АВТОУПОРЯДОЧИВАНИЕ');
+  return lines;
+}
+
 export function generate(model: QueryModel): string {
   // УНИЧТОЖИТЬ — самостоятельный запрос, до всех остальных проверок.
   if (model.queryType === 'dropTemp') {
@@ -307,7 +341,10 @@ export function generate(model: QueryModel): string {
 
   const aliases = resolveAliases(model.tables);
   const fieldLines = buildFieldLines(model, aliases);
-  return buildQueryBlock(model, fieldLines, aliases);
+  let out = buildQueryBlock(model, fieldLines, aliases);
+  const orderLines = renderOrder(model.order, model);
+  if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
+  return out;
 }
 
 /**
