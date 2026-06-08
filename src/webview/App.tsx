@@ -8,6 +8,7 @@ import { GroupingTab } from './components/GroupingTab';
 import { ConditionsTab } from './components/ConditionsTab';
 import { ConnectionsTab } from './components/ConnectionsTab';
 import { AdditionalTab } from './components/AdditionalTab';
+import { IndexTab } from './components/IndexTab';
 import { UnionsTab } from './components/UnionsTab';
 import { OrderTab } from './components/OrderTab';
 import { TotalsTab } from './components/TotalsTab';
@@ -133,12 +134,23 @@ export function App(): React.ReactElement {
 
   // Видимые вкладки: «Связи» — сразу после «Таблицы и поля» и только при > 1 таблице.
   // При типе dropTemp видны только «Дополнительно» и «Пакет запросов».
+  // «Индекс» — только для типа «Создание ВТ»; базовый список всегда без неё,
+  // вставляем ниже в finalTabs сразу после «Дополнительно».
+  const showIndexTab = state.queryType === 'createTemp';
   const showJoinsTab = state.selectedTables.length > 1;
+  const baseTabs = TABS.filter(t => t !== 'Индекс');
   const visibleTabs = state.queryType === 'dropTemp'
     ? ['Дополнительно', 'Пакет запросов']
     : showJoinsTab
-      ? [TABS[0], 'Связи', ...TABS.slice(1)]
-      : TABS;
+      ? [baseTabs[0], 'Связи', ...baseTabs.slice(1)]
+      : baseTabs;
+
+  // Вставка вкладки «Индекс» сразу после «Дополнительно» при типе «Создание ВТ».
+  let finalTabs = visibleTabs;
+  if (showIndexTab && finalTabs.includes('Дополнительно') && !finalTabs.includes('Индекс')) {
+    const i = finalTabs.indexOf('Дополнительно');
+    finalTabs = [...finalTabs.slice(0, i + 1), 'Индекс', ...finalTabs.slice(i + 1)];
+  }
 
   // Если активная вкладка «Связи» скрылась (удалили таблицу) — вернуться к «Таблицы и поля».
   useEffect(() => {
@@ -147,12 +159,19 @@ export function App(): React.ReactElement {
     }
   }, [showJoinsTab, activeTab]);
 
-  // Если активная вкладка скрылась из-за переключения на dropTemp — на «Дополнительно».
+  // Если активная вкладка «Индекс» скрылась (сменили тип запроса) — на «Дополнительно».
   useEffect(() => {
-    if (!visibleTabs.includes(activeTab)) {
+    if (!showIndexTab && activeTab === 'Индекс') {
       setActiveTab('Дополнительно');
     }
-  }, [visibleTabs, activeTab]);
+  }, [showIndexTab, activeTab]);
+
+  // Если активная вкладка скрылась из-за переключения на dropTemp — на «Дополнительно».
+  useEffect(() => {
+    if (!finalTabs.includes(activeTab)) {
+      setActiveTab('Дополнительно');
+    }
+  }, [finalTabs, activeTab]);
 
   // Вертикальная полоса боковых вкладок запросов пакета (только если запросов
   // пакета > 1 и активна не сама вкладка «Пакет запросов»).
@@ -187,7 +206,7 @@ export function App(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
-      <TabsBar tabs={visibleTabs} active={activeTab} onSelect={setActiveTab} />
+      <TabsBar tabs={finalTabs} active={activeTab} onSelect={setActiveTab} />
       {/* Cache toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
         <button
@@ -356,6 +375,24 @@ export function App(): React.ReactElement {
         />
       )}
 
+      {activeTab === 'Индекс' && (
+        <IndexTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          indexing={state.indexing}
+          onAddIndex={() => dispatch({ type: 'ADD_INDEX' })}
+          onCopyIndex={index => dispatch({ type: 'COPY_INDEX', index })}
+          onRemoveIndex={index => dispatch({ type: 'REMOVE_INDEX', index })}
+          onMoveIndex={(index, dir) => dispatch({ type: 'MOVE_INDEX', index, dir })}
+          onSetUnique={(index, unique) => dispatch({ type: 'SET_INDEX_UNIQUE', index, unique })}
+          onAddField={(index, tableId, path) => dispatch({ type: 'ADD_INDEX_FIELD', index, tableId, path })}
+          onAddAllFields={(index, fields) => dispatch({ type: 'ADD_ALL_INDEX_FIELDS', index, fields })}
+          onRemoveField={(index, tableId, path) => dispatch({ type: 'REMOVE_INDEX_FIELD', index, tableId, path })}
+          onClearFields={index => dispatch({ type: 'CLEAR_INDEX_FIELDS', index })}
+          onMoveField={(index, tableId, path, dir) => dispatch({ type: 'MOVE_INDEX_FIELD', index, tableId, path, dir })}
+        />
+      )}
+
       {activeTab === 'Объединения/Псевдонимы' && (
         <UnionsTab
           queryList={state.queryList}
@@ -423,7 +460,7 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Построитель' && activeTab !== 'Пакет запросов' && (
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Индекс' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Построитель' && activeTab !== 'Пакет запросов' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
