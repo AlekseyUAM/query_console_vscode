@@ -103,6 +103,23 @@ export interface Totals {
   grand: boolean;
 }
 
+/** Строка построителя: ссылка на поле + «использовать дочерние» (.*) + псевдоним. */
+export interface BuilderField {
+  /** Готовый текст ссылки: псевдоним выборки (Поля/Порядок/Итоги) или Алиас.Поле (Условия, «Все поля»). */
+  ref: string;
+  /** «Использовать дочерние» → суффикс `.*`. */
+  child: boolean;
+  /** Необязательный псевдоним → ` КАК <alias>`. */
+  alias?: string;
+}
+
+export interface ReportBuilder {
+  fields: BuilderField[];     // {ВЫБРАТЬ …}
+  conditions: BuilderField[]; // {ГДЕ …}
+  order: BuilderField[];      // {УПОРЯДОЧИТЬ ПО …}
+  totals: BuilderField[];     // {ИТОГИ ПО …}
+}
+
 export type SortDirection = 'asc' | 'desc';
 
 export interface OrderField {
@@ -178,6 +195,8 @@ export interface QueryModel {
   order?: Order;
   /** Итоги (секция ИТОГИ … ПО …). */
   totals?: Totals;
+  /** Построитель отчётов: динамические блоки {…}. */
+  builder?: ReportBuilder;
 }
 
 /**

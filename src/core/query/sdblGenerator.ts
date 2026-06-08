@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
@@ -180,6 +180,25 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
 }
 
 /**
+ * Блок построителя `{<ключевое слово> …}`. Возвращает [] если полей нет. Иначе:
+ * первая строка `'{' + keyword`; затем по строке на поле `'\t' + render(f)` с
+ * запятой после всех, кроме последнего; закрывающая `}` дописывается к строке
+ * последнего поля (без отдельной строки). Поле:
+ * `ref + (child ? '.*' : '') + (alias ? ' КАК ' + alias : '')`.
+ */
+function builderBlock(keyword: string, fields: BuilderField[]): string[] {
+  if (fields.length === 0) return [];
+  const render = (f: BuilderField): string =>
+    f.ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
+  const lines = ['{' + keyword];
+  fields.forEach((f, i) => {
+    const last = i === fields.length - 1;
+    lines.push('\t' + render(f) + (last ? '}' : ','));
+  });
+  return lines;
+}
+
+/**
  * Сборка блока одного запроса из ГОТОВЫХ строк полей (без хвостовых запятых).
  * Используется как обычным `generate`, так и генератором объединений
  * `generateDocument` (где список полей формируется из колонок объединения, а не
@@ -213,14 +232,23 @@ function buildQueryBlock(
     ? ['', 'ДЛЯ ИЗМЕНЕНИЯ', ...model.lockForUpdate.map(name => '\t' + name)]
     : [];
 
+  const builderSelect = builderBlock('ВЫБРАТЬ', model.builder?.fields ?? []);
+  const builderWhere = builderBlock('ГДЕ', model.builder?.conditions ?? []);
+  const builderOrder = builderBlock('УПОРЯДОЧИТЬ ПО', model.builder?.order ?? []);
+  const builderTotals = builderBlock('ИТОГИ ПО', model.builder?.totals ?? []);
+
   return [
     'ВЫБРАТЬ' + selectionModifiers(model.selection),
     ...lines,
+    ...builderSelect,
     ...placeLines,
     'ИЗ',
     ...tableLines,
     ...conditionLines,
+    ...builderWhere,
     ...groupingLines,
+    ...builderOrder,
+    ...builderTotals,
     ...lockLines,
   ].join('\n');
 }
