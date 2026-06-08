@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { generate, generateDocument } from '../../src/core/query/sdblGenerator';
+import { generate, generateDocument, generateBatch } from '../../src/core/query/sdblGenerator';
 import type { QueryDocument } from '../../src/core/query/unionModel';
+import type { BatchDocument } from '../../src/core/query/batchModel';
 import type { QueryModel } from '../../src/core/query/queryModel';
 import { assertValidSdbl } from '../helpers/assertValidSdbl';
 
@@ -1250,5 +1251,238 @@ describe('generate — итоги (ИТОГИ … ПО …, фаза 5.7)', () =
       head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка\nИТОГИ ПО\n\tСсылка КАК Ссылка11'
     );
     await assertValidSdbl(generate(model));
+  });
+});
+
+describe('generateBatch', () => {
+  // Разделитель пакета 1С: строка с `;`, пустая строка, ровно 80 символов `/`, перевод строки.
+  const SEP = '\n;\n\n' + '/'.repeat(80) + '\n';
+
+  const docOf = (model: QueryModel): QueryDocument => ({
+    members: [{ name: 'Запрос пакета 1', distinct: false, model }],
+  });
+
+  const valuesRef = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const anketaModel = (): QueryModel => ({
+    tables: [{ id: 't2', fullName: 'Документ.Анкета' }],
+    fields: [{ tableId: 't2', path: 'ВерсияДанных', alias: 'ВерсияДанных' }],
+  });
+
+  it('0 участников → пустая строка', () => {
+    const batch: BatchDocument = { members: [] };
+    expect(generateBatch(batch)).toBe('');
+  });
+
+  it('один участник = generateDocument байт-в-байт (без `;` и разделителя)', () => {
+    const doc = docOf(valuesRef());
+    const batch: BatchDocument = { members: [doc] };
+    expect(generateBatch(batch)).toBe(generateDocument(doc));
+    expect(generateBatch(batch)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+    );
+  });
+
+  it('разделитель содержит ровно 80 символов `/`', () => {
+    expect(SEP).toBe('\n;\n\n' + '////////////////////////////////////////////////////////////////////////////////' + '\n');
+    const slashes = SEP.replace(/[^/]/g, '');
+    expect(slashes.length).toBe(80);
+  });
+
+  it('два участника соединяются разделителем пакета', async () => {
+    const batch: BatchDocument = {
+      members: [docOf(valuesRef()), docOf(anketaModel())],
+    };
+    const expected =
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты' +
+      SEP +
+      'ВЫБРАТЬ\n\tАнкета.ВерсияДанных КАК ВерсияДанных\nИЗ\n\tДокумент.Анкета КАК Анкета';
+    expect(generateBatch(batch)).toBe(expected);
+    for (const block of generateBatch(batch).split(SEP)) {
+      await assertValidSdbl(block);
+    }
+  });
+
+  it('три участника: ПОМЕСТИТЬ, обычный и УНИЧТОЖИТЬ как самостоятельные блоки', async () => {
+    const createModel: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      queryType: 'createTemp',
+      tempTableName: 'аааббб',
+    };
+    const dropModel: QueryModel = {
+      tables: [],
+      fields: [],
+      queryType: 'dropTemp',
+      tempTableName: 'аааббб',
+    };
+    const batch: BatchDocument = {
+      members: [docOf(createModel), docOf(anketaModel()), docOf(dropModel)],
+    };
+    const expected =
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nПОМЕСТИТЬ аааббб\nИЗ\n\tСправочник.Валюты КАК Валюты' +
+      SEP +
+      'ВЫБРАТЬ\n\tАнкета.ВерсияДанных КАК ВерсияДанных\nИЗ\n\tДокумент.Анкета КАК Анкета' +
+      SEP +
+      'УНИЧТОЖИТЬ аааббб';
+    expect(generateBatch(batch)).toBe(expected);
+    for (const block of generateBatch(batch).split(SEP)) {
+      await assertValidSdbl(block);
+    }
+  });
+
+  it('пустые участники отбрасываются при соединении', () => {
+    const emptyDoc: QueryDocument = {
+      members: [{ name: 'Пустой', distinct: false, model: { tables: [], fields: [] } }],
+    };
+    const batch: BatchDocument = {
+      members: [docOf(valuesRef()), emptyDoc, docOf(anketaModel())],
+    };
+    const expected =
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты' +
+      SEP +
+      'ВЫБРАТЬ\n\tАнкета.ВерсияДанных КАК ВерсияДанных\nИЗ\n\tДокумент.Анкета КАК Анкета';
+    expect(generateBatch(batch)).toBe(expected);
+  });
+});
+
+describe('Построитель: блоки {…}', () => {
+  // Базовая модель: ВЫБРАТЬ Валюты.Ссылка КАК Ссылка ИЗ Справочник.Валюты КАК Валюты.
+  const baseModel = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  it('пустой/отсутствующий builder не меняет вывод (регрессия)', () => {
+    const expected =
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты';
+    expect(generate(baseModel())).toBe(expected);
+
+    const withEmpty: QueryModel = {
+      ...baseModel(),
+      builder: { fields: [], conditions: [], order: [], totals: [] },
+    };
+    expect(generate(withEmpty)).toBe(expected);
+  });
+
+  it('{ВЫБРАТЬ …} после полей выборки, перед ИЗ', () => {
+    const model: QueryModel = {
+      ...baseModel(),
+      builder: {
+        fields: [
+          { ref: 'Ресурс1Оборот', child: false, alias: 'труляля' },
+          { ref: 'Валюты.Ссылка', child: true },
+        ],
+        conditions: [],
+        order: [],
+        totals: [],
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка\n' +
+        '{ВЫБРАТЬ\n' +
+        '\tРесурс1Оборот КАК труляля,\n' +
+        '\tВалюты.Ссылка.*}\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты'
+    );
+  });
+
+  it('{ГДЕ …} после секции ИЗ', () => {
+    const model: QueryModel = {
+      ...baseModel(),
+      builder: {
+        fields: [],
+        conditions: [
+          { ref: 'Валюты.Ссылка', child: true },
+          { ref: 'РегистрНакопленияОборОбороты.Измерение1', child: false },
+        ],
+        order: [],
+        totals: [],
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты\n' +
+        '{ГДЕ\n' +
+        '\tВалюты.Ссылка.*,\n' +
+        '\tРегистрНакопленияОборОбороты.Измерение1}'
+    );
+  });
+
+  it('{УПОРЯДОЧИТЬ ПО …} после ИЗ/группировки', () => {
+    const model: QueryModel = {
+      ...baseModel(),
+      builder: {
+        fields: [],
+        conditions: [],
+        order: [
+          { ref: 'Ссылка', child: true },
+          { ref: 'Измерение1', child: false, alias: 'Измерение1ааа' },
+        ],
+        totals: [],
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты\n' +
+        '{УПОРЯДОЧИТЬ ПО\n' +
+        '\tСсылка.*,\n' +
+        '\tИзмерение1 КАК Измерение1ааа}'
+    );
+  });
+
+  it('{ИТОГИ ПО …} после {УПОРЯДОЧИТЬ ПО}', () => {
+    const model: QueryModel = {
+      ...baseModel(),
+      builder: {
+        fields: [],
+        conditions: [],
+        order: [],
+        totals: [
+          { ref: 'Измерение1', child: false },
+          { ref: 'Ресурс1Оборот', child: false },
+          { ref: 'Ссылка', child: true, alias: 'а11' },
+        ],
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты\n' +
+        '{ИТОГИ ПО\n' +
+        '\tИзмерение1,\n' +
+        '\tРесурс1Оборот,\n' +
+        '\tСсылка.* КАК а11}'
+    );
+  });
+
+  it('поле с child и alias рендерится как Ссылка.* КАК а11', () => {
+    const model: QueryModel = {
+      ...baseModel(),
+      builder: {
+        fields: [{ ref: 'Ссылка', child: true, alias: 'а11' }],
+        conditions: [],
+        order: [],
+        totals: [],
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка\n' +
+        '{ВЫБРАТЬ\n' +
+        '\tСсылка.* КАК а11}\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты'
+    );
   });
 });

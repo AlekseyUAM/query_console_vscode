@@ -1,15 +1,14 @@
 import * as React from 'react';
 import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
-import { generateDocument, formatAsBslString } from '../../core/query/sdblGenerator';
-import type { UnionMember } from '../../core/query/unionModel';
+import { formatAsBslString } from '../../core/query/sdblGenerator';
 
 interface Props {
   selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
   tabSectionFields: SelectedTabSectionField[];
-  /** Участники объединения (весь документ) — источник текста при нажатии ОК. */
-  members: UnionMember[];
+  /** Готовый текст запроса (пакета) — источник вставки при нажатии ОК. */
+  queryText: string;
   focusedSelectedFieldIdx: number | null;
   onDropField: (tableFullName: string, fieldPath: string) => void;
   onDropTabSection: (parentTableFullName: string, tsName: string, tsFullName: string, tsFields: string[]) => void;
@@ -45,7 +44,7 @@ const REMOVE_BTN: React.CSSProperties = {
 };
 
 export function FieldsPanel({
-  selectedTables, selectedFields, tabSectionFields, members, focusedSelectedFieldIdx,
+  selectedTables, selectedFields, tabSectionFields, queryText, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
   onFocusField, onInsert, onCancel, canAddExpression, onAddExpression,
 }: Props): React.ReactElement {
@@ -100,8 +99,7 @@ export function FieldsPanel({
   }
 
   function handleOk() {
-    const text = generateDocument({ members });
-    if (text) onInsert(formatAsBslString(text));
+    if (queryText) onInsert(formatAsBslString(queryText));
   }
 
   const canInsert = selectedTables.length > 0 && (selectedFields.length > 0 || tabSectionFields.length > 0);

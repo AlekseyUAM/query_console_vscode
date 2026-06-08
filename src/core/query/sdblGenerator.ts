@@ -1,7 +1,8 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
+import type { BatchDocument } from './batchModel';
 
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
@@ -179,6 +180,25 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
 }
 
 /**
+ * Блок построителя `{<ключевое слово> …}`. Возвращает [] если полей нет. Иначе:
+ * первая строка `'{' + keyword`; затем по строке на поле `'\t' + render(f)` с
+ * запятой после всех, кроме последнего; закрывающая `}` дописывается к строке
+ * последнего поля (без отдельной строки). Поле:
+ * `ref + (child ? '.*' : '') + (alias ? ' КАК ' + alias : '')`.
+ */
+function builderBlock(keyword: string, fields: BuilderField[]): string[] {
+  if (fields.length === 0) return [];
+  const render = (f: BuilderField): string =>
+    f.ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
+  const lines = ['{' + keyword];
+  fields.forEach((f, i) => {
+    const last = i === fields.length - 1;
+    lines.push('\t' + render(f) + (last ? '}' : ','));
+  });
+  return lines;
+}
+
+/**
  * Сборка блока одного запроса из ГОТОВЫХ строк полей (без хвостовых запятых).
  * Используется как обычным `generate`, так и генератором объединений
  * `generateDocument` (где список полей формируется из колонок объединения, а не
@@ -212,14 +232,23 @@ function buildQueryBlock(
     ? ['', 'ДЛЯ ИЗМЕНЕНИЯ', ...model.lockForUpdate.map(name => '\t' + name)]
     : [];
 
+  const builderSelect = builderBlock('ВЫБРАТЬ', model.builder?.fields ?? []);
+  const builderWhere = builderBlock('ГДЕ', model.builder?.conditions ?? []);
+  const builderOrder = builderBlock('УПОРЯДОЧИТЬ ПО', model.builder?.order ?? []);
+  const builderTotals = builderBlock('ИТОГИ ПО', model.builder?.totals ?? []);
+
   return [
     'ВЫБРАТЬ' + selectionModifiers(model.selection),
     ...lines,
+    ...builderSelect,
     ...placeLines,
     'ИЗ',
     ...tableLines,
     ...conditionLines,
+    ...builderWhere,
     ...groupingLines,
+    ...builderOrder,
+    ...builderTotals,
     ...lockLines,
   ].join('\n');
 }
@@ -427,6 +456,26 @@ export function generateDocument(doc: QueryDocument): string {
     out += `\n\n${keyword}\n\n${blocks[i]}`;
   }
   return out;
+}
+
+/**
+ * Текст пакета запросов по документу пакета.
+ * - 0 участников → ''.
+ * - 1 участник → ровно `generateDocument(members[0])` (без `;` и разделителя),
+ *   что гарантирует байт-в-байт совместимость с существующим выводом (golden-сьют,
+ *   фазы 5.x).
+ * - иначе: каждый участник рендерится `generateDocument`, пустые строки (`''`)
+ *   отбрасываются, остальные соединяются разделителем пакета 1С: строка `;`,
+ *   пустая строка, ровно 80 символов `/`, перевод строки.
+ */
+export function generateBatch(batch: BatchDocument): string {
+  const SEP = '\n;\n\n' + '/'.repeat(80) + '\n';
+  const members = batch.members;
+  if (members.length === 0) return '';
+  if (members.length === 1) return generateDocument(members[0]);
+
+  const blocks = members.map(generateDocument).filter(b => b !== '');
+  return blocks.join(SEP);
 }
 
 /** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */
