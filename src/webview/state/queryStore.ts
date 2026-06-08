@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
@@ -29,6 +29,7 @@ export interface SavedQuery {
   order: Order;
   totals: Totals;
   builder: ReportBuilder;
+  indexing: Indexing;
 }
 
 /** Пустой построитель отчёта: все секции без строк. */
@@ -70,6 +71,7 @@ export interface QueryState {
   order: Order;
   totals: Totals;
   builder: ReportBuilder;
+  indexing: Indexing;
   lockEnabled: boolean;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
@@ -169,7 +171,18 @@ export type QueryAction =
   | { type: 'ADD_BUILDER_FIELD'; section: BuilderSection; field: BuilderField }
   | { type: 'REMOVE_BUILDER_FIELD'; section: BuilderSection; index: number }
   | { type: 'SET_BUILDER_FIELD_CHILD'; section: BuilderSection; index: number; child: boolean }
-  | { type: 'SET_BUILDER_FIELD_ALIAS'; section: BuilderSection; index: number; alias: string };
+  | { type: 'SET_BUILDER_FIELD_ALIAS'; section: BuilderSection; index: number; alias: string }
+  // --- индексы (ИНДЕКСИРОВАТЬ ПО) ---
+  | { type: 'ADD_INDEX' }
+  | { type: 'COPY_INDEX'; index: number }
+  | { type: 'REMOVE_INDEX'; index: number }
+  | { type: 'MOVE_INDEX'; index: number; dir: 'up' | 'down' }
+  | { type: 'SET_INDEX_UNIQUE'; index: number; unique: boolean }
+  | { type: 'ADD_INDEX_FIELD'; index: number; tableId: string; path: string }
+  | { type: 'ADD_ALL_INDEX_FIELDS'; index: number; fields: FieldRef[] }
+  | { type: 'REMOVE_INDEX_FIELD'; index: number; tableId: string; path: string }
+  | { type: 'CLEAR_INDEX_FIELDS'; index: number }
+  | { type: 'MOVE_INDEX_FIELD'; index: number; tableId: string; path: string; dir: 'up' | 'down' };
 
 export function initialState(): QueryState {
   return {
@@ -187,6 +200,7 @@ export function initialState(): QueryState {
     order: { fields: [], auto: false },
     totals: { groupFields: [], totalFields: [], grand: false },
     builder: emptyBuilder(),
+    indexing: { indexes: [] },
     lockEnabled: false,
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
@@ -223,6 +237,7 @@ export function snapshotActive(state: QueryState): SavedQuery {
     order: state.order,
     totals: state.totals,
     builder: state.builder,
+    indexing: state.indexing,
   };
 }
 
@@ -245,6 +260,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     order: { fields: [], auto: false } as Order,
     totals: { groupFields: [], totalFields: [], grand: false } as Totals,
     builder: emptyBuilder(),
+    indexing: { indexes: [] } as Indexing,
   };
   return {
     selectedTables: base.selectedTables,
@@ -260,6 +276,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     order: base.order,
     totals: base.totals,
     builder: base.builder,
+    indexing: base.indexing,
     lockEnabled: base.lockForUpdate.length > 0,
     focusedSelectedTableId: null,
     focusedSelectedFieldIdx: null,
@@ -282,6 +299,7 @@ export function buildModelFromFlat(flat: SavedQuery): QueryModel {
     order: flat.order,
     totals: flat.totals,
     builder: flat.builder,
+    indexing: flat.indexing,
   };
 }
 
@@ -454,7 +472,14 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         groupFields: state.totals.groupFields.filter(f => f.tableId !== action.tableId),
         totalFields: state.totals.totalFields.filter(f => f.tableId !== action.tableId),
       };
-      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, joins, lockForUpdate, order, totals, focusedSelectedTableId: null };
+      const indexing: Indexing = {
+        ...state.indexing,
+        indexes: state.indexing.indexes.map(idx => ({
+          ...idx,
+          fields: idx.fields.filter(f => f.tableId !== action.tableId),
+        })),
+      };
+      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, joins, lockForUpdate, order, totals, indexing, focusedSelectedTableId: null };
     }
 
     case 'ADD_FIELD': {
@@ -566,7 +591,14 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         groupFields: state.totals.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
         totalFields: state.totals.totalFields.filter(f => !(f.tableId === tableId && f.path === path)),
       };
-      return { ...state, selectedFields: fields, grouping, order, totals, focusedSelectedFieldIdx: null };
+      const indexing: Indexing = {
+        ...state.indexing,
+        indexes: state.indexing.indexes.map(idx => ({
+          ...idx,
+          fields: idx.fields.filter(f => !(f.tableId === tableId && f.path === path)),
+        })),
+      };
+      return { ...state, selectedFields: fields, grouping, order, totals, indexing, focusedSelectedFieldIdx: null };
     }
 
     case 'FOCUS_SELECTED_TABLE':
@@ -1138,6 +1170,103 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
           rows.map((r, i) => (i === action.index ? { ...r, alias: action.alias } : r))
         ),
       };
+
+    case 'ADD_INDEX':
+      return {
+        ...state,
+        indexing: { ...state.indexing, indexes: [...state.indexing.indexes, { unique: false, fields: [] }] },
+      };
+
+    case 'COPY_INDEX': {
+      const src = state.indexing.indexes[action.index];
+      if (!src) return state;
+      const copy: QueryIndex = { unique: src.unique, fields: [...src.fields] };
+      return {
+        ...state,
+        indexing: { ...state.indexing, indexes: [...state.indexing.indexes, copy] },
+      };
+    }
+
+    case 'REMOVE_INDEX':
+      return {
+        ...state,
+        indexing: { ...state.indexing, indexes: state.indexing.indexes.filter((_, i) => i !== action.index) },
+      };
+
+    case 'MOVE_INDEX': {
+      const { index, dir } = action;
+      const target = dir === 'up' ? index - 1 : index + 1;
+      if (index < 0 || index >= state.indexing.indexes.length) return state;
+      if (target < 0 || target >= state.indexing.indexes.length) return state;
+      const indexes = [...state.indexing.indexes];
+      [indexes[index], indexes[target]] = [indexes[target], indexes[index]];
+      return { ...state, indexing: { ...state.indexing, indexes } };
+    }
+
+    case 'SET_INDEX_UNIQUE': {
+      if (!state.indexing.indexes[action.index]) return state;
+      const indexes = state.indexing.indexes.map((idx, i) =>
+        i === action.index ? { ...idx, unique: action.unique } : idx
+      );
+      return { ...state, indexing: { ...state.indexing, indexes } };
+    }
+
+    case 'ADD_INDEX_FIELD': {
+      const { index, tableId, path } = action;
+      const idx = state.indexing.indexes[index];
+      if (!idx) return state;
+      if (idx.fields.some(f => f.tableId === tableId && f.path === path)) return state;
+      const indexes = state.indexing.indexes.map((it, i) =>
+        i === index ? { ...it, fields: [...it.fields, { tableId, path }] } : it
+      );
+      return { ...state, indexing: { ...state.indexing, indexes } };
+    }
+
+    case 'ADD_ALL_INDEX_FIELDS': {
+      const { index } = action;
+      const idx = state.indexing.indexes[index];
+      if (!idx) return state;
+      const toAdd = action.fields.filter(
+        nf => !idx.fields.some(f => f.tableId === nf.tableId && f.path === nf.path)
+      );
+      if (toAdd.length === 0) return state;
+      const indexes = state.indexing.indexes.map((it, i) =>
+        i === index ? { ...it, fields: [...it.fields, ...toAdd.map(f => ({ tableId: f.tableId, path: f.path }))] } : it
+      );
+      return { ...state, indexing: { ...state.indexing, indexes } };
+    }
+
+    case 'REMOVE_INDEX_FIELD': {
+      const { index, tableId, path } = action;
+      if (!state.indexing.indexes[index]) return state;
+      const indexes = state.indexing.indexes.map((it, i) =>
+        i === index ? { ...it, fields: it.fields.filter(f => !(f.tableId === tableId && f.path === path)) } : it
+      );
+      return { ...state, indexing: { ...state.indexing, indexes } };
+    }
+
+    case 'CLEAR_INDEX_FIELDS': {
+      const { index } = action;
+      if (!state.indexing.indexes[index]) return state;
+      const indexes = state.indexing.indexes.map((it, i) =>
+        i === index ? { ...it, fields: [] } : it
+      );
+      return { ...state, indexing: { ...state.indexing, indexes } };
+    }
+
+    case 'MOVE_INDEX_FIELD': {
+      const { index, tableId, path, dir } = action;
+      const idx = state.indexing.indexes[index];
+      if (!idx) return state;
+      const pos = idx.fields.findIndex(f => f.tableId === tableId && f.path === path);
+      if (pos === -1) return state;
+      const target = dir === 'up' ? pos - 1 : pos + 1;
+      if (target < 0 || target >= idx.fields.length) return state;
+      const fields = [...idx.fields];
+      [fields[pos], fields[target]] = [fields[target], fields[pos]];
+      const indexes = state.indexing.indexes.map((it, i) => (i === index ? { ...it, fields } : it));
+      return { ...state, indexing: { ...state.indexing, indexes } };
+    }
 
     default:
       return state;

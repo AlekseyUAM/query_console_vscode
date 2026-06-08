@@ -1389,3 +1389,214 @@ describe('queryStore reducer — построитель (builder, фаза 5.9)'
     expect(s.builder.order).toEqual([{ ref: 'Валюты.Код', child: false }]);
   });
 });
+
+describe('queryStore — индексы (indexing, фаза 5.10)', () => {
+  function withTwoFields() {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Код' });
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Наименование' });
+    return { s, t1 };
+  }
+
+  it('initialState содержит пустую секцию indexing', () => {
+    const s = initialState();
+    expect(s.indexing).toEqual({ indexes: [] });
+  });
+
+  it('ADD_INDEX добавляет пустой неуникальный индекс', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    expect(s.indexing.indexes).toEqual([{ unique: false, fields: [] }]);
+  });
+
+  it('COPY_INDEX делает глубокую копию индекса', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 0, unique: true });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'COPY_INDEX', index: 0 });
+    expect(s.indexing.indexes).toHaveLength(2);
+    expect(s.indexing.indexes[1]).toEqual({ unique: true, fields: [{ tableId: t1, path: 'Код' }] });
+    // копия не делит ссылку на массив полей
+    expect(s.indexing.indexes[1].fields).not.toBe(s.indexing.indexes[0].fields);
+  });
+
+  it('COPY_INDEX при некорректном индексе не меняет состояние', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    const before = s;
+    s = reducer(s, { type: 'COPY_INDEX', index: 5 });
+    expect(s).toBe(before);
+  });
+
+  it('REMOVE_INDEX удаляет индекс по позиции', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 1, unique: true });
+    s = reducer(s, { type: 'REMOVE_INDEX', index: 0 });
+    expect(s.indexing.indexes).toEqual([{ unique: true, fields: [] }]);
+  });
+
+  it('MOVE_INDEX переставляет индексы вверх/вниз', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 0, unique: false });
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 1, unique: true });
+    s = reducer(s, { type: 'MOVE_INDEX', index: 1, dir: 'up' });
+    expect(s.indexing.indexes.map(i => i.unique)).toEqual([true, false]);
+    s = reducer(s, { type: 'MOVE_INDEX', index: 0, dir: 'down' });
+    expect(s.indexing.indexes.map(i => i.unique)).toEqual([false, true]);
+  });
+
+  it('MOVE_INDEX за границей не меняет состояние', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    const before = s;
+    s = reducer(s, { type: 'MOVE_INDEX', index: 0, dir: 'up' });
+    expect(s).toBe(before);
+    s = reducer(s, { type: 'MOVE_INDEX', index: 0, dir: 'down' });
+    expect(s).toBe(before);
+  });
+
+  it('SET_INDEX_UNIQUE переключает уникальность', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 0, unique: true });
+    expect(s.indexing.indexes[0].unique).toBe(true);
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 0, unique: false });
+    expect(s.indexing.indexes[0].unique).toBe(false);
+  });
+
+  it('SET_INDEX_UNIQUE при некорректном индексе не меняет состояние', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    const before = s;
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 9, unique: true });
+    expect(s).toBe(before);
+  });
+
+  it('ADD_INDEX_FIELD добавляет поле в индекс', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    expect(s.indexing.indexes[0].fields).toEqual([{ tableId: t1, path: 'Код' }]);
+  });
+
+  it('ADD_INDEX_FIELD не дублирует существующее поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    expect(s.indexing.indexes[0].fields).toHaveLength(1);
+  });
+
+  it('ADD_INDEX_FIELD при некорректном индексе не меняет состояние', () => {
+    let { s, t1 } = withTwoFields();
+    const before = s;
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    expect(s).toBe(before);
+  });
+
+  it('ADD_ALL_INDEX_FIELDS добавляет все поля без дублей, сохраняя порядок', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, {
+      type: 'ADD_ALL_INDEX_FIELDS',
+      index: 0,
+      fields: [
+        { tableId: t1, path: 'Код' },
+        { tableId: t1, path: 'Наименование' },
+      ],
+    });
+    expect(s.indexing.indexes[0].fields).toEqual([
+      { tableId: t1, path: 'Код' },
+      { tableId: t1, path: 'Наименование' },
+    ]);
+  });
+
+  it('REMOVE_INDEX_FIELD удаляет поле из индекса', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    expect(s.indexing.indexes[0].fields).toEqual([{ tableId: t1, path: 'Наименование' }]);
+  });
+
+  it('CLEAR_INDEX_FIELDS очищает поля индекса', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'CLEAR_INDEX_FIELDS', index: 0 });
+    expect(s.indexing.indexes[0].fields).toEqual([]);
+  });
+
+  it('MOVE_INDEX_FIELD переставляет поля внутри индекса', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'MOVE_INDEX_FIELD', index: 0, tableId: t1, path: 'Наименование', dir: 'up' });
+    expect(s.indexing.indexes[0].fields).toEqual([
+      { tableId: t1, path: 'Наименование' },
+      { tableId: t1, path: 'Код' },
+    ]);
+  });
+
+  it('MOVE_INDEX_FIELD за границей не меняет состояние', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    const before = s;
+    s = reducer(s, { type: 'MOVE_INDEX_FIELD', index: 0, tableId: t1, path: 'Код', dir: 'up' });
+    expect(s).toBe(before);
+  });
+
+  it('REMOVE_TABLE каскадно удаляет поля индекса, сохраняя пустой индекс', () => {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+    const t2 = s.selectedTables[1].id;
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 1, tableId: t2, path: 'Дата' });
+    s = reducer(s, { type: 'REMOVE_TABLE', tableId: t1 });
+    // первый индекс остаётся, но без полей; второй сохраняет своё поле
+    expect(s.indexing.indexes).toEqual([
+      { unique: false, fields: [] },
+      { unique: false, fields: [{ tableId: t2, path: 'Дата' }] },
+    ]);
+  });
+
+  it('REMOVE_FIELD каскадно удаляет поле индекса, сохраняя пустой индекс', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'REMOVE_FIELD', fieldIdx: 0 }); // Код
+    expect(s.indexing.indexes).toEqual([{ unique: false, fields: [] }]);
+  });
+
+  it('indexing проходит через snapshot/restore/buildModelFromFlat', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_INDEX' });
+    s = reducer(s, { type: 'SET_INDEX_UNIQUE', index: 0, unique: true });
+    s = reducer(s, { type: 'ADD_INDEX_FIELD', index: 0, tableId: t1, path: 'Код' });
+    const snap = snapshotActive(s);
+    expect(snap.indexing).toEqual(s.indexing);
+    const restored = restoreSaved(s, snap);
+    expect(restored.indexing).toEqual(s.indexing);
+    const model = buildModelFromFlat(snap);
+    expect(model.indexing).toEqual(s.indexing);
+  });
+
+  it('restoreSaved(null) даёт пустую секцию indexing', () => {
+    const restored = restoreSaved(initialState(), null);
+    expect(restored.indexing).toEqual({ indexes: [] });
+  });
+});
