@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
@@ -20,6 +20,7 @@ export interface SavedQuery {
   tabSectionFields: SelectedTabSectionField[];
   grouping: Grouping;
   conditions: Condition[];
+  joins: Join[];
   selection: Selection;
   queryType: QueryType;
   tempTableName: string;
@@ -33,6 +34,7 @@ export interface QueryState {
   tabSectionFields: SelectedTabSectionField[];
   grouping: Grouping;
   conditions: Condition[];
+  joins: Join[];
   selection: Selection;
   queryType: QueryType;
   tempTableName: string;
@@ -85,6 +87,14 @@ export type QueryAction =
   | { type: 'SET_CONDITION_OPERATOR'; index: number; operator: ConditionOperator }
   | { type: 'SET_CONDITION_PARAM'; index: number; param: string }
   | { type: 'SET_CONDITION_EXPRESSION'; index: number; expression: string }
+  | { type: 'ADD_JOIN' }
+  | { type: 'REMOVE_JOIN'; index: number }
+  | { type: 'SET_JOIN_TABLE'; index: number; side: 'left' | 'right'; tableId: string }
+  | { type: 'SET_JOIN_ALL'; index: number; side: 'left' | 'right'; value: boolean }
+  | { type: 'SET_JOIN_CUSTOM'; index: number; custom: boolean }
+  | { type: 'SET_JOIN_FIELD'; index: number; side: 'left' | 'right'; path: string }
+  | { type: 'SET_JOIN_OPERATOR'; index: number; operator: ConditionOperator }
+  | { type: 'SET_JOIN_EXPRESSION'; index: number; expression: string }
   | { type: 'SET_SELECTION_TOP'; top: number | undefined }
   | { type: 'SET_SELECTION_DISTINCT'; distinct: boolean }
   | { type: 'SET_SELECTION_ALLOWED'; allowed: boolean }
@@ -109,6 +119,7 @@ export function initialState(): QueryState {
     tabSectionFields: [],
     grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
     conditions: [],
+    joins: [],
     selection: {},
     queryType: 'select',
     tempTableName: '',
@@ -139,6 +150,7 @@ export function snapshotActive(state: QueryState): SavedQuery {
     tabSectionFields: state.tabSectionFields,
     grouping: state.grouping,
     conditions: state.conditions,
+    joins: state.joins,
     selection: state.selection,
     queryType: state.queryType,
     tempTableName: state.tempTableName,
@@ -157,6 +169,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     tabSectionFields: [],
     grouping: { multiple: false, groupFields: [], groupSets: [], aggregates: [] } as Grouping,
     conditions: [],
+    joins: [],
     selection: {},
     queryType: 'select' as QueryType,
     tempTableName: '',
@@ -168,6 +181,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     tabSectionFields: base.tabSectionFields,
     grouping: base.grouping,
     conditions: base.conditions,
+    joins: base.joins,
     selection: base.selection,
     queryType: base.queryType,
     tempTableName: base.tempTableName,
@@ -186,6 +200,7 @@ export function buildModelFromFlat(flat: SavedQuery): QueryModel {
     tabSectionFields: flat.tabSectionFields,
     grouping: flat.grouping,
     conditions: flat.conditions,
+    joins: flat.joins,
     selection: flat.selection,
     queryType: flat.queryType,
     tempTableName: flat.tempTableName,
@@ -263,10 +278,13 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
           .filter(set => set.length > 0),
       };
       const conditions = state.conditions.filter(c => c.custom || c.tableId !== action.tableId);
+      const joins = state.joins.filter(
+        j => j.leftTableId !== action.tableId && j.rightTableId !== action.tableId
+      );
       const lockForUpdate = removed
         ? state.lockForUpdate.filter(n => n !== removed.fullName)
         : state.lockForUpdate;
-      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, lockForUpdate, focusedSelectedTableId: null };
+      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, joins, lockForUpdate, focusedSelectedTableId: null };
     }
 
     case 'ADD_FIELD': {
@@ -522,6 +540,71 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         i === action.index ? { ...c, expression: action.expression } : c
       );
       return { ...state, conditions };
+    }
+
+    case 'ADD_JOIN': {
+      // Связь по умолчанию между первыми двумя выбранными таблицами.
+      if (state.selectedTables.length < 2) return state;
+      const join: Join = {
+        leftTableId: state.selectedTables[0].id,
+        rightTableId: state.selectedTables[1].id,
+        leftAll: false,
+        rightAll: false,
+        custom: false,
+        operator: '=',
+      };
+      return { ...state, joins: [...state.joins, join] };
+    }
+
+    case 'REMOVE_JOIN':
+      return { ...state, joins: state.joins.filter((_, i) => i !== action.index) };
+
+    case 'SET_JOIN_TABLE': {
+      const joins = state.joins.map((j, i) =>
+        i === action.index
+          ? { ...j, [action.side === 'left' ? 'leftTableId' : 'rightTableId']: action.tableId }
+          : j
+      );
+      return { ...state, joins };
+    }
+
+    case 'SET_JOIN_ALL': {
+      const joins = state.joins.map((j, i) =>
+        i === action.index
+          ? { ...j, [action.side === 'left' ? 'leftAll' : 'rightAll']: action.value }
+          : j
+      );
+      return { ...state, joins };
+    }
+
+    case 'SET_JOIN_CUSTOM': {
+      const joins = state.joins.map((j, i) =>
+        i === action.index ? { ...j, custom: action.custom } : j
+      );
+      return { ...state, joins };
+    }
+
+    case 'SET_JOIN_FIELD': {
+      const joins = state.joins.map((j, i) =>
+        i === action.index
+          ? { ...j, [action.side === 'left' ? 'leftPath' : 'rightPath']: action.path }
+          : j
+      );
+      return { ...state, joins };
+    }
+
+    case 'SET_JOIN_OPERATOR': {
+      const joins = state.joins.map((j, i) =>
+        i === action.index ? { ...j, operator: action.operator } : j
+      );
+      return { ...state, joins };
+    }
+
+    case 'SET_JOIN_EXPRESSION': {
+      const joins = state.joins.map((j, i) =>
+        i === action.index ? { ...j, expression: action.expression } : j
+      );
+      return { ...state, joins };
     }
 
     case 'SET_SELECTION_TOP': {

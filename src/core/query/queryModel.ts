@@ -77,6 +77,30 @@ export interface Condition {
   expression?: string;
 }
 
+/** Вид соединения после нормализации (правое сводится к левому перестановкой). */
+export type JoinKind = 'inner' | 'left' | 'full';
+
+export interface Join {
+  /** Таблица 1 (слева в UI). */
+  leftTableId: string;
+  /** Таблица 2 (справа в UI). */
+  rightTableId: string;
+  /** «Все» у таблицы 1 — все элементы таблицы 1 сохраняются. */
+  leftAll: boolean;
+  /** «Все» у таблицы 2 — все элементы таблицы 2 сохраняются. */
+  rightAll: boolean;
+  /** «П.» — произвольное условие связи. */
+  custom: boolean;
+  /** Простое условие: поле таблицы 1. */
+  leftPath?: string;
+  /** Оператор сравнения, по умолчанию '='. */
+  operator?: ConditionOperator;
+  /** Простое условие: поле таблицы 2. */
+  rightPath?: string;
+  /** Произвольное условие — полный текст выражения. */
+  expression?: string;
+}
+
 /** Модификаторы выборки записей (ВЫБРАТЬ ...). */
 export interface Selection {
   /** ПЕРВЫЕ N — ограничение количества первых записей. */
@@ -99,6 +123,8 @@ export interface QueryModel {
   grouping?: Grouping;
   /** Условия отбора (секция ГДЕ). */
   conditions?: Condition[];
+  /** Соединения между таблицами (секция ИЗ). */
+  joins?: Join[];
   /** Модификаторы выборки записей (ПЕРВЫЕ/РАЗЛИЧНЫЕ/РАЗРЕШЕННЫЕ). */
   selection?: Selection;
   /** Тип запроса (по умолчанию обычная выборка). */

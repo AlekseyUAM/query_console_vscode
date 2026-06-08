@@ -3,14 +3,16 @@ import * as React from 'react';
 export const TABS = ['Таблицы и поля', 'Группировка', 'Условия', 'Дополнительно', 'Объединения/Псевдонимы'];
 
 interface Props {
+  /** Видимые вкладки (вычисляются в App в зависимости от состояния). */
+  tabs: string[];
   active: string;
   onSelect: (tab: string) => void;
 }
 
-export function TabsBar({ active, onSelect }: Props): React.ReactElement {
+export function TabsBar({ tabs, active, onSelect }: Props): React.ReactElement {
   return (
     <div style={{ display: 'flex', borderBottom: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
-      {TABS.map(tab => {
+      {tabs.map(tab => {
         const isActive = tab === active;
         return (
           <div

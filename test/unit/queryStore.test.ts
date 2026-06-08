@@ -715,3 +715,106 @@ describe('queryStore — union document layer (multiple sub-queries)', () => {
     });
   });
 });
+
+describe('queryStore — связи (joins)', () => {
+  function twoTablesState() {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+    const t1 = s.selectedTables[0].id;
+    const t2 = s.selectedTables[1].id;
+    return { s, t1, t2 };
+  }
+
+  it('initialState содержит пустой массив joins', () => {
+    expect(initialState().joins).toEqual([]);
+  });
+
+  it('ADD_JOIN добавляет связь по умолчанию между первыми двумя таблицами', () => {
+    const { s, t1, t2 } = twoTablesState();
+    const next = reducer(s, { type: 'ADD_JOIN' });
+    expect(next.joins).toEqual([{
+      leftTableId: t1, rightTableId: t2,
+      leftAll: false, rightAll: false, custom: false, operator: '=',
+    }]);
+  });
+
+  it('ADD_JOIN ничего не делает при < 2 таблицах', () => {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    s = reducer(s, { type: 'ADD_JOIN' });
+    expect(s.joins).toEqual([]);
+  });
+
+  it('REMOVE_JOIN удаляет связь по индексу', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'REMOVE_JOIN', index: 0 });
+    expect(s.joins).toEqual([]);
+  });
+
+  it('SET_JOIN_TABLE меняет таблицу указанной стороны', () => {
+    let { s, t1, t2 } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_TABLE', index: 0, side: 'right', tableId: t1 });
+    expect(s.joins[0].rightTableId).toBe(t1);
+    s = reducer(s, { type: 'SET_JOIN_TABLE', index: 0, side: 'left', tableId: t2 });
+    expect(s.joins[0].leftTableId).toBe(t2);
+  });
+
+  it('SET_JOIN_ALL переключает галочку «Все» нужной стороны', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_ALL', index: 0, side: 'left', value: true });
+    expect(s.joins[0].leftAll).toBe(true);
+    s = reducer(s, { type: 'SET_JOIN_ALL', index: 0, side: 'right', value: true });
+    expect(s.joins[0].rightAll).toBe(true);
+  });
+
+  it('SET_JOIN_CUSTOM переключает произвольное условие', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_CUSTOM', index: 0, custom: true });
+    expect(s.joins[0].custom).toBe(true);
+  });
+
+  it('SET_JOIN_FIELD задаёт поле нужной стороны', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_FIELD', index: 0, side: 'left', path: 'Ссылка' });
+    s = reducer(s, { type: 'SET_JOIN_FIELD', index: 0, side: 'right', path: 'Дата' });
+    expect(s.joins[0].leftPath).toBe('Ссылка');
+    expect(s.joins[0].rightPath).toBe('Дата');
+  });
+
+  it('SET_JOIN_OPERATOR задаёт оператор', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_OPERATOR', index: 0, operator: '<>' });
+    expect(s.joins[0].operator).toBe('<>');
+  });
+
+  it('SET_JOIN_EXPRESSION задаёт текст произвольного условия', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_EXPRESSION', index: 0, expression: 'A.X = &P' });
+    expect(s.joins[0].expression).toBe('A.X = &P');
+  });
+
+  it('REMOVE_TABLE каскадно удаляет связи, ссылающиеся на таблицу', () => {
+    let { s, t1, t2 } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    expect(s.joins.length).toBe(1);
+    s = reducer(s, { type: 'REMOVE_TABLE', tableId: t2 });
+    expect(s.joins).toEqual([]);
+  });
+
+  it('joins проходят через snapshot/restore', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    const snap = snapshotActive(s);
+    expect(snap.joins).toEqual(s.joins);
+    const restored = restoreSaved(s, snap);
+    expect(restored.joins).toEqual(s.joins);
+    const model = buildModelFromFlat(snap);
+    expect(model.joins).toEqual(s.joins);
+  });
+});

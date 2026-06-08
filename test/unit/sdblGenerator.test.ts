@@ -839,3 +839,159 @@ describe('generate — дополнительно (фаза 5.3)', () => {
     });
   });
 });
+
+describe('generate — связи (joins)', () => {
+  const twoTables = (): QueryModel => ({
+    tables: [
+      { id: 't1', fullName: 'Справочник.Валюты' },
+      { id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' },
+    ],
+    fields: [
+      { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+      { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+    ],
+  });
+
+  const head =
+    'ВЫБРАТЬ\n' +
+    '\tВалюты.Ссылка КАК Ссылка,\n' +
+    '\tВалюты.Наценка КАК Наценка\n' +
+    'ИЗ\n';
+
+  it('нет связей → список таблиц через запятую (как раньше)', async () => {
+    const model = twoTables();
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты,\n' +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('внутреннее соединение (leftAll=false, rightAll=false)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('левое соединение (leftAll=true, rightAll=false)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: true, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tЛЕВОЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('полное соединение (leftAll=true, rightAll=true)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: true, rightAll: true, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tПОЛНОЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('правое соединение → левое с перестановкой таблиц (leftAll=false, rightAll=true)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: true, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    // Перестановка: затравка = ВариантыОтветовАнкет, присоединяемая = Валюты,
+    // условие ПО не меняется.
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tЛЕВОЕ СОЕДИНЕНИЕ Справочник.Валюты КАК Валюты\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('произвольное условие связи оборачивается в скобки', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: true, custom: true,
+        expression: 'Валюты.Ссылка = &Труляля',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tЛЕВОЕ СОЕДИНЕНИЕ Справочник.Валюты КАК Валюты\n' +
+      '\t\tПО (Валюты.Ссылка = &Труляля)'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('таблица без связи дописывается после цепочки через запятую', async () => {
+    const model: QueryModel = {
+      tables: [
+        { id: 't1', fullName: 'Справочник.Валюты' },
+        { id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' },
+        { id: 't3', fullName: 'Документ.Счет' },
+      ],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+      '\tВалюты.Ссылка КАК Ссылка\n' +
+      'ИЗ\n' +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных,\n' +
+      '\tДокумент.Счет КАК Счет'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('пустые связи → вывод как без связей', () => {
+    const model: QueryModel = { ...twoTables(), joins: [] };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты,\n' +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет'
+    );
+  });
+});

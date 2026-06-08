@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
@@ -98,6 +98,86 @@ function selectionModifiers(selection: QueryModel['selection']): string {
   return m;
 }
 
+/** Ключевое слово соединения по галочкам «Все» (без нормализации перестановки). */
+function joinKeyword(leftAll: boolean, rightAll: boolean): string {
+  if (leftAll && rightAll) return 'ПОЛНОЕ';
+  if (leftAll || rightAll) return 'ЛЕВОЕ';
+  return 'ВНУТРЕННЕЕ';
+}
+
+/**
+ * Текст условия `ПО`. Простое: `<alias>.<path> <op> <alias>.<path>`; произвольное
+ * оборачивается в скобки. Условие построено по псевдонимам и от порядка таблиц
+ * (перестановки при правом соединении) не зависит. Возвращает '' если условия нет.
+ */
+function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
+  if (join.custom) {
+    const expr = (join.expression ?? '').trim();
+    return expr ? `(${expr})` : '';
+  }
+  const leftAlias = aliases.get(join.leftTableId) ?? join.leftTableId;
+  const rightAlias = aliases.get(join.rightTableId) ?? join.rightTableId;
+  const op = join.operator ?? '=';
+  return `${leftAlias}.${join.leftPath ?? ''} ${op} ${rightAlias}.${join.rightPath ?? ''}`;
+}
+
+/**
+ * Строки секции `ИЗ` (после `ИЗ`).
+ * - Нет активных связей → каждая таблица `\t<источник> КАК <alias>` через запятую.
+ * - Есть связи → левоассоциативная цепочка соединений; нормализация правого
+ *   соединения (`!leftAll && rightAll`) — перестановкой таблиц (затравка = rightTable),
+ *   условие `ПО` при этом не меняется. Таблицы, не вошедшие в цепочку, дописываются
+ *   после неё через запятую (последняя строка цепочки получает запятую).
+ */
+function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
+  const sourceLine = (t: SelectedTable): string =>
+    `${renderSource(t)} КАК ${aliases.get(t.id) ?? t.id}`;
+
+  const joins = model.joins ?? [];
+  if (joins.length === 0) {
+    return model.tables.map((t, i) => {
+      const comma = i < model.tables.length - 1 ? ',' : '';
+      return `\t${sourceLine(t)}${comma}`;
+    });
+  }
+
+  const byId = new Map(model.tables.map(t => [t.id, t]));
+  const inChain = new Set<string>();
+  const lines: string[] = [];
+
+  joins.forEach((join, idx) => {
+    // Нормализация правого соединения: перестановка таблиц, вид → ЛЕВОЕ.
+    const swap = !join.leftAll && join.rightAll;
+    const seedId = swap ? join.rightTableId : join.leftTableId;
+    const joinedId = swap ? join.leftTableId : join.rightTableId;
+    const keyword = joinKeyword(join.leftAll, join.rightAll);
+    const seed = byId.get(seedId);
+    const joined = byId.get(joinedId);
+    if (!seed || !joined) return;
+
+    if (idx === 0 || !inChain.has(seedId)) {
+      lines.push(`\t${sourceLine(seed)}`);
+      inChain.add(seedId);
+    }
+    lines.push(`\t\t${keyword} СОЕДИНЕНИЕ ${sourceLine(joined)}`);
+    inChain.add(joinedId);
+    const cond = renderJoinCondition(join, aliases);
+    if (cond) lines.push(`\t\tПО ${cond}`);
+  });
+
+  // Таблицы, не участвующие ни в одной связи — дописываем после цепочки.
+  const trailing = model.tables.filter(t => !inChain.has(t.id));
+  if (trailing.length > 0 && lines.length > 0) {
+    lines[lines.length - 1] += ',';
+    trailing.forEach((t, i) => {
+      const comma = i < trailing.length - 1 ? ',' : '';
+      lines.push(`\t${sourceLine(t)}${comma}`);
+    });
+  }
+
+  return lines;
+}
+
 /**
  * Сборка блока одного запроса из ГОТОВЫХ строк полей (без хвостовых запятых).
  * Используется как обычным `generate`, так и генератором объединений
@@ -114,11 +194,7 @@ function buildQueryBlock(
 ): string {
   const lines = fieldLines.map((l, i) => (i < fieldLines.length - 1 ? l + ',' : l));
 
-  const tableLines = model.tables.map((t, i) => {
-    const alias = aliases.get(t.id) ?? t.id;
-    const comma = i < model.tables.length - 1 ? ',' : '';
-    return `\t${renderSource(t)} КАК ${alias}${comma}`;
-  });
+  const tableLines = renderFrom(model, aliases);
 
   const conditionLines = renderConditions(model.conditions, aliases);
   const groupingLines = renderGrouping(model.grouping, aliases);
