@@ -61,6 +61,14 @@ export function BatchTab({
     if (selectedRow >= names.length) setSelectedRow(names.length - 1);
   }, [names.length, selectedRow]);
 
+  // Выделение следует за перемещаемой строкой, чтобы стрелки продолжали двигать её.
+  function move(dir: 'up' | 'down') {
+    const target = dir === 'up' ? selectedRow - 1 : selectedRow + 1;
+    if (target < 0 || target >= names.length) return;
+    onMove(selectedRow, dir);
+    setSelectedRow(target);
+  }
+
   return (
     <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
       <div style={{ ...PANEL, width: 320, flexShrink: 0 }}>
@@ -75,8 +83,8 @@ export function BatchTab({
           >
             ✕ Удалить
           </button>
-          <button style={ICON_BTN} title="Переместить вверх" onClick={() => onMove(selectedRow, 'up')}>↑</button>
-          <button style={ICON_BTN} title="Переместить вниз" onClick={() => onMove(selectedRow, 'down')}>↓</button>
+          <button style={ICON_BTN} title="Переместить вверх" onClick={() => move('up')}>↑</button>
+          <button style={ICON_BTN} title="Переместить вниз" onClick={() => move('down')}>↓</button>
         </div>
         <div style={{ overflow: 'auto', flex: 1 }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
