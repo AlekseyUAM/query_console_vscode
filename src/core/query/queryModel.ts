@@ -103,6 +103,18 @@ export interface Totals {
   grand: boolean;
 }
 
+/** Один индекс временной таблицы. Имя («Индекс N») производное от позиции, не хранится. */
+export interface QueryIndex {
+  /** Колонка «Уникальный» — индекс содержит только уникальные записи. */
+  unique: boolean;
+  /** Поля индекса в порядке; адресуются по (tableId, path), как Order/Totals. */
+  fields: FieldRef[];
+}
+
+export interface Indexing {
+  indexes: QueryIndex[];
+}
+
 /** Строка построителя: ссылка на поле + «использовать дочерние» (.*) + псевдоним. */
 export interface BuilderField {
   /** Готовый текст ссылки: псевдоним выборки (Поля/Порядок/Итоги) или Алиас.Поле (Условия, «Все поля»). */
@@ -197,6 +209,8 @@ export interface QueryModel {
   totals?: Totals;
   /** Построитель отчётов: динамические блоки {…}. */
   builder?: ReportBuilder;
+  /** Индексы временной таблицы (секция ИНДЕКСИРОВАТЬ ПО / ПО НАБОРАМ). */
+  indexing?: Indexing;
 }
 
 /**

@@ -1486,3 +1486,111 @@ describe('Построитель: блоки {…}', () => {
     );
   });
 });
+
+describe('ИНДЕКСИРОВАТЬ (фаза 5.10)', () => {
+  // Пять полей выборки временной таблицы Справочник.Валюты.
+  const fiveFieldModel = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [
+      { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+      { tableId: 't1', path: 'ВерсияДанных', alias: 'ВерсияДанных' },
+      { tableId: 't1', path: 'ПометкаУдаления', alias: 'ПометкаУдаления' },
+      { tableId: 't1', path: 'Наименование', alias: 'Наименование' },
+      { tableId: 't1', path: 'НаименованиеПолное', alias: 'НаименованиеПолное' },
+    ],
+    queryType: 'createTemp',
+    tempTableName: 'ааа',
+  });
+
+  const head =
+    'ВЫБРАТЬ\n' +
+    '\tВалюты.Ссылка КАК Ссылка,\n' +
+    '\tВалюты.ВерсияДанных КАК ВерсияДанных,\n' +
+    '\tВалюты.ПометкаУдаления КАК ПометкаУдаления,\n' +
+    '\tВалюты.Наименование КАК Наименование,\n' +
+    '\tВалюты.НаименованиеПолное КАК НаименованиеПолное\n' +
+    'ПОМЕСТИТЬ ааа\n' +
+    'ИЗ\n' +
+    '\tСправочник.Валюты КАК Валюты';
+
+  it('один индекс → ИНДЕКСИРОВАТЬ ПО без выражения уникальности', () => {
+    const model: QueryModel = {
+      ...fiveFieldModel(),
+      indexing: {
+        indexes: [
+          {
+            unique: false,
+            fields: [
+              { tableId: 't1', path: 'Ссылка' },
+              { tableId: 't1', path: 'Наименование' },
+            ],
+          },
+        ],
+      },
+    };
+    expect(generate(model)).toBe(
+      head + '\n\nИНДЕКСИРОВАТЬ ПО\n\tСсылка,\n\tНаименование'
+    );
+  });
+
+  it('два индекса → ИНДЕКСИРОВАТЬ ПО НАБОРАМ с УНИКАЛЬНО (эталон)', () => {
+    const model: QueryModel = {
+      ...fiveFieldModel(),
+      indexing: {
+        indexes: [
+          { unique: false, fields: [{ tableId: 't1', path: 'Ссылка' }] },
+          {
+            unique: true,
+            fields: [
+              { tableId: 't1', path: 'ПометкаУдаления' },
+              { tableId: 't1', path: 'Наименование' },
+            ],
+          },
+        ],
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+        '\tВалюты.Ссылка КАК Ссылка,\n' +
+        '\tВалюты.ВерсияДанных КАК ВерсияДанных,\n' +
+        '\tВалюты.ПометкаУдаления КАК ПометкаУдаления,\n' +
+        '\tВалюты.Наименование КАК Наименование,\n' +
+        '\tВалюты.НаименованиеПолное КАК НаименованиеПолное\n' +
+        'ПОМЕСТИТЬ ааа\n' +
+        'ИЗ\n' +
+        '\tСправочник.Валюты КАК Валюты\n' +
+        '\n' +
+        'ИНДЕКСИРОВАТЬ ПО НАБОРАМ\n' +
+        '(\n' +
+        '\t(Ссылка),\n' +
+        '\t(ПометкаУдаления,\n' +
+        '\tНаименование) УНИКАЛЬНО\n' +
+        ')'
+    );
+  });
+
+  it('пустые индексы (fields: []) пропускаются', () => {
+    const model: QueryModel = {
+      ...fiveFieldModel(),
+      indexing: { indexes: [{ unique: false, fields: [] }, { unique: true, fields: [] }] },
+    };
+    expect(generate(model)).toBe(head);
+    expect(generate(model)).not.toContain('ИНДЕКСИРОВАТЬ');
+  });
+
+  it('queryType=select → нет секции ИНДЕКСИРОВАТЬ', () => {
+    const model: QueryModel = {
+      ...fiveFieldModel(),
+      queryType: 'select',
+      tempTableName: undefined,
+      indexing: {
+        indexes: [{ unique: false, fields: [{ tableId: 't1', path: 'Ссылка' }] }],
+      },
+    };
+    expect(generate(model)).not.toContain('ИНДЕКСИРОВАТЬ');
+  });
+
+  it('отсутствие indexing не меняет вывод', () => {
+    expect(generate(fiveFieldModel())).toBe(head);
+  });
+});

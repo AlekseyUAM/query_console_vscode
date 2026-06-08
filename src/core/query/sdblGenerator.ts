@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField, Indexing } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
@@ -404,6 +404,51 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   return ['ИТОГИ ПО', ...withCommas(byList)];
 }
 
+/**
+ * Секция ИНДЕКСИРОВАТЬ ПО / ИНДЕКСИРОВАТЬ ПО НАБОРАМ. Возвращает [] если индексы
+ * неактивны (нет indexing, тип запроса не createTemp, нет непустых индексов) —
+ * тогда вывод байт-в-байт как раньше. Поля адресуются по псевдониму выборки.
+ *
+ * Один индекс → `ИНДЕКСИРОВАТЬ ПО` + поля `\t<псевдоним>` (запятая после всех,
+ * кроме последнего); уникальность для одиночного индекса не выражается. Два и более
+ * → `ИНДЕКСИРОВАТЬ ПО НАБОРАМ`, наборы в скобках `(…)`, суффикс ` УНИКАЛЬНО` при
+ * `ix.unique`, запятая между наборами.
+ */
+export function renderIndex(indexing: Indexing | undefined, model: QueryModel): string[] {
+  if (!indexing || model.queryType !== 'createTemp') return [];
+  const indexes = indexing.indexes.filter(ix => ix.fields.length > 0);
+  if (indexes.length === 0) return [];
+
+  const aliasOf = (f: FieldRef): string => selectAliasFor(model, f.tableId, f.path);
+
+  if (indexes.length === 1) {
+    const fields = indexes[0].fields;
+    const lines = fields.map((f, i) => {
+      const comma = i < fields.length - 1 ? ',' : '';
+      return `\t${aliasOf(f)}${comma}`;
+    });
+    return ['ИНДЕКСИРОВАТЬ ПО', ...lines];
+  }
+
+  const setLines: string[] = [];
+  indexes.forEach((ix, idx) => {
+    const setComma = idx < indexes.length - 1 ? ',' : '';
+    const uniq = ix.unique ? ' УНИКАЛЬНО' : '';
+    const fields = ix.fields;
+    if (fields.length === 1) {
+      setLines.push(`\t(${aliasOf(fields[0])})${uniq}${setComma}`);
+      return;
+    }
+    fields.forEach((f, i) => {
+      const alias = aliasOf(f);
+      if (i === 0) setLines.push(`\t(${alias},`);
+      else if (i < fields.length - 1) setLines.push(`\t${alias},`);
+      else setLines.push(`\t${alias})${uniq}${setComma}`);
+    });
+  });
+  return ['ИНДЕКСИРОВАТЬ ПО НАБОРАМ', '(', ...setLines, ')'];
+}
+
 export function generate(model: QueryModel): string {
   // УНИЧТОЖИТЬ — самостоятельный запрос, до всех остальных проверок.
   if (model.queryType === 'dropTemp') {
@@ -421,6 +466,8 @@ export function generate(model: QueryModel): string {
   if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
   const totalsLines = renderTotals(model.totals, model);
   if (totalsLines.length > 0) out += '\n' + totalsLines.join('\n');
+  const indexLines = renderIndex(model.indexing, model);
+  if (indexLines.length > 0) out += '\n\n' + indexLines.join('\n');
   return out;
 }
 
