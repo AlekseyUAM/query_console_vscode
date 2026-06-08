@@ -6,6 +6,10 @@ import {
   restoreSaved,
   buildModelFromFlat,
   assembleMembers,
+  snapshotActiveBatch,
+  restoreBatch,
+  batchMemberName,
+  assembleBatch,
 } from '../../src/webview/state/queryStore';
 import { deriveUnionColumns } from '../../src/core/query/unionModel';
 import type { MetaTable } from '../../src/core/metadata/types';
@@ -1019,5 +1023,267 @@ describe('queryStore — итоги (totals, фаза 5.7)', () => {
     expect(restored.totals).toEqual(s.totals);
     const model = buildModelFromFlat(snap);
     expect(model.totals).toEqual(s.totals);
+  });
+});
+
+describe('queryStore — пакет запросов (batch, фаза 5.8)', () => {
+  // Helper: добавить поле в активный запрос через ADD_FIELD_WITH_TABLE.
+  function withField(state = initialState(), full = 'Справочник.Валюты', path = 'Код') {
+    return reducer(state, { type: 'ADD_FIELD_WITH_TABLE', tableFullName: full, fieldPath: path });
+  }
+
+  describe('initialState', () => {
+    it('содержит один запрос пакета: activeBatch 0, batchSaved [null]', () => {
+      const s = initialState();
+      expect(s.activeBatch).toBe(0);
+      expect(s.batchSaved).toEqual([null]);
+    });
+  });
+
+  describe('snapshotActiveBatch / restoreBatch', () => {
+    it('snapshotActiveBatch собирает документ объединения с заполненным активным слотом', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // участник 0: Код
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // участник 1: Дата (активен)
+      const snap = snapshotActiveBatch(s);
+      expect(snap.queryList).toEqual(s.queryList);
+      expect(snap.activeQuery).toBe(1);
+      // все слоты заполнены (без null)
+      expect(snap.savedQueries.every(q => q !== null)).toBe(true);
+      expect(snap.savedQueries[0].selectedFields[0].path).toBe('Код');
+      expect(snap.savedQueries[1].selectedFields[0].path).toBe('Дата');
+    });
+
+    it('restoreBatch(null) возвращает пустой документ объединения', () => {
+      const restored = restoreBatch(initialState(), null);
+      expect(restored.queryList).toEqual([{ name: 'Запрос 1', distinct: false }]);
+      expect(restored.activeQuery).toBe(0);
+      expect(restored.savedQueries).toEqual([null]);
+      expect(restored.selectedFields).toEqual([]);
+    });
+
+    it('snapshotActiveBatch → restoreBatch круговой обход документа объединения', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код');
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // активен участник 1
+      const snap = snapshotActiveBatch(s);
+      const restored = restoreBatch(s, snap);
+      expect(restored.queryList).toEqual(s.queryList);
+      expect(restored.activeQuery).toBe(1);
+      // активный слот занулён, остальные заполнены
+      expect(restored.savedQueries![1]).toBeNull();
+      expect(restored.savedQueries![0]).not.toBeNull();
+      // плоские поля = активный участник
+      expect(restored.selectedFields![0].path).toBe('Дата');
+    });
+  });
+
+  describe('ADD_BATCH_QUERY', () => {
+    it('сохраняет активный пакет, добавляет новый пустой и делает его активным', () => {
+      const s0 = withField(); // активный запрос пакета имеет поле
+      const s1 = reducer(s0, { type: 'ADD_BATCH_QUERY' });
+      expect(s1.batchSaved).toHaveLength(2);
+      expect(s1.activeBatch).toBe(1);
+      // новый активный слот live (null), старый — снимок
+      expect(s1.batchSaved[1]).toBeNull();
+      expect(s1.batchSaved[0]).not.toBeNull();
+      expect(s1.batchSaved[0]!.savedQueries[0].selectedFields[0].path).toBe('Код');
+      // плоские поля пусты, документ объединения сброшен
+      expect(s1.selectedFields).toEqual([]);
+      expect(s1.queryList).toEqual([{ name: 'Запрос 1', distinct: false }]);
+      expect(s1.activeQuery).toBe(0);
+    });
+  });
+
+  describe('SET_ACTIVE_BATCH', () => {
+    it('no-op при index === activeBatch', () => {
+      const s = withField();
+      expect(reducer(s, { type: 'SET_ACTIVE_BATCH', index: 0 })).toBe(s);
+    });
+
+    it('no-op при выходе индекса за границы', () => {
+      const s = withField();
+      expect(reducer(s, { type: 'SET_ACTIVE_BATCH', index: 5 })).toBe(s);
+    });
+
+    it('изолирует working set между запросами пакета (правки не текут)', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // пакет 0: Код
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // пакет 1: Дата
+      // вернуться к 0
+      s = reducer(s, { type: 'SET_ACTIVE_BATCH', index: 0 });
+      expect(s.activeBatch).toBe(0);
+      expect(s.selectedFields).toHaveLength(1);
+      expect(s.selectedFields[0].path).toBe('Код');
+      expect(s.batchSaved[0]).toBeNull();
+      expect(s.batchSaved[1]).not.toBeNull();
+      // правим пакет 0 — не должно затронуть пакет 1
+      s = withField(s, 'Справочник.Валюты', 'Наименование');
+      s = reducer(s, { type: 'SET_ACTIVE_BATCH', index: 1 });
+      expect(s.activeBatch).toBe(1);
+      expect(s.selectedFields.map(f => f.path)).toEqual(['Дата']);
+    });
+
+    it('сохраняет и восстанавливает многоучастниковый документ объединения', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // пакет 0, участник 0
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // пакет 0, участник 1 (активен)
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' }); // пакет 1
+      s = withField(s, 'Справочник.Валюты', 'Наименование'); // пакет 1, участник 0
+      // вернуться к пакету 0 — должны восстановиться оба участника
+      s = reducer(s, { type: 'SET_ACTIVE_BATCH', index: 0 });
+      expect(s.queryList).toHaveLength(2);
+      expect(s.activeQuery).toBe(1);
+      expect(s.selectedFields[0].path).toBe('Дата');
+      expect(s.savedQueries[0]!.selectedFields[0].path).toBe('Код');
+    });
+  });
+
+  describe('REMOVE_BATCH_QUERY', () => {
+    it('нельзя удалить последний запрос пакета', () => {
+      const s = withField();
+      expect(reducer(s, { type: 'REMOVE_BATCH_QUERY', index: 0 })).toBe(s);
+    });
+
+    it('no-op при выходе индекса за границы', () => {
+      let s = withField();
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' });
+      expect(reducer(s, { type: 'REMOVE_BATCH_QUERY', index: 9 })).toBe(s);
+    });
+
+    it('удаление активного выбирает соседа и загружает его', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата (активен)
+      s = reducer(s, { type: 'REMOVE_BATCH_QUERY', index: 1 });
+      expect(s.batchSaved).toHaveLength(1);
+      expect(s.activeBatch).toBe(0);
+      expect(s.batchSaved[0]).toBeNull();
+      expect(s.selectedFields[0].path).toBe('Код');
+    });
+
+    it('удаление неактивного до активного сдвигает activeBatch', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' }); // 1
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' }); // 2 (активен)
+      s = withField(s, 'Справочник.Валюты', 'Наименование'); // 2: Наименование
+      expect(s.activeBatch).toBe(2);
+      s = reducer(s, { type: 'REMOVE_BATCH_QUERY', index: 0 });
+      expect(s.batchSaved).toHaveLength(2);
+      expect(s.activeBatch).toBe(1);
+      expect(s.batchSaved[s.activeBatch]).toBeNull();
+      expect(s.selectedFields[0].path).toBe('Наименование');
+      expect(s.batchSaved[0]!.savedQueries[0].selectedFields[0].path).toBe('Дата');
+    });
+
+    it('удаление неактивного после активного сохраняет activeBatch', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' }); // 1
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата
+      s = reducer(s, { type: 'SET_ACTIVE_BATCH', index: 0 }); // активен 0
+      s = reducer(s, { type: 'REMOVE_BATCH_QUERY', index: 1 });
+      expect(s.batchSaved).toHaveLength(1);
+      expect(s.activeBatch).toBe(0);
+      expect(s.selectedFields[0].path).toBe('Код');
+    });
+  });
+
+  describe('MOVE_BATCH_QUERY', () => {
+    function threeBatches() {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // 0: Код
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // 1: Дата
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' });
+      s = withField(s, 'Справочник.Валюты', 'Наименование'); // 2: Наименование (активен)
+      return s;
+    }
+
+    it('no-op при выходе за границы', () => {
+      const s = threeBatches();
+      expect(reducer(s, { type: 'MOVE_BATCH_QUERY', index: 0, dir: 'up' })).toBe(s);
+      expect(reducer(s, { type: 'MOVE_BATCH_QUERY', index: 2, dir: 'down' })).toBe(s);
+    });
+
+    it('перестановка соседей сохраняет активным тот же запрос пакета', () => {
+      let s = threeBatches();
+      expect(s.activeBatch).toBe(2);
+      // двигаем активный (2) вверх → меняется местами с 1
+      s = reducer(s, { type: 'MOVE_BATCH_QUERY', index: 2, dir: 'up' });
+      expect(s.activeBatch).toBe(1);
+      // активный остаётся live и содержит Наименование
+      expect(s.batchSaved[s.activeBatch]).toBeNull();
+      expect(s.selectedFields[0].path).toBe('Наименование');
+      // на позиции 2 теперь бывший запрос с Дата
+      expect(s.batchSaved[2]!.savedQueries[0].selectedFields[0].path).toBe('Дата');
+      expect(s.batchSaved[0]!.savedQueries[0].selectedFields[0].path).toBe('Код');
+    });
+
+    it('перестановка неактивных оставляет активный неизменным', () => {
+      let s = threeBatches();
+      s = reducer(s, { type: 'SET_ACTIVE_BATCH', index: 0 }); // активен 0 (Код)
+      // двигаем 1 (Дата) вниз → меняется с 2 (Наименование)
+      s = reducer(s, { type: 'MOVE_BATCH_QUERY', index: 1, dir: 'down' });
+      expect(s.activeBatch).toBe(0);
+      expect(s.selectedFields[0].path).toBe('Код');
+      expect(s.batchSaved[1]!.savedQueries[0].selectedFields[0].path).toBe('Наименование');
+      expect(s.batchSaved[2]!.savedQueries[0].selectedFields[0].path).toBe('Дата');
+    });
+  });
+
+  describe('batchMemberName', () => {
+    it('обычный запрос → «Запрос пакета N»', () => {
+      const s = withField();
+      expect(batchMemberName(s, 0)).toBe('Запрос пакета 1');
+    });
+
+    it('createTemp с именем ВТ → имя = tempTableName', () => {
+      let s = reducer(initialState(), { type: 'SET_QUERY_TYPE', queryType: 'createTemp' });
+      s = reducer(s, { type: 'SET_TEMP_TABLE_NAME', name: 'ВТ_Курсы' });
+      expect(batchMemberName(s, 0)).toBe('ВТ_Курсы');
+    });
+
+    it('dropTemp → имя = «- ВТ»', () => {
+      let s = reducer(initialState(), { type: 'SET_QUERY_TYPE', queryType: 'dropTemp' });
+      s = reducer(s, { type: 'SET_TEMP_TABLE_NAME', name: 'ВТ_Курсы' });
+      expect(batchMemberName(s, 0)).toBe('- ВТ_Курсы');
+    });
+
+    it('имя неактивного запроса пакета берётся из его снимка', () => {
+      let s = reducer(initialState(), { type: 'SET_QUERY_TYPE', queryType: 'createTemp' });
+      s = reducer(s, { type: 'SET_TEMP_TABLE_NAME', name: 'ВТ_Первый' });
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' }); // пакет 1 (активен, обычный)
+      expect(batchMemberName(s, 0)).toBe('ВТ_Первый');
+      expect(batchMemberName(s, 1)).toBe('Запрос пакета 2');
+    });
+  });
+
+  describe('assembleBatch', () => {
+    it('собирает документы из активного и снимков запросов пакета', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // пакет 0: Код
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // пакет 1: Дата (активен)
+      const batch = assembleBatch(s);
+      expect(batch.members).toHaveLength(2);
+      expect(batch.members[0].members[0].model.fields[0].path).toBe('Код');
+      expect(batch.members[1].members[0].model.fields[0].path).toBe('Дата');
+    });
+
+    it('собирает многоучастниковые документы объединения из снимка', () => {
+      let s = withField(initialState(), 'Справочник.Валюты', 'Код'); // пакет 0, участник 0
+      s = reducer(s, { type: 'ADD_QUERY' });
+      s = withField(s, 'Документ.СчетНаОплату', 'Дата'); // пакет 0, участник 1
+      s = reducer(s, { type: 'ADD_BATCH_QUERY' });
+      s = withField(s, 'Справочник.Валюты', 'Наименование'); // пакет 1 (активен)
+      const batch = assembleBatch(s);
+      expect(batch.members).toHaveLength(2);
+      // пакет 0 (снимок) — два участника
+      expect(batch.members[0].members).toHaveLength(2);
+      expect(batch.members[0].members[0].model.fields[0].path).toBe('Код');
+      expect(batch.members[0].members[1].model.fields[0].path).toBe('Дата');
+      // пакет 1 (активный) — один участник
+      expect(batch.members[1].members).toHaveLength(1);
+      expect(batch.members[1].members[0].model.fields[0].path).toBe('Наименование');
+    });
   });
 });

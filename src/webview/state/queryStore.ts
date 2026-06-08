@@ -3,6 +3,7 @@ import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualPara
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
+import type { BatchDocument } from '../../core/query/batchModel';
 
 /** Метаданные одного запроса-участника объединения. */
 export interface QueryMeta {
@@ -27,6 +28,13 @@ export interface SavedQuery {
   lockForUpdate: string[];
   order: Order;
   totals: Totals;
+}
+
+/** Снимок одного запроса пакета = полное состояние его документа объединения. */
+export interface BatchSnapshot {
+  queryList: QueryMeta[];
+  activeQuery: number;
+  savedQueries: SavedQuery[]; // без null — активный участник заполнен из плоских полей
 }
 
 export interface QueryState {
@@ -56,6 +64,11 @@ export interface QueryState {
   activeQuery: number;
   /** Снимок working set каждого запроса; слот активного запроса = null (живёт в плоских полях). */
   savedQueries: (SavedQuery | null)[];
+  // --- слой пакета запросов ---
+  /** Индекс активного запроса пакета. */
+  activeBatch: number;
+  /** Снимки запросов пакета; слот активного = null (живёт в queryList/savedQueries/плоских полях). */
+  batchSaved: (BatchSnapshot | null)[];
 }
 
 export type QueryAction =
@@ -114,6 +127,11 @@ export type QueryAction =
   | { type: 'RENAME_QUERY'; index: number; name: string }
   | { type: 'SET_QUERY_DISTINCT'; index: number; distinct: boolean }
   | { type: 'SET_COLUMN_ALIAS'; alias: string; newAlias: string }
+  // --- слой пакета запросов ---
+  | { type: 'ADD_BATCH_QUERY' }
+  | { type: 'SET_ACTIVE_BATCH'; index: number }
+  | { type: 'REMOVE_BATCH_QUERY'; index: number }
+  | { type: 'MOVE_BATCH_QUERY'; index: number; dir: 'up' | 'down' }
   // --- порядок (УПОРЯДОЧИТЬ ПО) ---
   | { type: 'ADD_ORDER_FIELD'; tableId: string; path: string }
   | { type: 'REMOVE_ORDER_FIELD'; tableId: string; path: string }
@@ -153,6 +171,8 @@ export function initialState(): QueryState {
     queryList: [{ name: 'Запрос 1', distinct: false }],
     activeQuery: 0,
     savedQueries: [null],
+    activeBatch: 0,
+    batchSaved: [null],
   };
 }
 
@@ -250,6 +270,90 @@ export function assembleMembers(state: QueryState): UnionMember[] {
       model: buildModelFromFlat(flat),
     };
   });
+}
+
+// ============================================================================
+// Слой пакета запросов: снимок/восстановление активного документа объединения.
+// ============================================================================
+
+/**
+ * Собрать текущий документ объединения в снимок пакета: `savedQueries` со слотом
+ * `activeQuery`, заполненным `snapshotActive(state)`; остальные слоты — из
+ * `state.savedQueries` (они уже не null для неактивных участников).
+ */
+export function snapshotActiveBatch(state: QueryState): BatchSnapshot {
+  const savedQueries = state.queryList.map((_, i) =>
+    i === state.activeQuery ? snapshotActive(state) : (state.savedQueries[i] ?? snapshotActive(state))
+  );
+  return {
+    queryList: state.queryList,
+    activeQuery: state.activeQuery,
+    savedQueries,
+  };
+}
+
+/**
+ * Восстановить документ объединения из снимка пакета (или пустой при null).
+ * Возвращает queryList/activeQuery/savedQueries и плоские поля активного участника.
+ */
+export function restoreBatch(state: QueryState, snap: BatchSnapshot | null): Partial<QueryState> {
+  if (snap === null) {
+    return {
+      queryList: [{ name: 'Запрос 1', distinct: false }],
+      activeQuery: 0,
+      savedQueries: [null],
+      ...restoreSaved(state, null),
+    };
+  }
+  const savedQueries: (SavedQuery | null)[] = snap.savedQueries.slice();
+  savedQueries[snap.activeQuery] = null;
+  return {
+    queryList: snap.queryList,
+    activeQuery: snap.activeQuery,
+    savedQueries,
+    ...restoreSaved(state, snap.savedQueries[snap.activeQuery]),
+  };
+}
+
+/**
+ * Производное имя запроса пакета по первому участнику объединения его документа.
+ * createTemp/appendTemp с непустым tempTableName → имя ВТ; dropTemp → «- ВТ»;
+ * иначе — «Запрос пакета N».
+ */
+export function batchMemberName(state: QueryState, i: number): string {
+  let first: SavedQuery;
+  if (i === state.activeBatch) {
+    first = state.activeQuery === 0 ? snapshotActive(state) : state.savedQueries[0]!;
+  } else {
+    first = state.batchSaved[i]!.savedQueries[0];
+  }
+  const model = buildModelFromFlat(first);
+  if ((model.queryType === 'createTemp' || model.queryType === 'appendTemp') && model.tempTableName) {
+    return model.tempTableName;
+  }
+  if (model.queryType === 'dropTemp') {
+    return `- ${model.tempTableName}`;
+  }
+  return `Запрос пакета ${i + 1}`;
+}
+
+/** Собрать документ пакета: активный запрос пакета — из live-состояния, остальные — из снимков. */
+export function assembleBatch(state: QueryState): BatchDocument {
+  return {
+    members: state.batchSaved.map((snap, i) => {
+      if (i === state.activeBatch) {
+        return { members: assembleMembers(state) };
+      }
+      const b = snap!;
+      return {
+        members: b.queryList.map((meta, j) => ({
+          name: meta.name,
+          distinct: meta.distinct,
+          model: buildModelFromFlat(b.savedQueries[j]),
+        })),
+      };
+    }),
+  };
 }
 
 /** Применить переименование псевдонима колонки к списку полей одного запроса. */
@@ -774,6 +878,87 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
           : { ...sq, selectedFields: applyColumnAlias(sq.selectedFields, alias, newAlias) }
       );
       return { ...state, selectedFields, savedQueries };
+    }
+
+    case 'ADD_BATCH_QUERY': {
+      // Сохранить активный запрос пакета в его слот, добавить новый пустой и сделать активным.
+      const batchSaved = [...state.batchSaved];
+      batchSaved[state.activeBatch] = snapshotActiveBatch(state);
+      batchSaved.push(null);
+      const activeBatch = batchSaved.length - 1;
+      return {
+        ...state,
+        batchSaved,
+        activeBatch,
+        ...restoreBatch(state, null),
+      };
+    }
+
+    case 'SET_ACTIVE_BATCH': {
+      const { index } = action;
+      if (index === state.activeBatch) return state;
+      if (index < 0 || index >= state.batchSaved.length) return state;
+      const batchSaved = [...state.batchSaved];
+      batchSaved[state.activeBatch] = snapshotActiveBatch(state);
+      const target = batchSaved[index];
+      batchSaved[index] = null;
+      return {
+        ...state,
+        batchSaved,
+        activeBatch: index,
+        ...restoreBatch(state, target),
+      };
+    }
+
+    case 'REMOVE_BATCH_QUERY': {
+      const { index } = action;
+      if (state.batchSaved.length === 1) return state; // нельзя удалить последний
+      if (index < 0 || index >= state.batchSaved.length) return state;
+
+      if (index === state.activeBatch) {
+        // Удаляем активный → перед удалением неактивные слоты должны быть заполнены.
+        const batchSaved = state.batchSaved.filter((_, i) => i !== index);
+        const newActive = index >= batchSaved.length ? batchSaved.length - 1 : index;
+        const target = batchSaved[newActive];
+        batchSaved[newActive] = null;
+        return {
+          ...state,
+          batchSaved,
+          activeBatch: newActive,
+          ...restoreBatch(state, target),
+        };
+      }
+
+      // Удаляем неактивный → активный остаётся live, поправить индекс при сдвиге.
+      const batchSaved = state.batchSaved.filter((_, i) => i !== index);
+      const activeBatch = index < state.activeBatch ? state.activeBatch - 1 : state.activeBatch;
+      return { ...state, batchSaved, activeBatch };
+    }
+
+    case 'MOVE_BATCH_QUERY': {
+      const { index, dir } = action;
+      const target = dir === 'up' ? index - 1 : index + 1;
+      if (index < 0 || index >= state.batchSaved.length) return state;
+      if (target < 0 || target >= state.batchSaved.length) return state;
+
+      // Снять активный в его слот, чтобы все слоты были заполнены при перестановке.
+      const batchSaved = [...state.batchSaved];
+      batchSaved[state.activeBatch] = snapshotActiveBatch(state);
+      [batchSaved[index], batchSaved[target]] = [batchSaved[target], batchSaved[index]];
+
+      // Пересчитать activeBatch так, чтобы он указывал на тот же запрос пакета.
+      let activeBatch = state.activeBatch;
+      if (state.activeBatch === index) activeBatch = target;
+      else if (state.activeBatch === target) activeBatch = index;
+
+      const snap = batchSaved[activeBatch];
+      batchSaved[activeBatch] = null;
+      return {
+        ...state,
+        batchSaved,
+        activeBatch,
+        ...restoreBatch(state, snap),
+      };
     }
 
     case 'ADD_ORDER_FIELD': {
