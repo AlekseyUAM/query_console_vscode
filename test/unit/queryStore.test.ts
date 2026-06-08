@@ -715,3 +715,309 @@ describe('queryStore — union document layer (multiple sub-queries)', () => {
     });
   });
 });
+
+describe('queryStore — связи (joins)', () => {
+  function twoTablesState() {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+    const t1 = s.selectedTables[0].id;
+    const t2 = s.selectedTables[1].id;
+    return { s, t1, t2 };
+  }
+
+  it('initialState содержит пустой массив joins', () => {
+    expect(initialState().joins).toEqual([]);
+  });
+
+  it('ADD_JOIN добавляет связь по умолчанию между первыми двумя таблицами', () => {
+    const { s, t1, t2 } = twoTablesState();
+    const next = reducer(s, { type: 'ADD_JOIN' });
+    expect(next.joins).toEqual([{
+      leftTableId: t1, rightTableId: t2,
+      leftAll: false, rightAll: false, custom: false, operator: '=',
+    }]);
+  });
+
+  it('ADD_JOIN ничего не делает при < 2 таблицах', () => {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    s = reducer(s, { type: 'ADD_JOIN' });
+    expect(s.joins).toEqual([]);
+  });
+
+  it('REMOVE_JOIN удаляет связь по индексу', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'REMOVE_JOIN', index: 0 });
+    expect(s.joins).toEqual([]);
+  });
+
+  it('SET_JOIN_TABLE меняет таблицу указанной стороны', () => {
+    let { s, t1, t2 } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_TABLE', index: 0, side: 'right', tableId: t1 });
+    expect(s.joins[0].rightTableId).toBe(t1);
+    s = reducer(s, { type: 'SET_JOIN_TABLE', index: 0, side: 'left', tableId: t2 });
+    expect(s.joins[0].leftTableId).toBe(t2);
+  });
+
+  it('SET_JOIN_ALL переключает галочку «Все» нужной стороны', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_ALL', index: 0, side: 'left', value: true });
+    expect(s.joins[0].leftAll).toBe(true);
+    s = reducer(s, { type: 'SET_JOIN_ALL', index: 0, side: 'right', value: true });
+    expect(s.joins[0].rightAll).toBe(true);
+  });
+
+  it('SET_JOIN_CUSTOM переключает произвольное условие', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_CUSTOM', index: 0, custom: true });
+    expect(s.joins[0].custom).toBe(true);
+  });
+
+  it('SET_JOIN_FIELD задаёт поле нужной стороны', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_FIELD', index: 0, side: 'left', path: 'Ссылка' });
+    s = reducer(s, { type: 'SET_JOIN_FIELD', index: 0, side: 'right', path: 'Дата' });
+    expect(s.joins[0].leftPath).toBe('Ссылка');
+    expect(s.joins[0].rightPath).toBe('Дата');
+  });
+
+  it('SET_JOIN_OPERATOR задаёт оператор', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_OPERATOR', index: 0, operator: '<>' });
+    expect(s.joins[0].operator).toBe('<>');
+  });
+
+  it('SET_JOIN_EXPRESSION задаёт текст произвольного условия', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'SET_JOIN_EXPRESSION', index: 0, expression: 'A.X = &P' });
+    expect(s.joins[0].expression).toBe('A.X = &P');
+  });
+
+  it('REMOVE_TABLE каскадно удаляет связи, ссылающиеся на таблицу', () => {
+    let { s, t1, t2 } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    expect(s.joins.length).toBe(1);
+    s = reducer(s, { type: 'REMOVE_TABLE', tableId: t2 });
+    expect(s.joins).toEqual([]);
+  });
+
+  it('joins проходят через snapshot/restore', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    const snap = snapshotActive(s);
+    expect(snap.joins).toEqual(s.joins);
+    const restored = restoreSaved(s, snap);
+    expect(restored.joins).toEqual(s.joins);
+    const model = buildModelFromFlat(snap);
+    expect(model.joins).toEqual(s.joins);
+  });
+});
+
+describe('queryStore — порядок (order, фаза 5.6)', () => {
+  function withTwoFields() {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Код' });
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Наименование' });
+    return { s, t1 };
+  }
+
+  it('initialState содержит пустой неактивный order', () => {
+    const s = initialState();
+    expect(s.order).toEqual({ fields: [], auto: false });
+  });
+
+  it('ADD_ORDER_FIELD добавляет поле по возрастанию', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Код', direction: 'asc' }]);
+  });
+
+  it('ADD_ORDER_FIELD не дублирует существующее поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    expect(s.order.fields).toHaveLength(1);
+  });
+
+  it('SET_ORDER_DIRECTION меняет направление', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_ORDER_DIRECTION', tableId: t1, path: 'Код', direction: 'desc' });
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Код', direction: 'desc' }]);
+  });
+
+  it('REMOVE_ORDER_FIELD удаляет поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_ORDER_FIELD', tableId: t1, path: 'Код' });
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Наименование', direction: 'asc' }]);
+  });
+
+  it('SET_ORDER_AUTO переключает автоупорядочивание', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'SET_ORDER_AUTO', auto: true });
+    expect(s.order.auto).toBe(true);
+    s = reducer(s, { type: 'SET_ORDER_AUTO', auto: false });
+    expect(s.order.auto).toBe(false);
+  });
+
+  it('REMOVE_TABLE каскадно удаляет поля сортировки таблицы', () => {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+    const t2 = s.selectedTables[1].id;
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t2, path: 'Дата' });
+    s = reducer(s, { type: 'REMOVE_TABLE', tableId: t1 });
+    expect(s.order.fields).toEqual([{ tableId: t2, path: 'Дата', direction: 'asc' }]);
+  });
+
+  it('REMOVE_FIELD каскадно удаляет поле сортировки', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_FIELD', fieldIdx: 0 }); // Код
+    expect(s.order.fields).toEqual([{ tableId: t1, path: 'Наименование', direction: 'asc' }]);
+  });
+
+  it('order проходит через snapshot/restore/buildModelFromFlat', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_ORDER_AUTO', auto: true });
+    const snap = snapshotActive(s);
+    expect(snap.order).toEqual(s.order);
+    const restored = restoreSaved(s, snap);
+    expect(restored.order).toEqual(s.order);
+    const model = buildModelFromFlat(snap);
+    expect(model.order).toEqual(s.order);
+  });
+});
+
+describe('queryStore — итоги (totals, фаза 5.7)', () => {
+  function withTwoFields() {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Код' });
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Наименование' });
+    return { s, t1 };
+  }
+
+  it('initialState содержит пустые неактивные итоги', () => {
+    const s = initialState();
+    expect(s.totals).toEqual({ groupFields: [], totalFields: [], grand: false });
+  });
+
+  it('ADD_TOTAL_GROUP_FIELD добавляет группировочное поле с kind=elements', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.groupFields).toEqual([{ tableId: t1, path: 'Код', kind: 'elements' }]);
+  });
+
+  it('ADD_TOTAL_GROUP_FIELD не дублирует существующее поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.groupFields).toHaveLength(1);
+  });
+
+  it('SET_TOTAL_GROUP_KIND меняет тип итогов', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_GROUP_KIND', tableId: t1, path: 'Код', kind: 'onlyHierarchy' });
+    expect(s.totals.groupFields[0].kind).toBe('onlyHierarchy');
+  });
+
+  it('SET_TOTAL_GROUP_ALIAS задаёт псевдоним группировки', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_GROUP_ALIAS', tableId: t1, path: 'Код', alias: 'Ссылка11' });
+    expect(s.totals.groupFields[0].alias).toBe('Ссылка11');
+  });
+
+  it('REMOVE_TOTAL_GROUP_FIELD удаляет группировочное поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.groupFields).toEqual([{ tableId: t1, path: 'Наименование', kind: 'elements' }]);
+  });
+
+  it('ADD_TOTAL_FIELD добавляет итоговое поле с дефолтным выражением СУММА', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.totalFields).toEqual([{ tableId: t1, path: 'Код', expression: 'СУММА(Код)' }]);
+  });
+
+  it('ADD_TOTAL_FIELD не дублирует существующее поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.totalFields).toHaveLength(1);
+  });
+
+  it('SET_TOTAL_FIELD_EXPRESSION меняет выражение', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_FIELD_EXPRESSION', tableId: t1, path: 'Код', expression: 'МАКСИМУМ(Код)' });
+    expect(s.totals.totalFields[0].expression).toBe('МАКСИМУМ(Код)');
+  });
+
+  it('REMOVE_TOTAL_FIELD удаляет итоговое поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.totalFields.map(f => f.path)).toEqual(['Наименование']);
+  });
+
+  it('SET_TOTAL_GRAND переключает «Общие итоги»', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'SET_TOTAL_GRAND', grand: true });
+    expect(s.totals.grand).toBe(true);
+    s = reducer(s, { type: 'SET_TOTAL_GRAND', grand: false });
+    expect(s.totals.grand).toBe(false);
+  });
+
+  it('REMOVE_TABLE каскадно удаляет итоги таблицы', () => {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+    const t2 = s.selectedTables[1].id;
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t2, path: 'Дата' });
+    s = reducer(s, { type: 'REMOVE_TABLE', tableId: t1 });
+    expect(s.totals.groupFields).toEqual([{ tableId: t2, path: 'Дата', kind: 'elements' }]);
+    expect(s.totals.totalFields).toEqual([]);
+  });
+
+  it('REMOVE_FIELD каскадно удаляет итоги поля', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_FIELD', fieldIdx: 0 }); // Код
+    expect(s.totals.groupFields).toEqual([{ tableId: t1, path: 'Наименование', kind: 'elements' }]);
+    expect(s.totals.totalFields).toEqual([]);
+  });
+
+  it('totals проходит через snapshot/restore/buildModelFromFlat', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_GRAND', grand: true });
+    const snap = snapshotActive(s);
+    expect(snap.totals).toEqual(s.totals);
+    const restored = restoreSaved(s, snap);
+    expect(restored.totals).toEqual(s.totals);
+    const model = buildModelFromFlat(snap);
+    expect(model.totals).toEqual(s.totals);
+  });
+});

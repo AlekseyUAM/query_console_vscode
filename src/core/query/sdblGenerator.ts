@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
@@ -98,6 +98,86 @@ function selectionModifiers(selection: QueryModel['selection']): string {
   return m;
 }
 
+/** Ключевое слово соединения по галочкам «Все» (без нормализации перестановки). */
+function joinKeyword(leftAll: boolean, rightAll: boolean): string {
+  if (leftAll && rightAll) return 'ПОЛНОЕ';
+  if (leftAll || rightAll) return 'ЛЕВОЕ';
+  return 'ВНУТРЕННЕЕ';
+}
+
+/**
+ * Текст условия `ПО`. Простое: `<alias>.<path> <op> <alias>.<path>`; произвольное
+ * оборачивается в скобки. Условие построено по псевдонимам и от порядка таблиц
+ * (перестановки при правом соединении) не зависит. Возвращает '' если условия нет.
+ */
+function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
+  if (join.custom) {
+    const expr = (join.expression ?? '').trim();
+    return expr ? `(${expr})` : '';
+  }
+  const leftAlias = aliases.get(join.leftTableId) ?? join.leftTableId;
+  const rightAlias = aliases.get(join.rightTableId) ?? join.rightTableId;
+  const op = join.operator ?? '=';
+  return `${leftAlias}.${join.leftPath ?? ''} ${op} ${rightAlias}.${join.rightPath ?? ''}`;
+}
+
+/**
+ * Строки секции `ИЗ` (после `ИЗ`).
+ * - Нет активных связей → каждая таблица `\t<источник> КАК <alias>` через запятую.
+ * - Есть связи → левоассоциативная цепочка соединений; нормализация правого
+ *   соединения (`!leftAll && rightAll`) — перестановкой таблиц (затравка = rightTable),
+ *   условие `ПО` при этом не меняется. Таблицы, не вошедшие в цепочку, дописываются
+ *   после неё через запятую (последняя строка цепочки получает запятую).
+ */
+function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
+  const sourceLine = (t: SelectedTable): string =>
+    `${renderSource(t)} КАК ${aliases.get(t.id) ?? t.id}`;
+
+  const joins = model.joins ?? [];
+  if (joins.length === 0) {
+    return model.tables.map((t, i) => {
+      const comma = i < model.tables.length - 1 ? ',' : '';
+      return `\t${sourceLine(t)}${comma}`;
+    });
+  }
+
+  const byId = new Map(model.tables.map(t => [t.id, t]));
+  const inChain = new Set<string>();
+  const lines: string[] = [];
+
+  joins.forEach((join, idx) => {
+    // Нормализация правого соединения: перестановка таблиц, вид → ЛЕВОЕ.
+    const swap = !join.leftAll && join.rightAll;
+    const seedId = swap ? join.rightTableId : join.leftTableId;
+    const joinedId = swap ? join.leftTableId : join.rightTableId;
+    const keyword = joinKeyword(join.leftAll, join.rightAll);
+    const seed = byId.get(seedId);
+    const joined = byId.get(joinedId);
+    if (!seed || !joined) return;
+
+    if (idx === 0 || !inChain.has(seedId)) {
+      lines.push(`\t${sourceLine(seed)}`);
+      inChain.add(seedId);
+    }
+    lines.push(`\t\t${keyword} СОЕДИНЕНИЕ ${sourceLine(joined)}`);
+    inChain.add(joinedId);
+    const cond = renderJoinCondition(join, aliases);
+    if (cond) lines.push(`\t\tПО ${cond}`);
+  });
+
+  // Таблицы, не участвующие ни в одной связи — дописываем после цепочки.
+  const trailing = model.tables.filter(t => !inChain.has(t.id));
+  if (trailing.length > 0 && lines.length > 0) {
+    lines[lines.length - 1] += ',';
+    trailing.forEach((t, i) => {
+      const comma = i < trailing.length - 1 ? ',' : '';
+      lines.push(`\t${sourceLine(t)}${comma}`);
+    });
+  }
+
+  return lines;
+}
+
 /**
  * Сборка блока одного запроса из ГОТОВЫХ строк полей (без хвостовых запятых).
  * Используется как обычным `generate`, так и генератором объединений
@@ -114,11 +194,7 @@ function buildQueryBlock(
 ): string {
   const lines = fieldLines.map((l, i) => (i < fieldLines.length - 1 ? l + ',' : l));
 
-  const tableLines = model.tables.map((t, i) => {
-    const alias = aliases.get(t.id) ?? t.id;
-    const comma = i < model.tables.length - 1 ? ',' : '';
-    return `\t${renderSource(t)} КАК ${alias}${comma}`;
-  });
+  const tableLines = renderFrom(model, aliases);
 
   const conditionLines = renderConditions(model.conditions, aliases);
   const groupingLines = renderGrouping(model.grouping, aliases);
@@ -219,6 +295,86 @@ export function fieldExpr(model: QueryModel, field: SelectedField): string {
   return func ? wrapAggregate(func, lhs) : lhs;
 }
 
+/**
+ * Псевдоним выборки для поля `(tableId, path)`: `alias` соответствующего поля из
+ * `model.fields`, иначе последний сегмент `path`. Используется секциями
+ * УПОРЯДОЧИТЬ ПО (5.6) и ИТОГИ (5.7), где поля адресуются по псевдониму выборки.
+ */
+export function selectAliasFor(model: QueryModel, tableId: string, path: string): string {
+  const match = model.fields.find(f => f.tableId === tableId && f.path === path);
+  if (match?.alias) return match.alias;
+  return path.split('.').pop() ?? path;
+}
+
+/**
+ * Секция УПОРЯДОЧИТЬ ПО (+ строка АВТОУПОРЯДОЧИВАНИЕ при `order.auto`). Без ведущей
+ * пустой строки. Возвращает [] если порядок неактивен (нет полей и нет авто) —
+ * тогда вывод байт-в-байт как раньше. Поле = `<псевдоним выборки>` + ` УБЫВ` при
+ * `direction==='desc'`; запятая после всех, кроме последнего. При `auto` без полей
+ * секция = только `['АВТОУПОРЯДОЧИВАНИЕ']`.
+ */
+function renderOrder(order: Order | undefined, model: QueryModel): string[] {
+  if (!order) return [];
+  const lines: string[] = [];
+  if (order.fields.length > 0) {
+    lines.push('УПОРЯДОЧИТЬ ПО');
+    order.fields.forEach((f, i) => {
+      const alias = selectAliasFor(model, f.tableId, f.path);
+      const suffix = f.direction === 'desc' ? ' УБЫВ' : '';
+      const comma = i < order.fields.length - 1 ? ',' : '';
+      lines.push(`\t${alias}${suffix}${comma}`);
+    });
+  }
+  if (order.auto) lines.push('АВТОУПОРЯДОЧИВАНИЕ');
+  return lines;
+}
+
+/** Суффикс группировочного поля по типу итогов. */
+function totalKindSuffix(kind: TotalKind): string {
+  switch (kind) {
+    case 'elements': return '';
+    case 'hierarchy': return ' ИЕРАРХИЯ';
+    case 'onlyHierarchy': return ' ТОЛЬКО ИЕРАРХИЯ';
+  }
+}
+
+/**
+ * Секция ИТОГИ … ПО … (без ведущей пустой строки). Возвращает [] если итоги
+ * неактивны (нет группировочных полей и нет «Общих итогов») — тогда вывод
+ * байт-в-байт как раньше.
+ *
+ * Поля адресуются по псевдониму выборки (как УПОРЯДОЧИТЬ ПО). Список агрегатов =
+ * `totalFields` (`expression ?? СУММА(<псевдоним>)`); список ПО: при `grand`
+ * первым `ОБЩИЕ`, затем каждое группировочное поле `<псевдоним><суффикс>` +
+ * (` КАК <alias>` если задан). Два формата: с агрегатами — `ИТОГИ … ПО …`, без —
+ * `ИТОГИ ПО …`. Запятая после всех элементов списка, кроме последнего; отступ 1 таб.
+ */
+export function renderTotals(totals: Totals | undefined, model: QueryModel): string[] {
+  if (!totals) return [];
+  const active = totals.groupFields.length > 0 || totals.grand;
+  if (!active) return [];
+
+  const byList: string[] = [];
+  if (totals.grand) byList.push('ОБЩИЕ');
+  for (const g of totals.groupFields) {
+    const alias = selectAliasFor(model, g.tableId, g.path);
+    const as = g.alias ? ` КАК ${g.alias}` : '';
+    byList.push(`${alias}${totalKindSuffix(g.kind)}${as}`);
+  }
+
+  const aggList = totals.totalFields.map(f =>
+    f.expression ?? `СУММА(${selectAliasFor(model, f.tableId, f.path)})`
+  );
+
+  const withCommas = (items: string[]): string[] =>
+    items.map((s, i) => `\t${s}${i < items.length - 1 ? ',' : ''}`);
+
+  if (aggList.length > 0) {
+    return ['ИТОГИ', ...withCommas(aggList), 'ПО', ...withCommas(byList)];
+  }
+  return ['ИТОГИ ПО', ...withCommas(byList)];
+}
+
 export function generate(model: QueryModel): string {
   // УНИЧТОЖИТЬ — самостоятельный запрос, до всех остальных проверок.
   if (model.queryType === 'dropTemp') {
@@ -231,7 +387,12 @@ export function generate(model: QueryModel): string {
 
   const aliases = resolveAliases(model.tables);
   const fieldLines = buildFieldLines(model, aliases);
-  return buildQueryBlock(model, fieldLines, aliases);
+  let out = buildQueryBlock(model, fieldLines, aliases);
+  const orderLines = renderOrder(model.order, model);
+  if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
+  const totalsLines = renderTotals(model.totals, model);
+  if (totalsLines.length > 0) out += '\n' + totalsLines.join('\n');
+  return out;
 }
 
 /**

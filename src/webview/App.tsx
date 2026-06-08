@@ -1,13 +1,16 @@
 import * as React from 'react';
 import { useReducer, useEffect, useState } from 'react';
-import { TabsBar } from './components/TabsBar';
+import { TabsBar, TABS } from './components/TabsBar';
 import { DbTreePanel } from './components/DbTreePanel';
 import { TablesPanel } from './components/TablesPanel';
 import { FieldsPanel } from './components/FieldsPanel';
 import { GroupingTab } from './components/GroupingTab';
 import { ConditionsTab } from './components/ConditionsTab';
+import { ConnectionsTab } from './components/ConnectionsTab';
 import { AdditionalTab } from './components/AdditionalTab';
 import { UnionsTab } from './components/UnionsTab';
+import { OrderTab } from './components/OrderTab';
+import { TotalsTab } from './components/TotalsTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -120,6 +123,19 @@ export function App(): React.ReactElement {
   const members = assembleMembers(state);
   const unionColumns = deriveUnionColumns(members);
 
+  // Видимые вкладки: «Связи» — сразу после «Таблицы и поля» и только при > 1 таблице.
+  const showJoinsTab = state.selectedTables.length > 1;
+  const visibleTabs = showJoinsTab
+    ? [TABS[0], 'Связи', ...TABS.slice(1)]
+    : TABS;
+
+  // Если активная вкладка «Связи» скрылась (удалили таблицу) — вернуться к «Таблицы и поля».
+  useEffect(() => {
+    if (!showJoinsTab && activeTab === 'Связи') {
+      setActiveTab('Таблицы и поля');
+    }
+  }, [showJoinsTab, activeTab]);
+
   // Вертикальная полоса боковых вкладок запросов (только если запросов > 1 и
   // активна одна из конструкторских вкладок, кроме «Объединения/Псевдонимы»).
   const showSideTabs = state.queryList.length > 1 && activeTab !== 'Объединения/Псевдонимы';
@@ -152,7 +168,7 @@ export function App(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
-      <TabsBar active={activeTab} onSelect={setActiveTab} />
+      <TabsBar tabs={visibleTabs} active={activeTab} onSelect={setActiveTab} />
       {/* Cache toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
         <button
@@ -235,6 +251,31 @@ export function App(): React.ReactElement {
       </div>
       )}
 
+      {activeTab === 'Связи' && (
+        <ConnectionsTab
+          selectedTables={state.selectedTables}
+          metaTables={state.tables}
+          joins={state.joins}
+          onAddJoin={() => dispatch({ type: 'ADD_JOIN' })}
+          onRemoveJoin={index => dispatch({ type: 'REMOVE_JOIN', index })}
+          onSetTable={(index, side, tableId) => dispatch({ type: 'SET_JOIN_TABLE', index, side, tableId })}
+          onSetAll={(index, side, value) => dispatch({ type: 'SET_JOIN_ALL', index, side, value })}
+          onSetCustom={(index, custom) => dispatch({ type: 'SET_JOIN_CUSTOM', index, custom })}
+          onSetField={(index, side, path) => dispatch({ type: 'SET_JOIN_FIELD', index, side, path })}
+          onSetOperator={(index, operator) => dispatch({ type: 'SET_JOIN_OPERATOR', index, operator })}
+          onOpenExpressionBuilder={(index, currentText) => {
+            setExprBuilder({
+              fields: qualifiedFieldsAllTables(),
+              initial: currentText,
+              onOk: text => {
+                dispatch({ type: 'SET_JOIN_EXPRESSION', index, expression: text });
+                setExprBuilder(null);
+              },
+            });
+          }}
+        />
+      )}
+
       {activeTab === 'Группировка' && (
         <GroupingTab
           selectedTables={state.selectedTables}
@@ -310,7 +351,36 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && (
+      {activeTab === 'Порядок' && (
+        <OrderTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          order={state.order}
+          onAddOrderField={(tableId, path) => dispatch({ type: 'ADD_ORDER_FIELD', tableId, path })}
+          onRemoveOrderField={(tableId, path) => dispatch({ type: 'REMOVE_ORDER_FIELD', tableId, path })}
+          onSetOrderDirection={(tableId, path, direction) => dispatch({ type: 'SET_ORDER_DIRECTION', tableId, path, direction })}
+          onSetOrderAuto={auto => dispatch({ type: 'SET_ORDER_AUTO', auto })}
+        />
+      )}
+
+      {activeTab === 'Итоги' && (
+        <TotalsTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          metaTables={state.tables}
+          totals={state.totals}
+          onAddGroupField={(tableId, path) => dispatch({ type: 'ADD_TOTAL_GROUP_FIELD', tableId, path })}
+          onRemoveGroupField={(tableId, path) => dispatch({ type: 'REMOVE_TOTAL_GROUP_FIELD', tableId, path })}
+          onSetGroupKind={(tableId, path, kind) => dispatch({ type: 'SET_TOTAL_GROUP_KIND', tableId, path, kind })}
+          onSetGroupAlias={(tableId, path, alias) => dispatch({ type: 'SET_TOTAL_GROUP_ALIAS', tableId, path, alias })}
+          onAddTotalField={(tableId, path) => dispatch({ type: 'ADD_TOTAL_FIELD', tableId, path })}
+          onRemoveTotalField={(tableId, path) => dispatch({ type: 'REMOVE_TOTAL_FIELD', tableId, path })}
+          onSetTotalFieldExpression={(tableId, path, expression) => dispatch({ type: 'SET_TOTAL_FIELD_EXPRESSION', tableId, path, expression })}
+          onSetGrand={grand => dispatch({ type: 'SET_TOTAL_GRAND', grand })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>

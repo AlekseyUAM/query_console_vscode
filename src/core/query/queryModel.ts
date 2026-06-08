@@ -77,6 +77,71 @@ export interface Condition {
   expression?: string;
 }
 
+/** Тип итогов группировочного поля. */
+export type TotalKind = 'elements' | 'hierarchy' | 'onlyHierarchy';
+
+export interface TotalGroupField {
+  tableId: string;
+  path: string;
+  /** elements → нет; hierarchy → ИЕРАРХИЯ; onlyHierarchy → ТОЛЬКО ИЕРАРХИЯ. */
+  kind: TotalKind;
+  /** Псевдоним группировки (КАК …), опционально. */
+  alias?: string;
+}
+
+export interface TotalField {
+  tableId: string;
+  path: string;
+  /** Выражение агрегата; по умолчанию СУММА(<псевдоним>). */
+  expression?: string;
+}
+
+export interface Totals {
+  groupFields: TotalGroupField[];
+  totalFields: TotalField[];
+  /** «Общие итоги» → ОБЩИЕ первым элементом списка ПО. */
+  grand: boolean;
+}
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface OrderField {
+  tableId: string;
+  path: string;
+  /** asc → без суффикса; desc → УБЫВ. */
+  direction: SortDirection;
+}
+
+export interface Order {
+  fields: OrderField[];
+  /** «Автоупорядочивание» → ключевое слово АВТОУПОРЯДОЧИВАНИЕ. */
+  auto: boolean;
+}
+
+/** Вид соединения после нормализации (правое сводится к левому перестановкой). */
+export type JoinKind = 'inner' | 'left' | 'full';
+
+export interface Join {
+  /** Таблица 1 (слева в UI). */
+  leftTableId: string;
+  /** Таблица 2 (справа в UI). */
+  rightTableId: string;
+  /** «Все» у таблицы 1 — все элементы таблицы 1 сохраняются. */
+  leftAll: boolean;
+  /** «Все» у таблицы 2 — все элементы таблицы 2 сохраняются. */
+  rightAll: boolean;
+  /** «П.» — произвольное условие связи. */
+  custom: boolean;
+  /** Простое условие: поле таблицы 1. */
+  leftPath?: string;
+  /** Оператор сравнения, по умолчанию '='. */
+  operator?: ConditionOperator;
+  /** Простое условие: поле таблицы 2. */
+  rightPath?: string;
+  /** Произвольное условие — полный текст выражения. */
+  expression?: string;
+}
+
 /** Модификаторы выборки записей (ВЫБРАТЬ ...). */
 export interface Selection {
   /** ПЕРВЫЕ N — ограничение количества первых записей. */
@@ -99,6 +164,8 @@ export interface QueryModel {
   grouping?: Grouping;
   /** Условия отбора (секция ГДЕ). */
   conditions?: Condition[];
+  /** Соединения между таблицами (секция ИЗ). */
+  joins?: Join[];
   /** Модификаторы выборки записей (ПЕРВЫЕ/РАЗЛИЧНЫЕ/РАЗРЕШЕННЫЕ). */
   selection?: Selection;
   /** Тип запроса (по умолчанию обычная выборка). */
@@ -107,6 +174,10 @@ export interface QueryModel {
   tempTableName?: string;
   /** Таблицы для секции ДЛЯ ИЗМЕНЕНИЯ (полные имена). */
   lockForUpdate?: string[];
+  /** Порядок сортировки (секция УПОРЯДОЧИТЬ ПО / АВТОУПОРЯДОЧИВАНИЕ). */
+  order?: Order;
+  /** Итоги (секция ИТОГИ … ПО …). */
+  totals?: Totals;
 }
 
 /**

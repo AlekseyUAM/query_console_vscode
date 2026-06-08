@@ -62,7 +62,7 @@ const ROW: React.CSSProperties = {
 };
 
 /** Найти MetaField исходного поля выборки. */
-function findMetaField(
+export function findMetaField(
   metaTables: MetaTable[],
   selectedTables: SelectedTable[],
   tableId: string,
@@ -77,9 +77,15 @@ function findMetaField(
   return meta.fields.find(f => f.name === top);
 }
 
-function isNumericField(field: MetaField | undefined): boolean {
+export function isNumericField(field: MetaField | undefined): boolean {
   if (!field || !field.types) return false;
   return field.types.some(t => t.primitive === 'Число');
+}
+
+/** Поле ссылочного типа (тип содержит `ref`) — для предложения иерархических итогов. */
+export function isRefField(field: MetaField | undefined): boolean {
+  if (!field || !field.types) return false;
+  return field.types.some(t => !!t.ref);
 }
 
 function allowedFuncs(numeric: boolean): AggregateFunction[] {

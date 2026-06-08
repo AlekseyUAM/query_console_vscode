@@ -839,3 +839,416 @@ describe('generate — дополнительно (фаза 5.3)', () => {
     });
   });
 });
+
+describe('generate — связи (joins)', () => {
+  const twoTables = (): QueryModel => ({
+    tables: [
+      { id: 't1', fullName: 'Справочник.Валюты' },
+      { id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' },
+    ],
+    fields: [
+      { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+      { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+    ],
+  });
+
+  const head =
+    'ВЫБРАТЬ\n' +
+    '\tВалюты.Ссылка КАК Ссылка,\n' +
+    '\tВалюты.Наценка КАК Наценка\n' +
+    'ИЗ\n';
+
+  it('нет связей → список таблиц через запятую (как раньше)', async () => {
+    const model = twoTables();
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты,\n' +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('внутреннее соединение (leftAll=false, rightAll=false)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('левое соединение (leftAll=true, rightAll=false)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: true, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tЛЕВОЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('полное соединение (leftAll=true, rightAll=true)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: true, rightAll: true, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tПОЛНОЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('правое соединение → левое с перестановкой таблиц (leftAll=false, rightAll=true)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: true, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    // Перестановка: затравка = ВариантыОтветовАнкет, присоединяемая = Валюты,
+    // условие ПО не меняется.
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tЛЕВОЕ СОЕДИНЕНИЕ Справочник.Валюты КАК Валюты\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('произвольное условие связи оборачивается в скобки', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: true, custom: true,
+        expression: 'Валюты.Ссылка = &Труляля',
+      }],
+    };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tЛЕВОЕ СОЕДИНЕНИЕ Справочник.Валюты КАК Валюты\n' +
+      '\t\tПО (Валюты.Ссылка = &Труляля)'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('таблица без связи дописывается после цепочки через запятую', async () => {
+    const model: QueryModel = {
+      tables: [
+        { id: 't1', fullName: 'Справочник.Валюты' },
+        { id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' },
+        { id: 't3', fullName: 'Документ.Счет' },
+      ],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+      '\tВалюты.Ссылка КАК Ссылка\n' +
+      'ИЗ\n' +
+      '\tСправочник.Валюты КАК Валюты\n' +
+      '\t\tВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет\n' +
+      '\t\tПО Валюты.Ссылка = ВариантыОтветовАнкет.ИмяПредопределенныхДанных,\n' +
+      '\tДокумент.Счет КАК Счет'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('пустые связи → вывод как без связей', () => {
+    const model: QueryModel = { ...twoTables(), joins: [] };
+    expect(generate(model)).toBe(
+      head +
+      '\tСправочник.Валюты КАК Валюты,\n' +
+      '\tСправочник.ВариантыОтветовАнкет КАК ВариантыОтветовАнкет'
+    );
+  });
+});
+
+describe('generate — порядок (УПОРЯДОЧИТЬ ПО, фаза 5.6)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const head =
+    'ВЫБРАТЬ\n' +
+    '\tВалюты.Ссылка КАК Ссылка\n' +
+    'ИЗ\n' +
+    '\tСправочник.Валюты КАК Валюты';
+
+  it('возрастание: поле по псевдониму выборки без суффикса', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'asc' }], auto: false },
+    };
+    expect(generate(model)).toBe(head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('убывание: суффикс УБЫВ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'desc' }], auto: false },
+    };
+    expect(generate(model)).toBe(head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка УБЫВ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('авто + поле: строка АВТОУПОРЯДОЧИВАНИЕ после полей', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'desc' }], auto: true },
+    };
+    expect(generate(model)).toBe(head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка УБЫВ\nАВТОУПОРЯДОЧИВАНИЕ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('только авто без полей: секция = только АВТОУПОРЯДОЧИВАНИЕ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [], auto: true },
+    };
+    expect(generate(model)).toBe(head + '\n\nАВТОУПОРЯДОЧИВАНИЕ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('несколько полей: запятая после всех, кроме последнего', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+      ],
+      order: {
+        fields: [
+          { tableId: 't1', path: 'Код', direction: 'asc' },
+          { tableId: 't1', path: 'Ссылка', direction: 'desc' },
+        ],
+        auto: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Код КАК Код,\n\tВалюты.Ссылка КАК Ссылка\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты\n\n' +
+      'УПОРЯДОЧИТЬ ПО\n\tКод,\n\tСсылка УБЫВ'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('ссылка по последнему сегменту пути, если поля нет в выборке', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      order: { fields: [{ tableId: 't1', path: 'Владелец.Код', direction: 'asc' }], auto: false },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты\n\n' +
+      'УПОРЯДОЧИТЬ ПО\n\tКод'
+    );
+  });
+
+  it('неактивный order (пустой, без авто) не меняет вывод', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [], auto: false },
+    };
+    expect(generate(model)).toBe(head);
+    await assertValidSdbl(generate(model));
+  });
+
+  it('отсутствие order не меняет вывод', () => {
+    expect(generate(base())).toBe(head);
+  });
+});
+
+describe('generate — итоги (ИТОГИ … ПО …, фаза 5.7)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Тест' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const head =
+    'ВЫБРАТЬ\n' +
+    '\tТест.Ссылка КАК Ссылка\n' +
+    'ИЗ\n' +
+    '\tСправочник.Тест КАК Тест';
+
+  it('тип итогов «Элементы»: поле по псевдониму выборки без суффикса', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка КАК Ссылка11');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('тип итогов «Элементы и иерархия»: суффикс ИЕРАРХИЯ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'hierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка ИЕРАРХИЯ КАК Ссылка11');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('тип итогов «Только иерархия»: суффикс ТОЛЬКО ИЕРАРХИЯ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'onlyHierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка ТОЛЬКО ИЕРАРХИЯ КАК Ссылка11');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('группировочное поле без псевдонима: без части КАК', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('итоговое поле СУММА(...): формат ИТОГИ … ПО …', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements' }],
+        totalFields: [{ tableId: 't1', path: 'Наценка', expression: 'СУММА(Наценка)' }],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка,\n\tВалюты.Наценка КАК Наценка\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты\n' +
+      'ИТОГИ\n\tСУММА(Наценка)\nПО\n\tСсылка'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('итоговое поле без expression: дефолт СУММА(<псевдоним>)', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements' }],
+        totalFields: [{ tableId: 't1', path: 'Наценка' }],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка,\n\tВалюты.Наценка КАК Наценка\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты\n' +
+      'ИТОГИ\n\tСУММА(Наценка)\nПО\n\tСсылка'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('«Общие итоги»: ОБЩИЕ первым элементом списка ПО', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'onlyHierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: true,
+      },
+    };
+    expect(generate(model)).toBe(
+      head + '\nИТОГИ ПО\n\tОБЩИЕ,\n\tСсылка ТОЛЬКО ИЕРАРХИЯ КАК Ссылка11'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('только «Общие итоги» без группировочных полей: ИТОГИ ПО ОБЩИЕ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: { groupFields: [], totalFields: [], grand: true },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tОБЩИЕ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('неактивные итоги (пусто, без grand) не меняют вывод', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: { groupFields: [], totalFields: [], grand: false },
+    };
+    expect(generate(model)).toBe(head);
+    await assertValidSdbl(generate(model));
+  });
+
+  it('отсутствие totals не меняет вывод', () => {
+    expect(generate(base())).toBe(head);
+  });
+
+  it('порядок + итоги вместе: УПОРЯДОЧИТЬ ПО, затем ИТОГИ ПО', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'asc' }], auto: false },
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка\nИТОГИ ПО\n\tСсылка КАК Ссылка11'
+    );
+    await assertValidSdbl(generate(model));
+  });
+});
