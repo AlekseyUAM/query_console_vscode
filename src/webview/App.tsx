@@ -11,6 +11,7 @@ import { AdditionalTab } from './components/AdditionalTab';
 import { UnionsTab } from './components/UnionsTab';
 import { OrderTab } from './components/OrderTab';
 import { TotalsTab } from './components/TotalsTab';
+import { BuilderTab } from './components/BuilderTab';
 import { BatchTab } from './components/BatchTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
@@ -398,6 +399,19 @@ export function App(): React.ReactElement {
         />
       )}
 
+      {activeTab === 'Построитель' && (
+        <BuilderTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          metaTables={state.tables}
+          builder={state.builder}
+          onAdd={(section, field) => dispatch({ type: 'ADD_BUILDER_FIELD', section, field })}
+          onRemove={(section, index) => dispatch({ type: 'REMOVE_BUILDER_FIELD', section, index })}
+          onSetChild={(section, index, child) => dispatch({ type: 'SET_BUILDER_FIELD_CHILD', section, index, child })}
+          onSetAlias={(section, index, alias) => dispatch({ type: 'SET_BUILDER_FIELD_ALIAS', section, index, alias })}
+        />
+      )}
+
       {activeTab === 'Пакет запросов' && (
         <BatchTab
           names={batchNames}
@@ -409,7 +423,7 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Пакет запросов' && (
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Построитель' && activeTab !== 'Пакет запросов' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
