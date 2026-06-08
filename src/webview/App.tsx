@@ -11,6 +11,7 @@ import { AdditionalTab } from './components/AdditionalTab';
 import { UnionsTab } from './components/UnionsTab';
 import { OrderTab } from './components/OrderTab';
 import { TotalsTab } from './components/TotalsTab';
+import { BatchTab } from './components/BatchTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -18,8 +19,8 @@ import { defaultTableAlias } from '../core/query/queryModel';
 import type { MetaField, MetaTable } from '../core/metadata/types';
 import { accumPeriodFields } from '../core/query/accumVirtualFields';
 import { postToHost, onHostMessage } from './bridge';
-import { initialState, reducer, assembleMembers } from './state/queryStore';
-import { generateDocument } from '../core/query/sdblGenerator';
+import { initialState, reducer, assembleMembers, assembleBatch, batchMemberName } from './state/queryStore';
+import { generateBatch } from '../core/query/sdblGenerator';
 import { deriveUnionColumns } from '../core/query/unionModel';
 
 const BTN: React.CSSProperties = {
@@ -69,7 +70,7 @@ export function App(): React.ReactElement {
   }
 
   function handleShowQuery() {
-    const text = generateDocument({ members: assembleMembers(state) });
+    const text = generateBatch(assembleBatch(state));
     setQueryModalText(text || '-- нет полей для генерации запроса');
   }
 
@@ -123,11 +124,20 @@ export function App(): React.ReactElement {
   const members = assembleMembers(state);
   const unionColumns = deriveUnionColumns(members);
 
+  // Готовый текст пакета запросов — для предпросмотра и вставки.
+  const batchText = generateBatch(assembleBatch(state));
+
+  // Имена запросов пакета — для вкладки «Пакет запросов» и боковой полосы.
+  const batchNames = state.batchSaved.map((_, i) => batchMemberName(state, i));
+
   // Видимые вкладки: «Связи» — сразу после «Таблицы и поля» и только при > 1 таблице.
+  // При типе dropTemp видны только «Дополнительно» и «Пакет запросов».
   const showJoinsTab = state.selectedTables.length > 1;
-  const visibleTabs = showJoinsTab
-    ? [TABS[0], 'Связи', ...TABS.slice(1)]
-    : TABS;
+  const visibleTabs = state.queryType === 'dropTemp'
+    ? ['Дополнительно', 'Пакет запросов']
+    : showJoinsTab
+      ? [TABS[0], 'Связи', ...TABS.slice(1)]
+      : TABS;
 
   // Если активная вкладка «Связи» скрылась (удалили таблицу) — вернуться к «Таблицы и поля».
   useEffect(() => {
@@ -136,18 +146,26 @@ export function App(): React.ReactElement {
     }
   }, [showJoinsTab, activeTab]);
 
-  // Вертикальная полоса боковых вкладок запросов (только если запросов > 1 и
-  // активна одна из конструкторских вкладок, кроме «Объединения/Псевдонимы»).
-  const showSideTabs = state.queryList.length > 1 && activeTab !== 'Объединения/Псевдонимы';
+  // Если активная вкладка скрылась из-за переключения на dropTemp — на «Дополнительно».
+  useEffect(() => {
+    if (!visibleTabs.includes(activeTab)) {
+      setActiveTab('Дополнительно');
+    }
+  }, [visibleTabs, activeTab]);
+
+  // Вертикальная полоса боковых вкладок запросов пакета (только если запросов
+  // пакета > 1 и активна не сама вкладка «Пакет запросов»).
+  const showSideTabs = state.batchSaved.length > 1 && activeTab !== 'Пакет запросов';
   const sideTabsStrip = showSideTabs ? (
     <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
-      {state.queryList.map((q, i) => {
-        const isActive = i === state.activeQuery;
+      {state.batchSaved.map((_, i) => {
+        const name = batchNames[i];
+        const isActive = i === state.activeBatch;
         return (
           <div
             key={i}
-            onClick={() => dispatch({ type: 'SET_ACTIVE_QUERY', index: i })}
-            title={q.name}
+            onClick={() => dispatch({ type: 'SET_ACTIVE_BATCH', index: i })}
+            title={name}
             style={{
               writingMode: 'vertical-rl',
               padding: '12px 6px',
@@ -159,7 +177,7 @@ export function App(): React.ReactElement {
               userSelect: 'none',
             }}
           >
-            {q.name}
+            {name}
           </div>
         );
       })}
@@ -219,7 +237,7 @@ export function App(): React.ReactElement {
             selectedTables={state.selectedTables}
             selectedFields={state.selectedFields}
             tabSectionFields={state.tabSectionFields}
-            members={members}
+            queryText={batchText}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -380,7 +398,18 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && (
+      {activeTab === 'Пакет запросов' && (
+        <BatchTab
+          names={batchNames}
+          activeIndex={state.activeBatch}
+          onAdd={() => dispatch({ type: 'ADD_BATCH_QUERY' })}
+          onRemove={index => dispatch({ type: 'REMOVE_BATCH_QUERY', index })}
+          onMove={(index, dir) => dispatch({ type: 'MOVE_BATCH_QUERY', index, dir })}
+          onSetActive={index => dispatch({ type: 'SET_ACTIVE_BATCH', index })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Пакет запросов' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
