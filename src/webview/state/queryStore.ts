@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection, Totals, TotalKind } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
@@ -28,6 +28,24 @@ export interface SavedQuery {
   lockForUpdate: string[];
   order: Order;
   totals: Totals;
+  builder: ReportBuilder;
+}
+
+/** Пустой построитель отчёта: все секции без строк. */
+function emptyBuilder(): ReportBuilder {
+  return { fields: [], conditions: [], order: [], totals: [] };
+}
+
+/** Секция построителя, по которой работают действия ADD/REMOVE/SET_BUILDER_FIELD_*. */
+type BuilderSection = 'fields' | 'conditions' | 'order' | 'totals';
+
+/** Иммутабельно обновить одну секцию построителя. */
+function updateBuilderSection(
+  builder: ReportBuilder,
+  section: BuilderSection,
+  fn: (rows: BuilderField[]) => BuilderField[]
+): ReportBuilder {
+  return { ...builder, [section]: fn(builder[section]) };
 }
 
 /** Снимок одного запроса пакета = полное состояние его документа объединения. */
@@ -51,6 +69,7 @@ export interface QueryState {
   lockForUpdate: string[];
   order: Order;
   totals: Totals;
+  builder: ReportBuilder;
   lockEnabled: boolean;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
@@ -145,7 +164,12 @@ export type QueryAction =
   | { type: 'ADD_TOTAL_FIELD'; tableId: string; path: string }
   | { type: 'REMOVE_TOTAL_FIELD'; tableId: string; path: string }
   | { type: 'SET_TOTAL_FIELD_EXPRESSION'; tableId: string; path: string; expression: string }
-  | { type: 'SET_TOTAL_GRAND'; grand: boolean };
+  | { type: 'SET_TOTAL_GRAND'; grand: boolean }
+  // --- построитель (отчёт) ---
+  | { type: 'ADD_BUILDER_FIELD'; section: BuilderSection; field: BuilderField }
+  | { type: 'REMOVE_BUILDER_FIELD'; section: BuilderSection; index: number }
+  | { type: 'SET_BUILDER_FIELD_CHILD'; section: BuilderSection; index: number; child: boolean }
+  | { type: 'SET_BUILDER_FIELD_ALIAS'; section: BuilderSection; index: number; alias: string };
 
 export function initialState(): QueryState {
   return {
@@ -162,6 +186,7 @@ export function initialState(): QueryState {
     lockForUpdate: [],
     order: { fields: [], auto: false },
     totals: { groupFields: [], totalFields: [], grand: false },
+    builder: emptyBuilder(),
     lockEnabled: false,
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
@@ -197,6 +222,7 @@ export function snapshotActive(state: QueryState): SavedQuery {
     lockForUpdate: state.lockForUpdate,
     order: state.order,
     totals: state.totals,
+    builder: state.builder,
   };
 }
 
@@ -218,6 +244,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     lockForUpdate: [],
     order: { fields: [], auto: false } as Order,
     totals: { groupFields: [], totalFields: [], grand: false } as Totals,
+    builder: emptyBuilder(),
   };
   return {
     selectedTables: base.selectedTables,
@@ -232,6 +259,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     lockForUpdate: base.lockForUpdate,
     order: base.order,
     totals: base.totals,
+    builder: base.builder,
     lockEnabled: base.lockForUpdate.length > 0,
     focusedSelectedTableId: null,
     focusedSelectedFieldIdx: null,
@@ -253,6 +281,7 @@ export function buildModelFromFlat(flat: SavedQuery): QueryModel {
     lockForUpdate: flat.lockForUpdate,
     order: flat.order,
     totals: flat.totals,
+    builder: flat.builder,
   };
 }
 
@@ -1079,6 +1108,36 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
 
     case 'SET_TOTAL_GRAND':
       return { ...state, totals: { ...state.totals, grand: action.grand } };
+
+    case 'ADD_BUILDER_FIELD':
+      return {
+        ...state,
+        builder: updateBuilderSection(state.builder, action.section, rows => [...rows, action.field]),
+      };
+
+    case 'REMOVE_BUILDER_FIELD':
+      return {
+        ...state,
+        builder: updateBuilderSection(state.builder, action.section, rows =>
+          rows.filter((_, i) => i !== action.index)
+        ),
+      };
+
+    case 'SET_BUILDER_FIELD_CHILD':
+      return {
+        ...state,
+        builder: updateBuilderSection(state.builder, action.section, rows =>
+          rows.map((r, i) => (i === action.index ? { ...r, child: action.child } : r))
+        ),
+      };
+
+    case 'SET_BUILDER_FIELD_ALIAS':
+      return {
+        ...state,
+        builder: updateBuilderSection(state.builder, action.section, rows =>
+          rows.map((r, i) => (i === action.index ? { ...r, alias: action.alias } : r))
+        ),
+      };
 
     default:
       return state;

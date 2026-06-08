@@ -1287,3 +1287,105 @@ describe('queryStore — пакет запросов (batch, фаза 5.8)', () 
     });
   });
 });
+
+describe('queryStore reducer — построитель (builder, фаза 5.9)', () => {
+  const sections = ['fields', 'conditions', 'order', 'totals'] as const;
+
+  it('начальное состояние: пустой builder со всеми секциями', () => {
+    const s = initialState();
+    expect(s.builder).toEqual({ fields: [], conditions: [], order: [], totals: [] });
+  });
+
+  for (const section of sections) {
+    describe(`секция «${section}»`, () => {
+      it('ADD_BUILDER_FIELD добавляет строку', () => {
+        const s = reducer(initialState(), {
+          type: 'ADD_BUILDER_FIELD',
+          section,
+          field: { ref: 'Валюты.Код', child: false },
+        });
+        expect(s.builder[section]).toHaveLength(1);
+        expect(s.builder[section][0]).toEqual({ ref: 'Валюты.Код', child: false });
+      });
+
+      it('REMOVE_BUILDER_FIELD удаляет строку по индексу', () => {
+        let s = reducer(initialState(), {
+          type: 'ADD_BUILDER_FIELD',
+          section,
+          field: { ref: 'Валюты.Код', child: false },
+        });
+        s = reducer(s, {
+          type: 'ADD_BUILDER_FIELD',
+          section,
+          field: { ref: 'Валюты.Наименование', child: false },
+        });
+        s = reducer(s, { type: 'REMOVE_BUILDER_FIELD', section, index: 0 });
+        expect(s.builder[section]).toHaveLength(1);
+        expect(s.builder[section][0].ref).toBe('Валюты.Наименование');
+      });
+
+      it('SET_BUILDER_FIELD_CHILD выставляет .child', () => {
+        let s = reducer(initialState(), {
+          type: 'ADD_BUILDER_FIELD',
+          section,
+          field: { ref: 'Валюты.Код', child: false },
+        });
+        s = reducer(s, { type: 'SET_BUILDER_FIELD_CHILD', section, index: 0, child: true });
+        expect(s.builder[section][0].child).toBe(true);
+      });
+
+      it('SET_BUILDER_FIELD_ALIAS выставляет .alias (в т.ч. пустой)', () => {
+        let s = reducer(initialState(), {
+          type: 'ADD_BUILDER_FIELD',
+          section,
+          field: { ref: 'Валюты.Код', child: false },
+        });
+        s = reducer(s, { type: 'SET_BUILDER_FIELD_ALIAS', section, index: 0, alias: 'Код1' });
+        expect(s.builder[section][0].alias).toBe('Код1');
+        s = reducer(s, { type: 'SET_BUILDER_FIELD_ALIAS', section, index: 0, alias: '' });
+        expect(s.builder[section][0].alias).toBe('');
+      });
+
+      it('не мутирует другие секции', () => {
+        const s = reducer(initialState(), {
+          type: 'ADD_BUILDER_FIELD',
+          section,
+          field: { ref: 'Валюты.Код', child: false },
+        });
+        for (const other of sections) {
+          if (other !== section) expect(s.builder[other]).toHaveLength(0);
+        }
+      });
+    });
+  }
+
+  it('builder переживает round-trip пакета (ADD_BATCH_QUERY / SET_ACTIVE_BATCH)', () => {
+    let s = reducer(initialState(), {
+      type: 'ADD_BUILDER_FIELD',
+      section: 'fields',
+      field: { ref: 'Валюты.Код', child: true, alias: 'Код1' },
+    });
+    s = reducer(s, {
+      type: 'ADD_BUILDER_FIELD',
+      section: 'conditions',
+      field: { ref: 'Валюты.Наименование', child: false },
+    });
+    s = reducer(s, { type: 'ADD_BATCH_QUERY' }); // пакет 1
+    expect(s.builder).toEqual({ fields: [], conditions: [], order: [], totals: [] });
+    s = reducer(s, { type: 'SET_ACTIVE_BATCH', index: 0 }); // назад к пакету 0
+    expect(s.builder.fields).toEqual([{ ref: 'Валюты.Код', child: true, alias: 'Код1' }]);
+    expect(s.builder.conditions).toEqual([{ ref: 'Валюты.Наименование', child: false }]);
+  });
+
+  it('builder переживает round-trip объединения (ADD_QUERY / SET_ACTIVE_QUERY)', () => {
+    let s = reducer(initialState(), {
+      type: 'ADD_BUILDER_FIELD',
+      section: 'order',
+      field: { ref: 'Валюты.Код', child: false },
+    });
+    s = reducer(s, { type: 'ADD_QUERY' }); // участник 1
+    expect(s.builder).toEqual({ fields: [], conditions: [], order: [], totals: [] });
+    s = reducer(s, { type: 'SET_ACTIVE_QUERY', index: 0 }); // назад к участнику 0
+    expect(s.builder.order).toEqual([{ ref: 'Валюты.Код', child: false }]);
+  });
+});
