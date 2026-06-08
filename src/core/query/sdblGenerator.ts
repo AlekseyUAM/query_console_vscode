@@ -2,6 +2,7 @@ import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, Field
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
+import type { BatchDocument } from './batchModel';
 
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
@@ -427,6 +428,26 @@ export function generateDocument(doc: QueryDocument): string {
     out += `\n\n${keyword}\n\n${blocks[i]}`;
   }
   return out;
+}
+
+/**
+ * Текст пакета запросов по документу пакета.
+ * - 0 участников → ''.
+ * - 1 участник → ровно `generateDocument(members[0])` (без `;` и разделителя),
+ *   что гарантирует байт-в-байт совместимость с существующим выводом (golden-сьют,
+ *   фазы 5.x).
+ * - иначе: каждый участник рендерится `generateDocument`, пустые строки (`''`)
+ *   отбрасываются, остальные соединяются разделителем пакета 1С: строка `;`,
+ *   пустая строка, ровно 80 символов `/`, перевод строки.
+ */
+export function generateBatch(batch: BatchDocument): string {
+  const SEP = '\n;\n\n' + '/'.repeat(80) + '\n';
+  const members = batch.members;
+  if (members.length === 0) return '';
+  if (members.length === 1) return generateDocument(members[0]);
+
+  const blocks = members.map(generateDocument).filter(b => b !== '');
+  return blocks.join(SEP);
 }
 
 /** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */
