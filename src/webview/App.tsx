@@ -377,7 +377,6 @@ export function App(): React.ReactElement {
 
       {activeTab === 'Индекс' && (
         <IndexTab
-          selectedTables={state.selectedTables}
           selectedFields={state.selectedFields}
           indexing={state.indexing}
           onAddIndex={() => dispatch({ type: 'ADD_INDEX' })}

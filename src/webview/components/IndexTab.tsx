@@ -1,8 +1,7 @@
 import * as React from 'react';
-import type { SelectedTable, SelectedField, Indexing, FieldRef } from '../../core/query/queryModel';
+import type { SelectedField, Indexing, FieldRef } from '../../core/query/queryModel';
 
 interface Props {
-  selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
   indexing: Indexing;
   onAddIndex: () => void;
@@ -64,7 +63,7 @@ function keyOf(tableId: string, path: string): string {
 
 export function IndexTab(props: Props): React.ReactElement {
   const {
-    selectedTables, selectedFields, indexing,
+    selectedFields, indexing,
     onAddIndex, onCopyIndex, onRemoveIndex, onMoveIndex, onSetUnique,
     onAddField, onAddAllFields, onRemoveField, onClearFields, onMoveField,
   } = props;
@@ -164,8 +163,8 @@ export function IndexTab(props: Props): React.ReactElement {
             <button style={TOOL_BTN} title="Добавить индекс" onClick={onAddIndex}>⊕</button>
             <button style={TOOL_BTN} title="Скопировать индекс" disabled={currentIdx < 0} onClick={() => currentIdx >= 0 && onCopyIndex(currentIdx)}>⧉</button>
             <button style={TOOL_BTN} title="Удалить индекс" disabled={currentIdx < 0} onClick={() => currentIdx >= 0 && onRemoveIndex(currentIdx)}>✕</button>
-            <button style={TOOL_BTN} title="Вверх" disabled={currentIdx <= 0} onClick={() => currentIdx > 0 && onMoveIndex(currentIdx, 'up')}>↑</button>
-            <button style={TOOL_BTN} title="Вниз" disabled={currentIdx < 0 || currentIdx >= indexes.length - 1} onClick={() => currentIdx >= 0 && onMoveIndex(currentIdx, 'down')}>↓</button>
+            <button style={TOOL_BTN} title="Вверх" disabled={currentIdx <= 0} onClick={() => { if (currentIdx > 0) { onMoveIndex(currentIdx, 'up'); setCurrent(currentIdx - 1); } }}>↑</button>
+            <button style={TOOL_BTN} title="Вниз" disabled={currentIdx < 0 || currentIdx >= indexes.length - 1} onClick={() => { if (currentIdx >= 0 && currentIdx < indexes.length - 1) { onMoveIndex(currentIdx, 'down'); setCurrent(currentIdx + 1); } }}>↓</button>
           </div>
           <div style={{ display: 'flex' }}>
             <div style={{ ...SECTION_HEADER, flex: 1 }}>Имя</div>
