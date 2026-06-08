@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection, Totals, TotalKind } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
@@ -26,6 +26,7 @@ export interface SavedQuery {
   tempTableName: string;
   lockForUpdate: string[];
   order: Order;
+  totals: Totals;
 }
 
 export interface QueryState {
@@ -41,6 +42,7 @@ export interface QueryState {
   tempTableName: string;
   lockForUpdate: string[];
   order: Order;
+  totals: Totals;
   lockEnabled: boolean;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
@@ -116,7 +118,16 @@ export type QueryAction =
   | { type: 'ADD_ORDER_FIELD'; tableId: string; path: string }
   | { type: 'REMOVE_ORDER_FIELD'; tableId: string; path: string }
   | { type: 'SET_ORDER_DIRECTION'; tableId: string; path: string; direction: SortDirection }
-  | { type: 'SET_ORDER_AUTO'; auto: boolean };
+  | { type: 'SET_ORDER_AUTO'; auto: boolean }
+  // --- итоги (ИТОГИ … ПО …) ---
+  | { type: 'ADD_TOTAL_GROUP_FIELD'; tableId: string; path: string }
+  | { type: 'REMOVE_TOTAL_GROUP_FIELD'; tableId: string; path: string }
+  | { type: 'SET_TOTAL_GROUP_KIND'; tableId: string; path: string; kind: TotalKind }
+  | { type: 'SET_TOTAL_GROUP_ALIAS'; tableId: string; path: string; alias: string }
+  | { type: 'ADD_TOTAL_FIELD'; tableId: string; path: string }
+  | { type: 'REMOVE_TOTAL_FIELD'; tableId: string; path: string }
+  | { type: 'SET_TOTAL_FIELD_EXPRESSION'; tableId: string; path: string; expression: string }
+  | { type: 'SET_TOTAL_GRAND'; grand: boolean };
 
 export function initialState(): QueryState {
   return {
@@ -132,6 +143,7 @@ export function initialState(): QueryState {
     tempTableName: '',
     lockForUpdate: [],
     order: { fields: [], auto: false },
+    totals: { groupFields: [], totalFields: [], grand: false },
     lockEnabled: false,
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
@@ -164,6 +176,7 @@ export function snapshotActive(state: QueryState): SavedQuery {
     tempTableName: state.tempTableName,
     lockForUpdate: state.lockForUpdate,
     order: state.order,
+    totals: state.totals,
   };
 }
 
@@ -184,6 +197,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     tempTableName: '',
     lockForUpdate: [],
     order: { fields: [], auto: false } as Order,
+    totals: { groupFields: [], totalFields: [], grand: false } as Totals,
   };
   return {
     selectedTables: base.selectedTables,
@@ -197,6 +211,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     tempTableName: base.tempTableName,
     lockForUpdate: base.lockForUpdate,
     order: base.order,
+    totals: base.totals,
     lockEnabled: base.lockForUpdate.length > 0,
     focusedSelectedTableId: null,
     focusedSelectedFieldIdx: null,
@@ -217,6 +232,7 @@ export function buildModelFromFlat(flat: SavedQuery): QueryModel {
     tempTableName: flat.tempTableName,
     lockForUpdate: flat.lockForUpdate,
     order: flat.order,
+    totals: flat.totals,
   };
 }
 
@@ -300,7 +316,12 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         ...state.order,
         fields: state.order.fields.filter(f => f.tableId !== action.tableId),
       };
-      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, joins, lockForUpdate, order, focusedSelectedTableId: null };
+      const totals: Totals = {
+        ...state.totals,
+        groupFields: state.totals.groupFields.filter(f => f.tableId !== action.tableId),
+        totalFields: state.totals.totalFields.filter(f => f.tableId !== action.tableId),
+      };
+      return { ...state, selectedTables: filtered, selectedFields: fields, tabSectionFields, grouping, conditions, joins, lockForUpdate, order, totals, focusedSelectedTableId: null };
     }
 
     case 'ADD_FIELD': {
@@ -407,7 +428,12 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         ...state.order,
         fields: state.order.fields.filter(f => !(f.tableId === tableId && f.path === path)),
       };
-      return { ...state, selectedFields: fields, grouping, order, focusedSelectedFieldIdx: null };
+      const totals: Totals = {
+        ...state.totals,
+        groupFields: state.totals.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        totalFields: state.totals.totalFields.filter(f => !(f.tableId === tableId && f.path === path)),
+      };
+      return { ...state, selectedFields: fields, grouping, order, totals, focusedSelectedFieldIdx: null };
     }
 
     case 'FOCUS_SELECTED_TABLE':
@@ -782,6 +808,92 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
 
     case 'SET_ORDER_AUTO':
       return { ...state, order: { ...state.order, auto: action.auto } };
+
+    case 'ADD_TOTAL_GROUP_FIELD': {
+      const { tableId, path } = action;
+      if (state.totals.groupFields.some(f => f.tableId === tableId && f.path === path)) return state;
+      return {
+        ...state,
+        totals: { ...state.totals, groupFields: [...state.totals.groupFields, { tableId, path, kind: 'elements' }] },
+      };
+    }
+
+    case 'REMOVE_TOTAL_GROUP_FIELD': {
+      const { tableId, path } = action;
+      return {
+        ...state,
+        totals: {
+          ...state.totals,
+          groupFields: state.totals.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        },
+      };
+    }
+
+    case 'SET_TOTAL_GROUP_KIND': {
+      const { tableId, path, kind } = action;
+      return {
+        ...state,
+        totals: {
+          ...state.totals,
+          groupFields: state.totals.groupFields.map(f =>
+            f.tableId === tableId && f.path === path ? { ...f, kind } : f
+          ),
+        },
+      };
+    }
+
+    case 'SET_TOTAL_GROUP_ALIAS': {
+      const { tableId, path, alias } = action;
+      return {
+        ...state,
+        totals: {
+          ...state.totals,
+          groupFields: state.totals.groupFields.map(f =>
+            f.tableId === tableId && f.path === path ? { ...f, alias } : f
+          ),
+        },
+      };
+    }
+
+    case 'ADD_TOTAL_FIELD': {
+      const { tableId, path } = action;
+      if (state.totals.totalFields.some(f => f.tableId === tableId && f.path === path)) return state;
+      const last = path.split('.').pop() ?? path;
+      return {
+        ...state,
+        totals: {
+          ...state.totals,
+          totalFields: [...state.totals.totalFields, { tableId, path, expression: `СУММА(${last})` }],
+        },
+      };
+    }
+
+    case 'REMOVE_TOTAL_FIELD': {
+      const { tableId, path } = action;
+      return {
+        ...state,
+        totals: {
+          ...state.totals,
+          totalFields: state.totals.totalFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        },
+      };
+    }
+
+    case 'SET_TOTAL_FIELD_EXPRESSION': {
+      const { tableId, path, expression } = action;
+      return {
+        ...state,
+        totals: {
+          ...state.totals,
+          totalFields: state.totals.totalFields.map(f =>
+            f.tableId === tableId && f.path === path ? { ...f, expression } : f
+          ),
+        },
+      };
+    }
+
+    case 'SET_TOTAL_GRAND':
+      return { ...state, totals: { ...state.totals, grand: action.grand } };
 
     default:
       return state;

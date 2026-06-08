@@ -900,3 +900,124 @@ describe('queryStore — порядок (order, фаза 5.6)', () => {
     expect(model.order).toEqual(s.order);
   });
 });
+
+describe('queryStore — итоги (totals, фаза 5.7)', () => {
+  function withTwoFields() {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Код' });
+    s = reducer(s, { type: 'ADD_FIELD', tableId: t1, fieldPath: 'Наименование' });
+    return { s, t1 };
+  }
+
+  it('initialState содержит пустые неактивные итоги', () => {
+    const s = initialState();
+    expect(s.totals).toEqual({ groupFields: [], totalFields: [], grand: false });
+  });
+
+  it('ADD_TOTAL_GROUP_FIELD добавляет группировочное поле с kind=elements', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.groupFields).toEqual([{ tableId: t1, path: 'Код', kind: 'elements' }]);
+  });
+
+  it('ADD_TOTAL_GROUP_FIELD не дублирует существующее поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.groupFields).toHaveLength(1);
+  });
+
+  it('SET_TOTAL_GROUP_KIND меняет тип итогов', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_GROUP_KIND', tableId: t1, path: 'Код', kind: 'onlyHierarchy' });
+    expect(s.totals.groupFields[0].kind).toBe('onlyHierarchy');
+  });
+
+  it('SET_TOTAL_GROUP_ALIAS задаёт псевдоним группировки', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_GROUP_ALIAS', tableId: t1, path: 'Код', alias: 'Ссылка11' });
+    expect(s.totals.groupFields[0].alias).toBe('Ссылка11');
+  });
+
+  it('REMOVE_TOTAL_GROUP_FIELD удаляет группировочное поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.groupFields).toEqual([{ tableId: t1, path: 'Наименование', kind: 'elements' }]);
+  });
+
+  it('ADD_TOTAL_FIELD добавляет итоговое поле с дефолтным выражением СУММА', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.totalFields).toEqual([{ tableId: t1, path: 'Код', expression: 'СУММА(Код)' }]);
+  });
+
+  it('ADD_TOTAL_FIELD не дублирует существующее поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.totalFields).toHaveLength(1);
+  });
+
+  it('SET_TOTAL_FIELD_EXPRESSION меняет выражение', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_FIELD_EXPRESSION', tableId: t1, path: 'Код', expression: 'МАКСИМУМ(Код)' });
+    expect(s.totals.totalFields[0].expression).toBe('МАКСИМУМ(Код)');
+  });
+
+  it('REMOVE_TOTAL_FIELD удаляет итоговое поле', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    expect(s.totals.totalFields.map(f => f.path)).toEqual(['Наименование']);
+  });
+
+  it('SET_TOTAL_GRAND переключает «Общие итоги»', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'SET_TOTAL_GRAND', grand: true });
+    expect(s.totals.grand).toBe(true);
+    s = reducer(s, { type: 'SET_TOTAL_GRAND', grand: false });
+    expect(s.totals.grand).toBe(false);
+  });
+
+  it('REMOVE_TABLE каскадно удаляет итоги таблицы', () => {
+    let s = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
+    const t1 = s.selectedTables[0].id;
+    s = reducer(s, { type: 'ADD_TABLE', table: mockTable2 });
+    const t2 = s.selectedTables[1].id;
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t2, path: 'Дата' });
+    s = reducer(s, { type: 'REMOVE_TABLE', tableId: t1 });
+    expect(s.totals.groupFields).toEqual([{ tableId: t2, path: 'Дата', kind: 'elements' }]);
+    expect(s.totals.totalFields).toEqual([]);
+  });
+
+  it('REMOVE_FIELD каскадно удаляет итоги поля', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Наименование' });
+    s = reducer(s, { type: 'REMOVE_FIELD', fieldIdx: 0 }); // Код
+    expect(s.totals.groupFields).toEqual([{ tableId: t1, path: 'Наименование', kind: 'elements' }]);
+    expect(s.totals.totalFields).toEqual([]);
+  });
+
+  it('totals проходит через snapshot/restore/buildModelFromFlat', () => {
+    let { s, t1 } = withTwoFields();
+    s = reducer(s, { type: 'ADD_TOTAL_GROUP_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'SET_TOTAL_GRAND', grand: true });
+    const snap = snapshotActive(s);
+    expect(snap.totals).toEqual(s.totals);
+    const restored = restoreSaved(s, snap);
+    expect(restored.totals).toEqual(s.totals);
+    const model = buildModelFromFlat(snap);
+    expect(model.totals).toEqual(s.totals);
+  });
+});

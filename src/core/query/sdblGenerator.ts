@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
@@ -329,6 +329,52 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
   return lines;
 }
 
+/** Суффикс группировочного поля по типу итогов. */
+function totalKindSuffix(kind: TotalKind): string {
+  switch (kind) {
+    case 'elements': return '';
+    case 'hierarchy': return ' ИЕРАРХИЯ';
+    case 'onlyHierarchy': return ' ТОЛЬКО ИЕРАРХИЯ';
+  }
+}
+
+/**
+ * Секция ИТОГИ … ПО … (без ведущей пустой строки). Возвращает [] если итоги
+ * неактивны (нет группировочных полей и нет «Общих итогов») — тогда вывод
+ * байт-в-байт как раньше.
+ *
+ * Поля адресуются по псевдониму выборки (как УПОРЯДОЧИТЬ ПО). Список агрегатов =
+ * `totalFields` (`expression ?? СУММА(<псевдоним>)`); список ПО: при `grand`
+ * первым `ОБЩИЕ`, затем каждое группировочное поле `<псевдоним><суффикс>` +
+ * (` КАК <alias>` если задан). Два формата: с агрегатами — `ИТОГИ … ПО …`, без —
+ * `ИТОГИ ПО …`. Запятая после всех элементов списка, кроме последнего; отступ 1 таб.
+ */
+export function renderTotals(totals: Totals | undefined, model: QueryModel): string[] {
+  if (!totals) return [];
+  const active = totals.groupFields.length > 0 || totals.grand;
+  if (!active) return [];
+
+  const byList: string[] = [];
+  if (totals.grand) byList.push('ОБЩИЕ');
+  for (const g of totals.groupFields) {
+    const alias = selectAliasFor(model, g.tableId, g.path);
+    const as = g.alias ? ` КАК ${g.alias}` : '';
+    byList.push(`${alias}${totalKindSuffix(g.kind)}${as}`);
+  }
+
+  const aggList = totals.totalFields.map(f =>
+    f.expression ?? `СУММА(${selectAliasFor(model, f.tableId, f.path)})`
+  );
+
+  const withCommas = (items: string[]): string[] =>
+    items.map((s, i) => `\t${s}${i < items.length - 1 ? ',' : ''}`);
+
+  if (aggList.length > 0) {
+    return ['ИТОГИ', ...withCommas(aggList), 'ПО', ...withCommas(byList)];
+  }
+  return ['ИТОГИ ПО', ...withCommas(byList)];
+}
+
 export function generate(model: QueryModel): string {
   // УНИЧТОЖИТЬ — самостоятельный запрос, до всех остальных проверок.
   if (model.queryType === 'dropTemp') {
@@ -344,6 +390,8 @@ export function generate(model: QueryModel): string {
   let out = buildQueryBlock(model, fieldLines, aliases);
   const orderLines = renderOrder(model.order, model);
   if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
+  const totalsLines = renderTotals(model.totals, model);
+  if (totalsLines.length > 0) out += '\n' + totalsLines.join('\n');
   return out;
 }
 

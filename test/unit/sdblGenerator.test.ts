@@ -1092,3 +1092,163 @@ describe('generate — порядок (УПОРЯДОЧИТЬ ПО, фаза 5.6
     expect(generate(base())).toBe(head);
   });
 });
+
+describe('generate — итоги (ИТОГИ … ПО …, фаза 5.7)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Тест' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const head =
+    'ВЫБРАТЬ\n' +
+    '\tТест.Ссылка КАК Ссылка\n' +
+    'ИЗ\n' +
+    '\tСправочник.Тест КАК Тест';
+
+  it('тип итогов «Элементы»: поле по псевдониму выборки без суффикса', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка КАК Ссылка11');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('тип итогов «Элементы и иерархия»: суффикс ИЕРАРХИЯ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'hierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка ИЕРАРХИЯ КАК Ссылка11');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('тип итогов «Только иерархия»: суффикс ТОЛЬКО ИЕРАРХИЯ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'onlyHierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка ТОЛЬКО ИЕРАРХИЯ КАК Ссылка11');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('группировочное поле без псевдонима: без части КАК', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tСсылка');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('итоговое поле СУММА(...): формат ИТОГИ … ПО …', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements' }],
+        totalFields: [{ tableId: 't1', path: 'Наценка', expression: 'СУММА(Наценка)' }],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка,\n\tВалюты.Наценка КАК Наценка\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты\n' +
+      'ИТОГИ\n\tСУММА(Наценка)\nПО\n\tСсылка'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('итоговое поле без expression: дефолт СУММА(<псевдоним>)', async () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements' }],
+        totalFields: [{ tableId: 't1', path: 'Наценка' }],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка,\n\tВалюты.Наценка КАК Наценка\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты\n' +
+      'ИТОГИ\n\tСУММА(Наценка)\nПО\n\tСсылка'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('«Общие итоги»: ОБЩИЕ первым элементом списка ПО', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'onlyHierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: true,
+      },
+    };
+    expect(generate(model)).toBe(
+      head + '\nИТОГИ ПО\n\tОБЩИЕ,\n\tСсылка ТОЛЬКО ИЕРАРХИЯ КАК Ссылка11'
+    );
+    await assertValidSdbl(generate(model));
+  });
+
+  it('только «Общие итоги» без группировочных полей: ИТОГИ ПО ОБЩИЕ', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: { groupFields: [], totalFields: [], grand: true },
+    };
+    expect(generate(model)).toBe(head + '\nИТОГИ ПО\n\tОБЩИЕ');
+    await assertValidSdbl(generate(model));
+  });
+
+  it('неактивные итоги (пусто, без grand) не меняют вывод', async () => {
+    const model: QueryModel = {
+      ...base(),
+      totals: { groupFields: [], totalFields: [], grand: false },
+    };
+    expect(generate(model)).toBe(head);
+    await assertValidSdbl(generate(model));
+  });
+
+  it('отсутствие totals не меняет вывод', () => {
+    expect(generate(base())).toBe(head);
+  });
+
+  it('порядок + итоги вместе: УПОРЯДОЧИТЬ ПО, затем ИТОГИ ПО', async () => {
+    const model: QueryModel = {
+      ...base(),
+      order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'asc' }], auto: false },
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    };
+    expect(generate(model)).toBe(
+      head + '\n\nУПОРЯДОЧИТЬ ПО\n\tСсылка\nИТОГИ ПО\n\tСсылка КАК Ссылка11'
+    );
+    await assertValidSdbl(generate(model));
+  });
+});

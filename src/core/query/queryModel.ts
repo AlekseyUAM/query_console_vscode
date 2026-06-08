@@ -77,6 +77,32 @@ export interface Condition {
   expression?: string;
 }
 
+/** Тип итогов группировочного поля. */
+export type TotalKind = 'elements' | 'hierarchy' | 'onlyHierarchy';
+
+export interface TotalGroupField {
+  tableId: string;
+  path: string;
+  /** elements → нет; hierarchy → ИЕРАРХИЯ; onlyHierarchy → ТОЛЬКО ИЕРАРХИЯ. */
+  kind: TotalKind;
+  /** Псевдоним группировки (КАК …), опционально. */
+  alias?: string;
+}
+
+export interface TotalField {
+  tableId: string;
+  path: string;
+  /** Выражение агрегата; по умолчанию СУММА(<псевдоним>). */
+  expression?: string;
+}
+
+export interface Totals {
+  groupFields: TotalGroupField[];
+  totalFields: TotalField[];
+  /** «Общие итоги» → ОБЩИЕ первым элементом списка ПО. */
+  grand: boolean;
+}
+
 export type SortDirection = 'asc' | 'desc';
 
 export interface OrderField {
@@ -150,6 +176,8 @@ export interface QueryModel {
   lockForUpdate?: string[];
   /** Порядок сортировки (секция УПОРЯДОЧИТЬ ПО / АВТОУПОРЯДОЧИВАНИЕ). */
   order?: Order;
+  /** Итоги (секция ИТОГИ … ПО …). */
+  totals?: Totals;
 }
 
 /**

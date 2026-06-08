@@ -10,6 +10,7 @@ import { ConnectionsTab } from './components/ConnectionsTab';
 import { AdditionalTab } from './components/AdditionalTab';
 import { UnionsTab } from './components/UnionsTab';
 import { OrderTab } from './components/OrderTab';
+import { TotalsTab } from './components/TotalsTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
 import type { VirtualParams } from '../core/query/queryModel';
@@ -362,7 +363,24 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && (
+      {activeTab === 'Итоги' && (
+        <TotalsTab
+          selectedTables={state.selectedTables}
+          selectedFields={state.selectedFields}
+          metaTables={state.tables}
+          totals={state.totals}
+          onAddGroupField={(tableId, path) => dispatch({ type: 'ADD_TOTAL_GROUP_FIELD', tableId, path })}
+          onRemoveGroupField={(tableId, path) => dispatch({ type: 'REMOVE_TOTAL_GROUP_FIELD', tableId, path })}
+          onSetGroupKind={(tableId, path, kind) => dispatch({ type: 'SET_TOTAL_GROUP_KIND', tableId, path, kind })}
+          onSetGroupAlias={(tableId, path, alias) => dispatch({ type: 'SET_TOTAL_GROUP_ALIAS', tableId, path, alias })}
+          onAddTotalField={(tableId, path) => dispatch({ type: 'ADD_TOTAL_FIELD', tableId, path })}
+          onRemoveTotalField={(tableId, path) => dispatch({ type: 'REMOVE_TOTAL_FIELD', tableId, path })}
+          onSetTotalFieldExpression={(tableId, path, expression) => dispatch({ type: 'SET_TOTAL_FIELD_EXPRESSION', tableId, path, expression })}
+          onSetGrand={grand => dispatch({ type: 'SET_TOTAL_GRAND', grand })}
+        />
+      )}
+
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
