@@ -23,6 +23,7 @@ import type {
   QueryModel,
   SelectedTable,
   SelectedField,
+  SelectedTabSectionField,
   AggregateFunction,
   SummableField,
   Selection,
@@ -32,6 +33,16 @@ import type {
   Join,
   FieldRef,
   VirtualParams,
+  Order,
+  OrderField,
+  Totals,
+  TotalGroupField,
+  TotalField,
+  TotalKind,
+  Indexing,
+  QueryIndex,
+  ReportBuilder,
+  BuilderField,
 } from './queryModel';
 
 import { tokenize } from './sdblLexer';
@@ -115,6 +126,11 @@ class Cursor {
     return t.type === 'keyword' && t.value === value;
   }
 
+  /** Проверяет, что дальше блок построителя `{<keyword>` (punct `{` + ключевое слово). */
+  isBuilderBlock(keyword: string): boolean {
+    return this.isPunct('{') && this.isKeyword(keyword, 1);
+  }
+
   error(message: string, t: Token = this.peek()): Error {
     return new Error(`Ошибка разбора ${t.line}:${t.col} — ${message} (получено «${t.value || '<конец>'}»)`);
   }
@@ -130,15 +146,54 @@ interface RawField {
   rawBody: string;
 }
 
+/** Сырая табличная часть `<alias>.<tsName>.( … ) КАК <tsName>`. */
+interface RawTabSection {
+  tableAlias: string;
+  tsName: string;
+  fields: string[];
+}
+
+/** Один элемент списка выборки: обычное поле или табличная часть. */
+type RawSelectItem =
+  | { kind: 'field'; field: RawField }
+  | { kind: 'tabSection'; ts: RawTabSection };
+
 const AUTO_ALIAS = /^Поле\d+$/;
 
 export function parseQuery(text: string): QueryModel {
   const tokens = tokenize(text);
   const cur = new Cursor(tokens, text);
 
+  // УНИЧТОЖИТЬ <name> — самостоятельный запрос (без ВЫБРАТЬ).
+  if (cur.isKeyword('УНИЧТОЖИТЬ')) {
+    cur.next();
+    const name = parseDottedName(cur);
+    return { tables: [], fields: [], queryType: 'dropTemp', tempTableName: name };
+  }
+
+  // Аккумулятор блоков построителя {…}: заполняется в точках интерливинга.
+  const builder: ReportBuilder = { fields: [], conditions: [], order: [], totals: [] };
+
   cur.expectKeyword('ВЫБРАТЬ');
   const selection = parseSelectionModifiers(cur);
-  const rawFields = parseFieldList(cur);
+  const items = parseFieldList(cur);
+
+  // {ВЫБРАТЬ …} после списка полей, перед ПОМЕСТИТЬ/ИЗ.
+  if (cur.isBuilderBlock('ВЫБРАТЬ')) {
+    builder.fields = parseBuilderBlock(cur, 'ВЫБРАТЬ');
+  }
+
+  // ПОМЕСТИТЬ/ДОБАВИТЬ <ВТ> между списком полей и ИЗ.
+  let queryType: QueryModel['queryType'] | undefined;
+  let tempTableName: string | undefined;
+  if (cur.matchKeyword('ПОМЕСТИТЬ')) {
+    queryType = 'createTemp';
+    tempTableName = parseDottedName(cur);
+  } else if (cur.matchKeyword('ДОБАВИТЬ')) {
+    queryType = 'appendTemp';
+    tempTableName = parseDottedName(cur);
+  }
+
   cur.expectKeyword('ИЗ');
   const from = parseFrom(cur);
   const tables = from.tables;
@@ -151,19 +206,40 @@ export function parseQuery(text: string): QueryModel {
     if (t.alias) aliasToId.set(t.alias, t.id);
   }
 
+  // Интерпретация элементов выборки: обычные поля, табличные части и хвостовые
+  // поля (после первой табличной части). Карта псевдонимов уже известна.
   const fields: SelectedField[] = [];
   const aggregates: SummableField[] = [];
-  for (const rf of rawFields) {
-    interpretField(rf, aliasToId, fields, aggregates);
+  const tabSectionFields: SelectedTabSectionField[] = [];
+  const trailingFields: SelectedField[] = [];
+  let sawTabSection = false;
+  for (const item of items) {
+    if (item.kind === 'tabSection') {
+      sawTabSection = true;
+      tabSectionFields.push(resolveTabSection(item.ts, aliasToId, tables));
+      continue;
+    }
+    if (sawTabSection) {
+      // Поле после табличной части → trailingFields (порядок генератора).
+      interpretField(item.field, aliasToId, trailingFields, aggregates);
+    } else {
+      interpretField(item.field, aliasToId, fields, aggregates);
+    }
   }
 
   // Соединения: достроить ссылки на таблицы по псевдонимам.
   const resolvedJoins = joins.map(j => resolveJoin(j, aliasToId));
 
-  // Секции после ИЗ — в каноническом порядке генератора: ГДЕ → СГРУППИРОВАТЬ ПО.
+  // Секции после ИЗ — в каноническом порядке генератора:
+  //   ГДЕ → {ГДЕ} → СГРУППИРОВАТЬ ПО → {УПОРЯДОЧИТЬ ПО} → {ИТОГИ ПО}
+  //   → УПОРЯДОЧИТЬ ПО → ИТОГИ → ИНДЕКСИРОВАТЬ ПО → ДЛЯ ИЗМЕНЕНИЯ.
   let conditions: Condition[] | undefined;
   if (cur.isKeyword('ГДЕ')) {
     conditions = parseWhere(cur, aliasToId);
+  }
+
+  if (cur.isBuilderBlock('ГДЕ')) {
+    builder.conditions = parseBuilderBlock(cur, 'ГДЕ');
   }
 
   let groupingFromClause: { multiple: boolean; groupFields: FieldRef[]; groupSets: FieldRef[][] } | undefined;
@@ -171,10 +247,30 @@ export function parseQuery(text: string): QueryModel {
     groupingFromClause = parseGroupBy(cur, aliasToId);
   }
 
+  if (cur.isBuilderBlock('УПОРЯДОЧИТЬ')) {
+    builder.order = parseBuilderBlock(cur, 'УПОРЯДОЧИТЬ');
+  }
+  if (cur.isBuilderBlock('ИТОГИ')) {
+    builder.totals = parseBuilderBlock(cur, 'ИТОГИ');
+  }
+
+  // ДЛЯ ИЗМЕНЕНИЯ — часть основного блока (до секций порядка/итогов/индекса).
+  let lockForUpdate: string[] | undefined;
+  if (cur.isKeyword('ДЛЯ')) {
+    lockForUpdate = parseLockForUpdate(cur);
+  }
+
   const model: QueryModel = { tables, fields };
   if (selection) model.selection = selection;
+  if (queryType) {
+    model.queryType = queryType;
+    if (tempTableName) model.tempTableName = tempTableName;
+  }
+  if (tabSectionFields.length > 0) model.tabSectionFields = tabSectionFields;
+  if (trailingFields.length > 0) model.trailingFields = trailingFields;
   if (resolvedJoins.length > 0) model.joins = resolvedJoins;
   if (conditions && conditions.length > 0) model.conditions = conditions;
+  if (lockForUpdate && lockForUpdate.length > 0) model.lockForUpdate = lockForUpdate;
 
   // Группировка: объединяем агрегаты (из полей выборки) с группировочными полями
   // и наборами из секции СГРУППИРОВАТЬ ПО. Не затираем агрегаты группировкой.
@@ -187,7 +283,53 @@ export function parseQuery(text: string): QueryModel {
     };
     model.grouping = grouping;
   }
+
+  // Карта псевдоним выборки → (tableId, path) для секций УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКС.
+  const selectAliasMap = buildSelectAliasMap(model);
+
+  if (cur.isKeyword('УПОРЯДОЧИТЬ') || cur.isKeyword('АВТОУПОРЯДОЧИВАНИЕ')) {
+    model.order = parseOrder(cur, selectAliasMap);
+  }
+  if (cur.isKeyword('ИТОГИ')) {
+    model.totals = parseTotals(cur, selectAliasMap);
+  }
+  if (cur.isKeyword('ИНДЕКСИРОВАТЬ')) {
+    model.indexing = parseIndex(cur, selectAliasMap);
+  }
+
+  if (builder.fields.length || builder.conditions.length || builder.order.length || builder.totals.length) {
+    model.builder = builder;
+  }
+
   return model;
+}
+
+/**
+ * Карта псевдоним выборки → (tableId, path). Инвертирует `selectAliasFor`: ключ —
+ * `field.alias` если задан, иначе последний сегмент пути. Только для обычных полей
+ * с реальным (tableId, path) (без expression). Первое вхождение псевдонима
+ * выигрывает (как `model.fields.find`).
+ */
+function buildSelectAliasMap(model: QueryModel): Map<string, FieldRef> {
+  const map = new Map<string, FieldRef>();
+  for (const f of model.fields) {
+    if (f.expression) continue;
+    if (!f.path) continue;
+    const key = f.alias ?? (f.path.split('.').pop() ?? f.path);
+    if (!map.has(key)) map.set(key, { tableId: f.tableId, path: f.path });
+  }
+  return map;
+}
+
+/**
+ * Резолвит псевдоним выборки в (tableId, path). Если псевдоним известен — берётся
+ * из карты (воспроизводит `selectAliasFor`). Иначе поле не из выборки: tableId='',
+ * path=псевдоним, что даёт `selectAliasFor('', alias) → alias`.
+ */
+function resolveSelectAlias(alias: string, map: Map<string, FieldRef>): FieldRef {
+  const hit = map.get(alias);
+  if (hit) return { tableId: hit.tableId, path: hit.path };
+  return { tableId: '', path: alias };
 }
 
 /** Модификаторы выборки в порядке РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N. */
@@ -217,15 +359,62 @@ function parseSelectionModifiers(cur: Cursor): Selection | undefined {
  * запятой верхнего уровня / `ИЗ`. Скобки учитываются для определения верхнего
  * уровня запятой и для `КАК` внутри выражения (`ВЫРАЗИТЬ(… КАК ТИП)`).
  */
-function parseFieldList(cur: Cursor): RawField[] {
-  const fields: RawField[] = [];
+function parseFieldList(cur: Cursor): RawSelectItem[] {
+  const items: RawSelectItem[] = [];
   for (;;) {
-    const rf = parseOneField(cur);
-    fields.push(rf);
+    // Граница списка полей: `{ВЫБРАТЬ`, ПОМЕСТИТЬ/ДОБАВИТЬ, ИЗ.
+    if (cur.isPunct('{') || cur.isKeyword('ПОМЕСТИТЬ') || cur.isKeyword('ДОБАВИТЬ') || cur.isKeyword('ИЗ')) {
+      break;
+    }
+    const ts = tryParseTabSection(cur);
+    if (ts) {
+      items.push({ kind: 'tabSection', ts });
+    } else {
+      items.push({ kind: 'field', field: parseOneField(cur) });
+    }
     if (cur.matchPunct(',')) continue;
     break;
   }
-  return fields;
+  if (items.length === 0) throw cur.error('пустой список выборки', cur.peek());
+  return items;
+}
+
+/**
+ * Пытается разобрать табличную часть `<alias>.<tsName>.( <f> КАК <f>, … ) КАК <tsName>`.
+ * Распознаётся по образцу `ident . ident . (` в начале элемента. Возвращает undefined,
+ * если образца нет (тогда элемент — обычное поле), не сдвигая курсор.
+ */
+function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
+  // Образец: ident '.' ident '.' '(' .
+  if (cur.peek(0).type !== 'ident' && cur.peek(0).type !== 'keyword') return undefined;
+  if (!cur.isPunct('.', 1)) return undefined;
+  if (cur.peek(2).type !== 'ident' && cur.peek(2).type !== 'keyword') return undefined;
+  if (!cur.isPunct('.', 3)) return undefined;
+  if (!cur.isPunct('(', 4)) return undefined;
+
+  const tableAlias = cur.next().value; // ident
+  cur.expectPunct('.');
+  const tsName = cur.next().value; // ident
+  cur.expectPunct('.');
+  cur.expectPunct('(');
+
+  // Внутри: список `<f> КАК <f>` через запятую.
+  const fields: string[] = [];
+  for (;;) {
+    const f = cur.peek();
+    if (f.type !== 'ident' && f.type !== 'keyword') throw cur.error('ожидалось поле табличной части', f);
+    cur.next();
+    cur.expectKeyword('КАК');
+    cur.next(); // псевдоним поля (= имя поля)
+    // Исходный текст имени поля (для keyword-токенов value в верхнем регистре).
+    fields.push(cur.source.slice(f.pos, f.pos + f.value.length));
+    if (cur.matchPunct(',')) continue;
+    break;
+  }
+  cur.expectPunct(')');
+  cur.expectKeyword('КАК');
+  cur.next(); // псевдоним табличной части (= tsName)
+  return { tableAlias, tsName, fields };
 }
 
 function parseOneField(cur: Cursor): RawField {
@@ -239,7 +428,8 @@ function parseOneField(cur: Cursor): RawField {
     if (depth === 0) {
       // Граница поля на верхнем уровне.
       if (t.type === 'punct' && t.value === ',') break;
-      if (t.type === 'keyword' && t.value === 'ИЗ') break;
+      if (t.type === 'punct' && t.value === '{') break;
+      if (t.type === 'keyword' && (t.value === 'ИЗ' || t.value === 'ПОМЕСТИТЬ' || t.value === 'ДОБАВИТЬ')) break;
       if (t.type === 'keyword' && t.value === 'КАК') {
         cur.next();
         const a = cur.peek();
@@ -261,6 +451,19 @@ function parseOneField(cur: Cursor): RawField {
   }
   const rawBody = sliceSource(cur.source, bodyTokens);
   return { bodyTokens, alias, rawBody };
+}
+
+/** Резолвит сырую табличную часть в SelectedTabSectionField. */
+function resolveTabSection(
+  ts: RawTabSection,
+  aliasToId: Map<string, string>,
+  tables: SelectedTable[]
+): SelectedTabSectionField {
+  const tableId = aliasToId.get(ts.tableAlias) ?? '';
+  const table = tables.find(t => t.id === tableId);
+  // tsFullName косметический (генератор использует только tsName и fields).
+  const tsFullName = table ? `${table.fullName}.${ts.tsName}` : ts.tsName;
+  return { tableId, tsName: ts.tsName, tsFullName, fields: ts.fields };
 }
 
 /** Сырой срез исходника по диапазону токенов тела. */
@@ -925,10 +1128,279 @@ function parseGroupFieldRef(cur: Cursor, aliasToId: Map<string, string>): FieldR
   const tokens: Token[] = [];
   for (;;) {
     const t = cur.peek();
+    // Стоп на секционных ключевых словах (ДЛЯ ИЗМЕНЕНИЯ / порядок / итоги / индекс),
+    // которые могут идти сразу после списка группировки.
+    if (t.type === 'keyword' && isSectionKeyword(t.value)) break;
     if (t.type !== 'ident' && t.type !== 'keyword' && !(t.type === 'punct' && t.value === '.')) break;
     tokens.push(cur.next());
   }
   const ref = parseFieldRef(tokens, aliasToId);
   if (!ref) throw cur.error('ожидалась ссылка на поле группировки', cur.peek());
   return { tableId: ref.tableId, path: ref.path };
+}
+
+// ────────────────────── УПОРЯДОЧИТЬ ПО (ORDER BY) ───────────────────────
+
+/**
+ * Секция УПОРЯДОЧИТЬ ПО / АВТОУПОРЯДОЧИВАНИЕ. Инвертирует `renderOrder`:
+ *  - `УПОРЯДОЧИТЬ ПО <псевдоним>[ УБЫВ], …` → order.fields (резолв псевдонима выборки).
+ *  - последняя строка `АВТОУПОРЯДОЧИВАНИЕ` (с полями или без) → order.auto=true.
+ */
+function parseOrder(cur: Cursor, aliasMap: Map<string, FieldRef>): Order {
+  const fields: OrderField[] = [];
+  let auto = false;
+
+  if (cur.matchKeyword('УПОРЯДОЧИТЬ')) {
+    cur.expectKeyword('ПО');
+    for (;;) {
+      const aliasTok = cur.peek();
+      if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
+        throw cur.error('ожидался псевдоним поля упорядочивания', aliasTok);
+      }
+      cur.next();
+      const ref = resolveSelectAlias(aliasTok.value, aliasMap);
+      const direction = cur.matchKeyword('УБЫВ') ? 'desc' : 'asc';
+      fields.push({ tableId: ref.tableId, path: ref.path, direction });
+      if (cur.matchPunct(',')) continue;
+      break;
+    }
+  }
+
+  if (cur.matchKeyword('АВТОУПОРЯДОЧИВАНИЕ')) auto = true;
+
+  return { fields, auto };
+}
+
+// ───────────────────────────── ИТОГИ (TOTALS) ──────────────────────────
+
+/**
+ * Секция ИТОГИ. Инвертирует `renderTotals`. Два формата:
+ *  - `ИТОГИ <агрегаты> ПО <группы>` — есть агрегаты;
+ *  - `ИТОГИ ПО <группы>` — без агрегатов.
+ * Агрегаты: каждое выражение по запятым верхнего уровня; если оно вида
+ * `СУММА(<псевдоним>)` — резолвится в (tableId, path), иначе tableId='' и
+ * expression = сырой текст. Группы: `ОБЩИЕ` (первый) → grand; остальные —
+ * `<псевдоним>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`.
+ */
+function parseTotals(cur: Cursor, aliasMap: Map<string, FieldRef>): Totals {
+  cur.expectKeyword('ИТОГИ');
+  const totalFields: TotalField[] = [];
+
+  if (!cur.isKeyword('ПО')) {
+    // Список агрегатов до ключевого слова ПО.
+    for (;;) {
+      totalFields.push(parseTotalAggregate(cur, aliasMap));
+      if (cur.matchPunct(',')) continue;
+      break;
+    }
+  }
+
+  cur.expectKeyword('ПО');
+
+  const groupFields: TotalGroupField[] = [];
+  let grand = false;
+  for (;;) {
+    if (cur.matchKeyword('ОБЩИЕ')) {
+      grand = true;
+    } else {
+      groupFields.push(parseTotalGroupField(cur, aliasMap));
+    }
+    if (cur.matchPunct(',')) continue;
+    break;
+  }
+
+  return { groupFields, totalFields, grand };
+}
+
+/** Один агрегат итогов: сырое выражение до запятой/ПО верхнего уровня. */
+function parseTotalAggregate(cur: Cursor, aliasMap: Map<string, FieldRef>): TotalField {
+  const tokens: Token[] = [];
+  let depth = 0;
+  for (;;) {
+    const t = cur.peek();
+    if (t.type === 'eof') break;
+    if (depth === 0) {
+      if (t.type === 'punct' && t.value === ',') break;
+      if (t.type === 'keyword' && t.value === 'ПО') break;
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    tokens.push(cur.next());
+  }
+  if (tokens.length === 0) throw cur.error('ожидалось выражение агрегата итогов', cur.peek());
+  const expression = sliceSource(cur.source, tokens);
+
+  // Попытка распознать `СУММА(<псевдоним>)` → (tableId, path) по карте.
+  const inner = matchSumAlias(tokens);
+  if (inner) {
+    const ref = aliasMap.get(inner);
+    if (ref) return { tableId: ref.tableId, path: ref.path, expression };
+  }
+  return { tableId: '', path: '', expression };
+}
+
+/** Если токены = `СУММА ( <ident> )` — возвращает имя псевдонима, иначе undefined. */
+function matchSumAlias(tokens: Token[]): string | undefined {
+  if (tokens.length !== 4) return undefined;
+  if (!(tokens[0].type === 'keyword' && tokens[0].value === 'СУММА')) return undefined;
+  if (!(tokens[1].type === 'punct' && tokens[1].value === '(')) return undefined;
+  if (tokens[2].type !== 'ident' && tokens[2].type !== 'keyword') return undefined;
+  if (!(tokens[3].type === 'punct' && tokens[3].value === ')')) return undefined;
+  return tokens[2].value;
+}
+
+/** Одно группировочное поле итогов: `<псевдоним>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`. */
+function parseTotalGroupField(cur: Cursor, aliasMap: Map<string, FieldRef>): TotalGroupField {
+  const aliasTok = cur.peek();
+  if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
+    throw cur.error('ожидался псевдоним группировочного поля итогов', aliasTok);
+  }
+  cur.next();
+  const ref = resolveSelectAlias(aliasTok.value, aliasMap);
+
+  let kind: TotalKind = 'elements';
+  if (cur.matchKeyword('ТОЛЬКО')) {
+    cur.expectKeyword('ИЕРАРХИЯ');
+    kind = 'onlyHierarchy';
+  } else if (cur.matchKeyword('ИЕРАРХИЯ')) {
+    kind = 'hierarchy';
+  }
+
+  const field: TotalGroupField = { tableId: ref.tableId, path: ref.path, kind };
+  if (cur.matchKeyword('КАК')) {
+    const a = cur.peek();
+    if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
+    cur.next();
+    field.alias = a.value;
+  }
+  return field;
+}
+
+// ──────────────────── ИНДЕКСИРОВАТЬ ПО (INDEXING) ───────────────────────
+
+/**
+ * Секция ИНДЕКСИРОВАТЬ ПО / ИНДЕКСИРОВАТЬ ПО НАБОРАМ. Инвертирует `renderIndex`:
+ *  - `ИНДЕКСИРОВАТЬ ПО <a>, <b>` → один индекс {unique:false, fields}.
+ *  - `ИНДЕКСИРОВАТЬ ПО НАБОРАМ ( (a, b)[ УНИКАЛЬНО], (c) )` → несколько индексов.
+ * Поля адресуются по псевдониму выборки.
+ */
+function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>): Indexing {
+  cur.expectKeyword('ИНДЕКСИРОВАТЬ');
+  cur.expectKeyword('ПО');
+
+  if (cur.matchKeyword('НАБОРАМ')) {
+    cur.expectPunct('(');
+    const indexes: QueryIndex[] = [];
+    for (;;) {
+      cur.expectPunct('(');
+      const fields: FieldRef[] = [];
+      for (;;) {
+        fields.push(parseIndexField(cur, aliasMap));
+        if (cur.matchPunct(',')) continue;
+        break;
+      }
+      cur.expectPunct(')');
+      const unique = cur.matchKeyword('УНИКАЛЬНО');
+      indexes.push({ unique, fields });
+      if (cur.matchPunct(',')) continue;
+      break;
+    }
+    cur.expectPunct(')');
+    return { indexes };
+  }
+
+  // Один индекс: список псевдонимов через запятую.
+  const fields: FieldRef[] = [];
+  for (;;) {
+    fields.push(parseIndexField(cur, aliasMap));
+    if (cur.matchPunct(',')) continue;
+    break;
+  }
+  return { indexes: [{ unique: false, fields }] };
+}
+
+/** Одно поле индекса: псевдоним выборки → FieldRef. */
+function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>): FieldRef {
+  const t = cur.peek();
+  if (t.type !== 'ident' && t.type !== 'keyword') throw cur.error('ожидался псевдоним поля индекса', t);
+  cur.next();
+  const ref = resolveSelectAlias(t.value, aliasMap);
+  return { tableId: ref.tableId, path: ref.path };
+}
+
+// ───────────────────── ДЛЯ ИЗМЕНЕНИЯ (FOR UPDATE) ──────────────────────
+
+/** Секция `ДЛЯ ИЗМЕНЕНИЯ` + список полных имён таблиц. */
+function parseLockForUpdate(cur: Cursor): string[] {
+  cur.expectKeyword('ДЛЯ');
+  cur.expectKeyword('ИЗМЕНЕНИЯ');
+  const names: string[] = [];
+  while (cur.peek().type === 'ident' || (cur.peek().type === 'keyword' && !isSectionKeyword(cur.peek().value))) {
+    names.push(parseDottedName(cur));
+  }
+  return names;
+}
+
+const SECTION_KEYWORDS = new Set(['ИНДЕКСИРОВАТЬ', 'ИТОГИ', 'УПОРЯДОЧИТЬ', 'АВТОУПОРЯДОЧИВАНИЕ', 'ДЛЯ']);
+function isSectionKeyword(value: string): boolean {
+  return SECTION_KEYWORDS.has(value);
+}
+
+// ───────────────────────── построитель {…} ─────────────────────────────
+
+/**
+ * Блок построителя `{<keyword> … }`. Инвертирует `builderBlock`: список полей
+ * `<ref>[.*][ КАК <alias>]` через запятую; закрывающая `}` примыкает к последнему
+ * полю. `ref` — сырой текст (псевдоним выборки или `Алиас.Поле`).
+ */
+function parseBuilderBlock(cur: Cursor, keyword: string): BuilderField[] {
+  cur.expectPunct('{');
+  cur.expectKeyword(keyword);
+  // `УПОРЯДОЧИТЬ ПО` / `ИТОГИ ПО` — после ключевого слова идёт ПО.
+  if (keyword === 'УПОРЯДОЧИТЬ' || keyword === 'ИТОГИ') {
+    cur.expectKeyword('ПО');
+  }
+
+  const fields: BuilderField[] = [];
+  for (;;) {
+    fields.push(parseBuilderField(cur));
+    if (cur.matchPunct(',')) continue;
+    break;
+  }
+  cur.expectPunct('}');
+  return fields;
+}
+
+/** Одно поле построителя: `<ref>[.*][ КАК <alias>]`. */
+function parseBuilderField(cur: Cursor): BuilderField {
+  // ref = точечное имя; `.*` → child. Собираем сегменты вручную, т.к. возможна
+  // финальная `.*`.
+  const first = cur.peek();
+  if (first.type !== 'ident' && first.type !== 'keyword') {
+    throw cur.error('ожидалась ссылка поля построителя', first);
+  }
+  let ref = cur.next().value;
+  let child = false;
+  while (cur.isPunct('.')) {
+    cur.next();
+    if (cur.isPunct('*')) {
+      cur.next();
+      child = true;
+      break;
+    }
+    const seg = cur.peek();
+    if (seg.type !== 'ident' && seg.type !== 'keyword') {
+      throw cur.error('ожидался сегмент ссылки построителя после «.»', seg);
+    }
+    ref += '.' + cur.next().value;
+  }
+
+  const field: BuilderField = { ref, child };
+  if (cur.matchKeyword('КАК')) {
+    const a = cur.peek();
+    if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
+    cur.next();
+    field.alias = a.value;
+  }
+  return field;
 }

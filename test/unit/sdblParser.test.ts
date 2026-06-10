@@ -537,3 +537,427 @@ describe('parseQuery 6.2.B — комбинированный запрос (roun
     });
   });
 });
+
+// ───────────────────────────── 6.2.C ─────────────────────────────
+
+describe('parseQuery 6.2.C — временные таблицы (round-trip)', () => {
+  it('createTemp: ПОМЕСТИТЬ', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      queryType: 'createTemp',
+      tempTableName: 'ВремТаб',
+    });
+  });
+
+  it('appendTemp: ДОБАВИТЬ', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      queryType: 'appendTemp',
+      tempTableName: 'ВремТаб',
+    });
+  });
+
+  it('dropTemp: УНИЧТОЖИТЬ (самостоятельный запрос)', () => {
+    roundTrip({
+      tables: [],
+      fields: [],
+      queryType: 'dropTemp',
+      tempTableName: 'ВремТаб',
+    });
+  });
+
+  it('deep-equality: УНИЧТОЖИТЬ парсится в dropTemp', () => {
+    const model = parseQuery('УНИЧТОЖИТЬ ВремТаб');
+    expect(model.queryType).toBe('dropTemp');
+    expect(model.tempTableName).toBe('ВремТаб');
+    expect(model.tables).toEqual([]);
+    expect(model.fields).toEqual([]);
+  });
+
+  it('deep-equality: ПОМЕСТИТЬ парсится в createTemp', () => {
+    const text = generate({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      queryType: 'createTemp',
+      tempTableName: 'ВТ1',
+    });
+    const model = parseQuery(text);
+    expect(model.queryType).toBe('createTemp');
+    expect(model.tempTableName).toBe('ВТ1');
+  });
+});
+
+describe('parseQuery 6.2.C — УПОРЯДОЧИТЬ ПО (round-trip)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [
+      { tableId: 't1', path: 'Код', alias: 'Код' },
+      { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+    ],
+  });
+
+  it('возрастание', () => {
+    roundTrip({ ...base(), order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'asc' }], auto: false } });
+  });
+
+  it('убывание (УБЫВ)', () => {
+    roundTrip({ ...base(), order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'desc' }], auto: false } });
+  });
+
+  it('несколько полей asc/desc', () => {
+    roundTrip({
+      ...base(),
+      order: {
+        fields: [
+          { tableId: 't1', path: 'Код', direction: 'asc' },
+          { tableId: 't1', path: 'Ссылка', direction: 'desc' },
+        ],
+        auto: false,
+      },
+    });
+  });
+
+  it('авто + поля', () => {
+    roundTrip({ ...base(), order: { fields: [{ tableId: 't1', path: 'Ссылка', direction: 'desc' }], auto: true } });
+  });
+
+  it('только авто', () => {
+    roundTrip({ ...base(), order: { fields: [], auto: true } });
+  });
+
+  it('поле не из выборки (по последнему сегменту пути)', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      order: { fields: [{ tableId: 't1', path: 'Владелец.Код', direction: 'asc' }], auto: false },
+    });
+  });
+});
+
+describe('parseQuery 6.2.C — ИТОГИ (round-trip)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [
+      { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+      { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+    ],
+  });
+
+  it('ИТОГИ ПО без агрегатов: elements + alias', () => {
+    roundTrip({
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    });
+  });
+
+  it('ИТОГИ ПО без агрегатов: ИЕРАРХИЯ', () => {
+    roundTrip({
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'hierarchy' }],
+        totalFields: [],
+        grand: false,
+      },
+    });
+  });
+
+  it('ИТОГИ ПО без агрегатов: ТОЛЬКО ИЕРАРХИЯ + alias', () => {
+    roundTrip({
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'onlyHierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: false,
+      },
+    });
+  });
+
+  it('ИТОГИ с агрегатами + ПО', () => {
+    roundTrip({
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements' }],
+        totalFields: [{ tableId: 't1', path: 'Наценка', expression: 'СУММА(Наценка)' }],
+        grand: false,
+      },
+    });
+  });
+
+  it('ИТОГИ с ОБЩИЕ (grand)', () => {
+    roundTrip({
+      ...base(),
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'onlyHierarchy', alias: 'Ссылка11' }],
+        totalFields: [],
+        grand: true,
+      },
+    });
+  });
+
+  it('только ОБЩИЕ без группировочных полей', () => {
+    roundTrip({
+      ...base(),
+      totals: { groupFields: [], totalFields: [], grand: true },
+    });
+  });
+});
+
+describe('parseQuery 6.2.C — ИНДЕКСИРОВАТЬ ПО (round-trip)', () => {
+  const fiveFieldModel = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [
+      { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+      { tableId: 't1', path: 'ВерсияДанных', alias: 'ВерсияДанных' },
+      { tableId: 't1', path: 'ПометкаУдаления', alias: 'ПометкаУдаления' },
+      { tableId: 't1', path: 'Наименование', alias: 'Наименование' },
+      { tableId: 't1', path: 'НаименованиеПолное', alias: 'НаименованиеПолное' },
+    ],
+    queryType: 'createTemp',
+    tempTableName: 'ааа',
+  });
+
+  it('один индекс → ИНДЕКСИРОВАТЬ ПО', () => {
+    roundTrip({
+      ...fiveFieldModel(),
+      indexing: {
+        indexes: [
+          {
+            unique: false,
+            fields: [
+              { tableId: 't1', path: 'Ссылка' },
+              { tableId: 't1', path: 'Наименование' },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it('два индекса → ИНДЕКСИРОВАТЬ ПО НАБОРАМ с УНИКАЛЬНО', () => {
+    roundTrip({
+      ...fiveFieldModel(),
+      indexing: {
+        indexes: [
+          { unique: false, fields: [{ tableId: 't1', path: 'Ссылка' }] },
+          {
+            unique: true,
+            fields: [
+              { tableId: 't1', path: 'ПометкаУдаления' },
+              { tableId: 't1', path: 'Наименование' },
+            ],
+          },
+        ],
+      },
+    });
+  });
+});
+
+describe('parseQuery 6.2.C — ДЛЯ ИЗМЕНЕНИЯ (round-trip)', () => {
+  it('одна таблица', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      lockForUpdate: ['Справочник.Валюты'],
+    });
+  });
+
+  it('несколько таблиц', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      lockForUpdate: ['Справочник.Валюты', 'Справочник.Контрагенты'],
+    });
+  });
+
+  it('deep-equality: ДЛЯ ИЗМЕНЕНИЯ парсится в lockForUpdate', () => {
+    const text = generate({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      lockForUpdate: ['Справочник.Валюты'],
+    });
+    const model = parseQuery(text);
+    expect(model.lockForUpdate).toEqual(['Справочник.Валюты']);
+  });
+});
+
+describe('parseQuery 6.2.C — построитель {…} (round-trip)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  it('{ВЫБРАТЬ …} с child и alias', () => {
+    roundTrip({
+      ...base(),
+      builder: {
+        fields: [
+          { ref: 'Ресурс1Оборот', child: false, alias: 'труляля' },
+          { ref: 'Валюты.Ссылка', child: true },
+        ],
+        conditions: [],
+        order: [],
+        totals: [],
+      },
+    });
+  });
+
+  it('{ГДЕ …}', () => {
+    roundTrip({
+      ...base(),
+      builder: {
+        fields: [],
+        conditions: [
+          { ref: 'Валюты.Ссылка', child: true },
+          { ref: 'РегистрНакопленияОборОбороты.Измерение1', child: false },
+        ],
+        order: [],
+        totals: [],
+      },
+    });
+  });
+
+  it('{УПОРЯДОЧИТЬ ПО …}', () => {
+    roundTrip({
+      ...base(),
+      builder: {
+        fields: [],
+        conditions: [],
+        order: [
+          { ref: 'Ссылка', child: true },
+          { ref: 'Измерение1', child: false, alias: 'Измерение1ааа' },
+        ],
+        totals: [],
+      },
+    });
+  });
+
+  it('{ИТОГИ ПО …}', () => {
+    roundTrip({
+      ...base(),
+      builder: {
+        fields: [],
+        conditions: [],
+        order: [],
+        totals: [
+          { ref: 'Измерение1', child: false },
+          { ref: 'Ресурс1Оборот', child: false },
+          { ref: 'Ссылка', child: true, alias: 'а11' },
+        ],
+      },
+    });
+  });
+
+  it('child и alias вместе: Ссылка.* КАК а11', () => {
+    roundTrip({
+      ...base(),
+      builder: {
+        fields: [{ ref: 'Ссылка', child: true, alias: 'а11' }],
+        conditions: [],
+        order: [],
+        totals: [],
+      },
+    });
+  });
+
+  it('deep-equality: {ВЫБРАТЬ} парсится в BuilderField', () => {
+    const text = generate({
+      ...base(),
+      builder: {
+        fields: [
+          { ref: 'Ресурс1Оборот', child: false, alias: 'труляля' },
+          { ref: 'Валюты.Ссылка', child: true },
+        ],
+        conditions: [],
+        order: [],
+        totals: [],
+      },
+    });
+    const model = parseQuery(text);
+    expect(model.builder?.fields).toEqual([
+      { ref: 'Ресурс1Оборот', child: false, alias: 'труляля' },
+      { ref: 'Валюты.Ссылка', child: true },
+    ]);
+  });
+});
+
+describe('parseQuery 6.2.C — табличные части (round-trip)', () => {
+  it('одна табличная часть', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Заказы' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      tabSectionFields: [
+        { tableId: 't1', tsName: 'Товары', tsFullName: 'Справочник.Заказы.Товары', fields: ['Номенклатура', 'Количество'] },
+      ],
+    });
+  });
+
+  it('хвостовое поле после табличной части', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Заказы' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      tabSectionFields: [
+        { tableId: 't1', tsName: 'Товары', tsFullName: 'Справочник.Заказы.Товары', fields: ['Номенклатура', 'Количество'] },
+      ],
+      trailingFields: [{ tableId: 't1', path: 'Предопределенный', alias: 'Предопределенный' }],
+    });
+  });
+
+  it('deep-equality: табличная часть парсится в tabSectionFields', () => {
+    const text = generate({
+      tables: [{ id: 't1', fullName: 'Справочник.Заказы' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      tabSectionFields: [
+        { tableId: 't1', tsName: 'Товары', tsFullName: 'Справочник.Заказы.Товары', fields: ['Номенклатура', 'Количество'] },
+      ],
+    });
+    const model = parseQuery(text);
+    expect(model.tabSectionFields).toHaveLength(1);
+    expect(model.tabSectionFields![0].tableId).toBe('t0');
+    expect(model.tabSectionFields![0].tsName).toBe('Товары');
+    expect(model.tabSectionFields![0].fields).toEqual(['Номенклатура', 'Количество']);
+  });
+});
+
+describe('parseQuery 6.2.C — большой комбинированный запрос (round-trip)', () => {
+  it('createTemp + ГДЕ + группировка + УПОРЯДОЧИТЬ + ИТОГИ + ИНДЕКСИРОВАТЬ + ДЛЯ ИЗМЕНЕНИЯ', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      queryType: 'createTemp',
+      tempTableName: 'ВТ',
+      conditions: [{ custom: false, tableId: 't1', path: 'Код' }],
+      grouping: {
+        multiple: false,
+        groupFields: [{ tableId: 't1', path: 'Ссылка' }, { tableId: 't1', path: 'Код' }],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+      order: {
+        fields: [
+          { tableId: 't1', path: 'Код', direction: 'asc' },
+          { tableId: 't1', path: 'Ссылка', direction: 'desc' },
+        ],
+        auto: false,
+      },
+      totals: {
+        groupFields: [{ tableId: 't1', path: 'Ссылка', kind: 'elements', alias: 'СсылкаИтог' }],
+        totalFields: [{ tableId: 't1', path: 'Наценка', expression: 'СУММА(Наценка)' }],
+        grand: true,
+      },
+      indexing: {
+        indexes: [{ unique: false, fields: [{ tableId: 't1', path: 'Код' }] }],
+      },
+      lockForUpdate: ['Справочник.Валюты'],
+    });
+  });
+});
