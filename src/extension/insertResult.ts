@@ -1,8 +1,13 @@
 import * as vscode from 'vscode';
+import { formatAsBslString } from '../core/query/sdblGenerator';
 
 export interface SavedEditorState {
   document: vscode.TextDocument;
   selection: vscode.Selection;
+  /** Символьные смещения `[start, end)` литерала запроса для замены при сохранении. */
+  queryRange?: { start: number; end: number };
+  /** Обернуть результат в строковый литерал 1С (`"…|…"`) перед заменой. */
+  wrapAsBslString?: boolean;
 }
 
 export async function insertResult(text: string, saved?: SavedEditorState): Promise<void> {
@@ -11,8 +16,16 @@ export async function insertResult(text: string, saved?: SavedEditorState): Prom
     : vscode.window.activeTextEditor;
 
   if (targetEditor) {
-    const position = saved ? saved.selection : targetEditor.selection;
-    await targetEditor.edit(b => b.replace(position, text));
+    const payload = saved?.wrapAsBslString ? formatAsBslString(text) : text;
+    const range: vscode.Range = saved?.queryRange
+      ? new vscode.Range(
+          targetEditor.document.positionAt(saved.queryRange.start),
+          targetEditor.document.positionAt(saved.queryRange.end)
+        )
+      : saved
+        ? saved.selection
+        : targetEditor.selection;
+    await targetEditor.edit(b => b.replace(range, payload));
     await vscode.window.showTextDocument(targetEditor.document, targetEditor.viewColumn);
   } else {
     await vscode.env.clipboard.writeText(text);

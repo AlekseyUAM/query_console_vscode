@@ -23,6 +23,7 @@ import { accumPeriodFields } from '../core/query/accumVirtualFields';
 import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer, assembleMembers, assembleBatch, batchMemberName } from './state/queryStore';
 import { generateBatch } from '../core/query/sdblGenerator';
+import { parseBatch } from '../core/query/sdblParser';
 import { deriveUnionColumns } from '../core/query/unionModel';
 
 const BTN: React.CSSProperties = {
@@ -57,6 +58,8 @@ export function App(): React.ReactElement {
         dispatch({ type: 'SET_REF_FIELDS', ref: msg.ref, fields: msg.fields });
       } else if (msg.type === 'refreshResult') {
         setRefreshState({ ok: msg.ok, message: msg.message });
+      } else if (msg.type === 'loadModel') {
+        dispatch({ type: 'LOAD_BATCH', doc: parseBatch(msg.text) });
       }
     });
     postToHost({ type: 'ready' });

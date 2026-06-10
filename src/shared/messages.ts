@@ -7,7 +7,8 @@ export type HostMsg =
   | { type: 'metadataTree'; tables: MetaTable[] }
   | { type: 'refFields'; ref: RefId; fields: MetaField[] }
   | { type: 'generatedText'; text: string }
-  | { type: 'refreshResult'; ok: boolean; message: string };
+  | { type: 'refreshResult'; ok: boolean; message: string }
+  | { type: 'loadModel'; text: string };
 
 export type WebviewMsg =
   | { type: 'ready' }

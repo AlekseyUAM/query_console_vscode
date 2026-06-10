@@ -103,7 +103,8 @@ export function createPanel(
   context: vscode.ExtensionContext,
   cfPath: string,
   channel: vscode.OutputChannel,
-  savedEditor?: SavedEditorState
+  savedEditor?: SavedEditorState,
+  initialQueryText?: string
 ): vscode.WebviewPanel {
   const panel = vscode.window.createWebviewPanel(
     '1c.queryConstructor',
@@ -129,6 +130,10 @@ export function createPanel(
       await metadataReady;
       const reply: HostMsg = { type: 'metadataTree', tables: metadataModel.tables };
       panel.webview.postMessage(reply);
+      if (initialQueryText) {
+        const loadMsg: HostMsg = { type: 'loadModel', text: initialQueryText };
+        panel.webview.postMessage(loadMsg);
+      }
       if (metadataModel.tables.length === 0 && !cfPath) {
         vscode.window.showWarningMessage('Не найдена выгрузка конфигурации. Укажите путь в настройке queryConsole.metadataPath');
       }
