@@ -47,6 +47,9 @@ import type {
 
 import { tokenize } from './sdblLexer';
 import type { Token } from './sdblLexer';
+import { fieldAlias } from './unionModel';
+import type { QueryDocument, UnionMember } from './unionModel';
+import type { BatchDocument } from './batchModel';
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
 const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
@@ -163,7 +166,16 @@ const AUTO_ALIAS = /^Поле\d+$/;
 export function parseQuery(text: string): QueryModel {
   const tokens = tokenize(text);
   const cur = new Cursor(tokens, text);
+  return parseSingleQuery(cur);
+}
 
+/**
+ * Разбирает ОДИН запрос-участник из курсора (без объединений). Выделено в
+ * отдельный помощник, чтобы `parseDocument` мог разбирать срезы токенов участников
+ * без повторной токенизации (см. 6.2.D). Курсор должен стоять в начале блока
+ * запроса; разбор останавливается на eof среза.
+ */
+function parseSingleQuery(cur: Cursor): QueryModel {
   // УНИЧТОЖИТЬ <name> — самостоятельный запрос (без ВЫБРАТЬ).
   if (cur.isKeyword('УНИЧТОЖИТЬ')) {
     cur.next();
@@ -1403,4 +1415,152 @@ function parseBuilderField(cur: Cursor): BuilderField {
     field.alias = a.value;
   }
   return field;
+}
+
+// ───────────────────────── ОБЪЕДИНИТЬ (UNION) ──────────────────────────
+
+/** Сырой срез участника объединения: токены и флаг distinct (по предшествующему разделителю). */
+interface RawUnionMember {
+  tokens: Token[];
+  /** distinct === true → разделитель перед участником был «ОБЪЕДИНИТЬ» (без ВСЕ). */
+  distinct: boolean;
+}
+
+/**
+ * Разбивает поток токенов на участники объединения по ключевым словам
+ * `ОБЪЕДИНИТЬ [ВСЕ]` ВЕРХНЕГО уровня — вне скобок подзапросов `(…)` И вне блоков
+ * построителя `{…}`. Инвертирует разделитель `generateDocument`: участник после
+ * `ОБЪЕДИНИТЬ ВСЕ` → distinct:false; после голого `ОБЪЕДИНИТЬ` → distinct:true.
+ * Участник 0 всегда distinct:false (перед ним нет разделителя).
+ *
+ * Каждый срез завершается синтетическим токеном `eof`, чтобы курсор участника
+ * корректно определял конец. Позиции токенов абсолютны относительно исходного
+ * текста — сырые срезы (`sliceSource`) работают без модификаций.
+ */
+function splitUnionMembers(tokens: Token[], source: string): RawUnionMember[] {
+  const members: RawUnionMember[] = [];
+  let current: Token[] = [];
+  let nextDistinct = false; // distinct участника 0 — false по соглашению.
+  let parenDepth = 0;
+  let braceDepth = 0;
+
+  const flush = (distinct: boolean): void => {
+    const last = current[current.length - 1];
+    const eofPos = last ? last.pos + last.value.length : 0;
+    const eofTok: Token = { type: 'eof', value: '', pos: eofPos, line: last?.line ?? 1, col: last?.col ?? 1 };
+    members.push({ tokens: [...current, eofTok], distinct });
+    current = [];
+  };
+
+  for (const t of tokens) {
+    if (t.type === 'eof') break;
+    if (t.type === 'punct') {
+      if (t.value === '(') parenDepth++;
+      else if (t.value === ')') parenDepth--;
+      else if (t.value === '{') braceDepth++;
+      else if (t.value === '}') braceDepth--;
+    }
+    if (
+      t.type === 'keyword' &&
+      t.value === 'ОБЪЕДИНИТЬ' &&
+      parenDepth === 0 &&
+      braceDepth === 0
+    ) {
+      // Граница участника. distinct текущего накопленного участника = nextDistinct.
+      flush(nextDistinct);
+      // Следующий участник distinct, если разделитель НЕ сопровождается ВСЕ.
+      nextDistinct = true;
+      continue;
+    }
+    if (t.type === 'keyword' && t.value === 'ВСЕ' && parenDepth === 0 && braceDepth === 0 && current.length === 0) {
+      // «ВСЕ» сразу после `ОБЪЕДИНИТЬ` (текущий участник ещё пуст) → не distinct.
+      nextDistinct = false;
+      continue;
+    }
+    current.push(t);
+  }
+  flush(nextDistinct);
+  return members;
+}
+
+/**
+ * Разбор объединённого запроса (`ОБЪЕДИНИТЬ [ВСЕ]`) в `QueryDocument`. Токенизирует
+ * текст один раз, делит на участники по разделителям верхнего уровня и разбирает
+ * каждого помощником `parseSingleQuery`.
+ *
+ * Восстановление псевдонимов колонок (инверсия `deriveUnionColumns`/`generateDocument`):
+ * участник 0 несёт `КАК <псевдоним>` у каждой колонки (включая ячейки `NULL`), его
+ * разобранные поля по позициям дают полный список псевдонимов колонок. У участников
+ * i>0 элементы выборки идут без `КАК`; их поля переписываются по позиции из участника 0
+ * (поле i-й колонки получает псевдоним i-й колонки участника 0), а поля-заглушки
+ * `NULL` отбрасываются — у такого участника нет поля в этой колонке.
+ */
+export function parseDocument(text: string): QueryDocument {
+  const tokens = tokenize(text);
+  const raw = splitUnionMembers(tokens, text);
+
+  const models = raw.map(r => parseSingleQuery(new Cursor(r.tokens, text)));
+
+  // Список псевдонимов колонок = псевдонимы полей участника 0 (по позициям).
+  // Участник 0 эмитит ровно одну строку поля на колонку, поэтому его поля
+  // взаимно-однозначны с колонками объединения.
+  const columnAliases = models.length > 0 ? models[0].fields.map(fieldAlias) : [];
+
+  const members: UnionMember[] = models.map((model, i) => {
+    if (i > 0) rewriteMemberAliases(model, columnAliases);
+    return { name: `Запрос ${i + 1}`, distinct: raw[i].distinct, model };
+  });
+
+  return { members };
+}
+
+/** Признак поля-заглушки `NULL` (ячейка отсутствующей колонки участника). */
+function isNullCell(f: SelectedField): boolean {
+  return f.expression !== undefined && f.expression.trim().toUpperCase() === 'NULL';
+}
+
+/**
+ * Переписывает поля участника i>0 по позициям колонок участника 0: i-е поле
+ * (в порядке колонок) получает псевдоним i-й колонки, поля-заглушки `NULL`
+ * отбрасываются. После переписывания `fieldAlias` каждого поля совпадает с
+ * псевдонимом своей колонки, что обеспечивает корректное слияние в
+ * `deriveUnionColumns` и воспроизведение исходного текста.
+ */
+function rewriteMemberAliases(model: QueryModel, columnAliases: string[]): void {
+  const rewritten: SelectedField[] = [];
+  model.fields.forEach((f, k) => {
+    if (isNullCell(f)) return; // нет поля участника в этой колонке.
+    const alias = columnAliases[k];
+    if (alias === undefined) {
+      rewritten.push(f);
+      return;
+    }
+    // Простое поле: задаём явный alias так, чтобы fieldAlias === alias колонки и
+    // ячейка (fieldExpr) воспроизводила исходное выражение без `КАК`.
+    if (f.expression !== undefined) {
+      rewritten.push({ ...f, alias });
+    } else {
+      rewritten.push({ tableId: f.tableId, path: f.path, alias });
+    }
+  });
+  model.fields = rewritten;
+}
+
+// ─────────────────────────── пакет (BATCH) ─────────────────────────────
+
+/** Разделитель пакета запросов 1С (инверсия `generateBatch`). */
+const BATCH_SEPARATOR = '\n;\n\n' + '/'.repeat(80) + '\n';
+
+/**
+ * Разбор пакета запросов в `BatchDocument`. Лексер поглощает строку из 80 `/` как
+ * комментарий, поэтому деление по разделителю выполняется на СЫРОМ тексте до
+ * токенизации — точно по строке, которую эмитит `generateBatch`. Каждый фрагмент
+ * разбирается `parseDocument` (т.е. может быть объединением). Одиночный запрос без
+ * разделителя и без объединения корректно даёт пакет из одного документа с одним
+ * участником.
+ */
+export function parseBatch(text: string): BatchDocument {
+  const chunks = text.split(BATCH_SEPARATOR);
+  const members = chunks.map(parseDocument);
+  return { members };
 }

@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { generate } from '../../src/core/query/sdblGenerator';
-import { parseQuery } from '../../src/core/query/sdblParser';
+import { generate, generateDocument, generateBatch } from '../../src/core/query/sdblGenerator';
+import { parseQuery, parseDocument, parseBatch } from '../../src/core/query/sdblParser';
 import { tokenize } from '../../src/core/query/sdblLexer';
 import type { QueryModel, AggregateFunction } from '../../src/core/query/queryModel';
+import type { QueryDocument, UnionMember } from '../../src/core/query/unionModel';
+import type { BatchDocument } from '../../src/core/query/batchModel';
 
 /** Round-trip oracle: generate(parseQuery(generate(model))) === generate(model). */
 function roundTrip(model: QueryModel): void {
@@ -959,5 +961,247 @@ describe('parseQuery 6.2.C — большой комбинированный з�
       },
       lockForUpdate: ['Справочник.Валюты'],
     });
+  });
+});
+
+describe('parseDocument — round-trip identity (generateDocument∘parseDocument∘generateDocument)', () => {
+  function roundTripDoc(doc: QueryDocument): QueryDocument {
+    const text = generateDocument(doc);
+    const reparsed = parseDocument(text);
+    expect(generateDocument(reparsed)).toBe(text);
+    return reparsed;
+  }
+
+  const valuteMember = (distinct = false): UnionMember => ({
+    name: 'Запрос 1',
+    distinct,
+    model: {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+      ],
+      lockForUpdate: ['Справочник.Валюты'],
+    } as QueryModel,
+  });
+
+  const variantMember = (distinct = false): UnionMember => ({
+    name: 'Запрос 2',
+    distinct,
+    model: {
+      tables: [{ id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' }],
+      fields: [
+        { tableId: 't2', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't2', path: 'Наименование', alias: 'Наименование' },
+      ],
+    } as QueryModel,
+  });
+
+  it('1. один участник → совпадает с generate (вырожденный случай)', () => {
+    const doc: QueryDocument = { members: [valuteMember()] };
+    const reparsed = roundTripDoc(doc);
+    expect(reparsed.members.length).toBe(1);
+    expect(generateDocument(reparsed)).toBe(generate(valuteMember().model));
+  });
+
+  it('2. два участника ОБЪЕДИНИТЬ ВСЕ', () => {
+    const doc: QueryDocument = { members: [valuteMember(), variantMember(false)] };
+    const reparsed = roundTripDoc(doc);
+    expect(reparsed.members.length).toBe(2);
+    expect(reparsed.members.map(m => m.distinct)).toEqual([false, false]);
+  });
+
+  it('3. два участника ОБЪЕДИНИТЬ (distinct)', () => {
+    const doc: QueryDocument = { members: [valuteMember(), variantMember(true)] };
+    const reparsed = roundTripDoc(doc);
+    expect(reparsed.members.length).toBe(2);
+    expect(reparsed.members.map(m => m.distinct)).toEqual([false, true]);
+  });
+
+  it('4. три участника со смешанными разделителями', () => {
+    const third: UnionMember = {
+      name: 'Запрос 3',
+      distinct: false,
+      model: {
+        tables: [{ id: 't3', fullName: 'Справочник.Контрагенты' }],
+        fields: [
+          { tableId: 't3', path: 'Ссылка', alias: 'Ссылка' },
+          { tableId: 't3', path: 'Код', alias: 'Код' },
+        ],
+      } as QueryModel,
+    };
+    const doc: QueryDocument = {
+      members: [valuteMember(), variantMember(true), third],
+    };
+    const reparsed = roundTripDoc(doc);
+    expect(reparsed.members.length).toBe(3);
+    expect(reparsed.members.map(m => m.distinct)).toEqual([false, true, false]);
+  });
+
+  it('5. участники с разным набором колонок (NULL-ячейки)', () => {
+    const m0: UnionMember = {
+      name: 'Q1',
+      distinct: false,
+      model: {
+        tables: [{ id: 't1', fullName: 'Справочник.А' }],
+        fields: [{ tableId: 't1', path: 'X', alias: 'X' }],
+      } as QueryModel,
+    };
+    const m1: UnionMember = {
+      name: 'Q2',
+      distinct: false,
+      model: {
+        tables: [{ id: 't2', fullName: 'Справочник.Б' }],
+        fields: [{ tableId: 't2', path: 'Y', alias: 'Y' }],
+      } as QueryModel,
+    };
+    const doc: QueryDocument = { members: [m0, m1] };
+    const reparsed = roundTripDoc(doc);
+    expect(reparsed.members.length).toBe(2);
+  });
+
+  it('6. участник с подзапросом в ИЗ — слово ОБЪЕДИНИТЬ не должно делить на глубине', () => {
+    // Произвольное условие соединения с подзапросом не нужно; вместо этого
+    // используем виртуальную таблицу со скобками, гарантируя paren-depth > 0.
+    const m0: UnionMember = {
+      name: 'Q1',
+      distinct: false,
+      model: {
+        tables: [
+          {
+            id: 't1',
+            fullName: 'РегистрНакопления.Остатки.Остатки',
+            virtual: { period: '&Дата', condition: 'Остатки.Склад = &Склад' },
+          },
+        ],
+        fields: [{ tableId: 't1', path: 'КоличествоОстаток', alias: 'Кол' }],
+      } as QueryModel,
+    };
+    const m1: UnionMember = {
+      name: 'Q2',
+      distinct: false,
+      model: {
+        tables: [{ id: 't2', fullName: 'Справочник.Товары' }],
+        fields: [{ tableId: 't2', path: 'КоличествоТовара', alias: 'Кол' }],
+      } as QueryModel,
+    };
+    const doc: QueryDocument = { members: [m0, m1] };
+    const reparsed = roundTripDoc(doc);
+    expect(reparsed.members.length).toBe(2);
+  });
+
+  it('7. участник с блоком построителя {ВЫБРАТЬ …} — brace-depth не путает разбиение', () => {
+    const m0: UnionMember = {
+      name: 'Q1',
+      distinct: false,
+      model: {
+        tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+        fields: [{ tableId: 't1', path: 'Код', alias: 'Код' }],
+        builder: {
+          fields: [{ ref: 'Валюты.Наименование', child: false }],
+          conditions: [],
+          order: [],
+          totals: [],
+        },
+      } as QueryModel,
+    };
+    const m1: UnionMember = {
+      name: 'Q2',
+      distinct: false,
+      model: {
+        tables: [{ id: 't2', fullName: 'Справочник.Контрагенты' }],
+        fields: [{ tableId: 't2', path: 'Код', alias: 'Код' }],
+      } as QueryModel,
+    };
+    const doc: QueryDocument = { members: [m0, m1] };
+    const reparsed = roundTripDoc(doc);
+    expect(reparsed.members.length).toBe(2);
+  });
+});
+
+describe('parseBatch — round-trip identity (generateBatch∘parseBatch∘generateBatch)', () => {
+  function roundTripBatch(batch: BatchDocument): BatchDocument {
+    const text = generateBatch(batch);
+    const reparsed = parseBatch(text);
+    expect(generateBatch(reparsed)).toBe(text);
+    return reparsed;
+  }
+
+  const docOf = (model: QueryModel): QueryDocument => ({
+    members: [{ name: 'Запрос пакета 1', distinct: false, model }],
+  });
+
+  const valuesModel = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const anketaModel = (): QueryModel => ({
+    tables: [{ id: 't2', fullName: 'Документ.Анкета' }],
+    fields: [{ tableId: 't2', path: 'ВерсияДанных', alias: 'ВерсияДанных' }],
+  });
+
+  it('1. один участник (без разделителя и без объединения)', () => {
+    const batch: BatchDocument = { members: [docOf(valuesModel())] };
+    const reparsed = roundTripBatch(batch);
+    expect(reparsed.members.length).toBe(1);
+    expect(reparsed.members[0].members.length).toBe(1);
+  });
+
+  it('2. два участника', () => {
+    const batch: BatchDocument = {
+      members: [docOf(valuesModel()), docOf(anketaModel())],
+    };
+    const reparsed = roundTripBatch(batch);
+    expect(reparsed.members.length).toBe(2);
+  });
+
+  it('3. участник пакета сам является объединением', () => {
+    const unionDoc: QueryDocument = {
+      members: [
+        {
+          name: 'Q1',
+          distinct: false,
+          model: {
+            tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+            fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+          } as QueryModel,
+        },
+        {
+          name: 'Q2',
+          distinct: false,
+          model: {
+            tables: [{ id: 't2', fullName: 'Справочник.Контрагенты' }],
+            fields: [{ tableId: 't2', path: 'Ссылка', alias: 'Ссылка' }],
+          } as QueryModel,
+        },
+      ],
+    };
+    const batch: BatchDocument = {
+      members: [unionDoc, docOf(anketaModel())],
+    };
+    const reparsed = roundTripBatch(batch);
+    expect(reparsed.members.length).toBe(2);
+    expect(reparsed.members[0].members.length).toBe(2);
+  });
+
+  it('4. участник с временной таблицей УНИЧТОЖИТЬ', () => {
+    const createModel: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      queryType: 'createTemp',
+      tempTableName: 'ВТВалюты',
+    };
+    const dropModel: QueryModel = {
+      tables: [],
+      fields: [],
+      queryType: 'dropTemp',
+      tempTableName: 'ВТВалюты',
+    };
+    const batch: BatchDocument = {
+      members: [docOf(createModel), docOf(anketaModel()), docOf(dropModel)],
+    };
+    const reparsed = roundTripBatch(batch);
+    expect(reparsed.members.length).toBe(3);
   });
 });
