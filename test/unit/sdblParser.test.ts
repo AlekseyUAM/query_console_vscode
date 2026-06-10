@@ -50,7 +50,9 @@ describe('sdblLexer', () => {
   });
 
   it('throws a clear error with line/col on unexpected char', () => {
-    expect(() => tokenize('ВЫБРАТЬ @')).toThrow(/1:9|line 1|col 9/i);
+    // `~` встречается в корпусе только внутри строк/комментариев, поэтому остаётся
+    // неподдерживаемым символом тела запроса.
+    expect(() => tokenize('ВЫБРАТЬ ~')).toThrow(/1:9|line 1|col 9/i);
   });
 });
 
@@ -961,6 +963,52 @@ describe('parseQuery 6.2.C — большой комбинированный з�
       },
       lockForUpdate: ['Справочник.Валюты'],
     });
+  });
+});
+
+describe('parseQuery 6.4 — операторы выражений в custom/expression (round-trip)', () => {
+  it('WHERE с арифметикой (custom-условие c + и -) round-trips verbatim', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код', alias: 'Код' }],
+      conditions: [{ custom: true, expression: 'Валюты.Дата >= &Нач - 3 + 1' }],
+    });
+  });
+
+  it('поле-выражение с делением и конкатенацией строк round-trips verbatim', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Файлы' }],
+      fields: [
+        { tableId: 't1', path: '', expression: 'Файлы.Размер / 1024 / 1024', alias: 'Мб' },
+        { tableId: 't1', path: '', expression: 'Файлы.Имя + "x"', alias: 'ИмяX' },
+      ],
+    });
+  });
+
+  it('ПОДОБНО-шаблон с % в custom-условии round-trips verbatim', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Код', alias: 'Код' }],
+      conditions: [{ custom: true, expression: 'Валюты.Код ПОДОБНО "%643%"' }],
+    });
+  });
+
+  it('лексер не бросает на операторах выражений в реалистичных срезах', () => {
+    expect(() => parseQuery(
+      'ВЫБРАТЬ\n\tТ.Размер / 1024 КАК Мб\nИЗ\n\tСправочник.Файлы КАК Т\nГДЕ\n\tТ.Дата >= &Нач - 3'
+    )).not.toThrow();
+    expect(() => parseQuery(
+      'ВЫБРАТЬ\n\tТ.Код КАК Код\nИЗ\n\tСправочник.Валюты КАК Т\nГДЕ\n\tТ.Код ПОДОБНО "%643%"'
+    )).not.toThrow();
+    expect(() => parseQuery(
+      'ВЫБРАТЬ\n\tТ.Шапка?.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Файлы КАК Т'
+    )).not.toThrow();
+  });
+
+  it('лексер токенизирует операторы выражений как punct', () => {
+    const tokens = tokenize('+ - / % ? @ [ ]');
+    const puncts = tokens.filter(t => t.type === 'punct').map(t => t.value);
+    expect(puncts).toEqual(['+', '-', '/', '%', '?', '@', '[', ']']);
   });
 });
 
