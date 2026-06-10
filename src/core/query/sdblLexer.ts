@@ -21,6 +21,13 @@ export interface Token {
   type: TokenType;
   /** Для keyword — канонический верхний регистр; для остальных — исходный текст. */
   value: string;
+  /**
+   * Исходный текст лексемы (всегда оригинальный регистр). Совпадает с `value`
+   * для не-ключевых токенов; для keyword хранит исходное написание (например,
+   * `Количество`), чтобы парсер мог восстановить идентификатор без искажения
+   * регистра, когда ключевое слово используется как ИМЯ (поле/псевдоним/сегмент пути).
+   */
+  text: string;
   /** Смещение начала токена в исходной строке (0-based). */
   pos: number;
   /** Номер строки (1-based). */
@@ -119,8 +126,8 @@ export function tokenize(text: string): Token[] {
     }
   };
 
-  const push = (type: TokenType, value: string, pos: number, l: number, c: number): void => {
-    tokens.push({ type, value, pos, line: l, col: c });
+  const push = (type: TokenType, value: string, pos: number, l: number, c: number, text?: string): void => {
+    tokens.push({ type, value, text: text ?? value, pos, line: l, col: c });
   };
 
   while (i < text.length) {
@@ -141,6 +148,22 @@ export function tokenize(text: string): Token[] {
     const startPos = i;
     const startLine = line;
     const startCol = col;
+
+    // Подстановочное имя временной таблицы: # + идентификатор. В реальных
+    // запросах типовых подсистем 1С (обмен данными, управление доступом) `#Имя`
+    // выступает ИМЕНЕМ источника в `ИЗ` (текстовая подстановка перед выполнением;
+    // в позиции источника принимается синтаксисом запроса 1С). Лексим как
+    // идентификатор с префиксом `#`, чтобы парсер принял его в parseDottedName.
+    if (ch === '#') {
+      advance();
+      const nameStart = i;
+      while (i < text.length && isIdentPart(text[i])) advance();
+      if (i === nameStart) {
+        throw lexError('ожидалось имя после "#"', startLine, startCol);
+      }
+      push('ident', '#' + text.slice(nameStart, i), startPos, startLine, startCol);
+      continue;
+    }
 
     // Параметр: & + идентификатор.
     if (ch === '&') {
@@ -220,7 +243,9 @@ export function tokenize(text: string): Token[] {
       }
       const upper = value.toUpperCase();
       if (KEYWORDS.has(upper)) {
-        push('keyword', upper, startPos, startLine, startCol);
+        // value — канонический верхний регистр (для логики парсера),
+        // text — исходное написание (для восстановления имени).
+        push('keyword', upper, startPos, startLine, startCol, value);
       } else {
         push('ident', value, startPos, startLine, startCol);
       }

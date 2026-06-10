@@ -1205,3 +1205,79 @@ describe('parseBatch — round-trip identity (generateBatch∘parseBatch∘gener
     expect(reparsed.members.length).toBe(3);
   });
 });
+
+// ─────────────────── задача 6.4: разбор реальных запросов ───────────────────
+describe('parseQuery — 6.4: реальные запросы из корпуса', () => {
+  // Фикс 1: &Параметр как имя источника ИЗ.
+  it('6.4.1 принимает &Параметр как источник ИЗ (param как fullName)', () => {
+    const model = parseQuery('ВЫБРАТЬ Т.Ссылка КАК Ссылка ИЗ &ВременнаяТаблица КАК Т');
+    expect(model.tables[0].fullName).toBe('&ВременнаяТаблица');
+    expect(model.tables[0].alias).toBe('Т');
+    // Круговая идентичность через генератор.
+    expect(generate(model)).toContain('ИЗ\n\t&ВременнаяТаблица КАК Т');
+  });
+
+  it('6.4.1b &Параметр-источник переживает round-trip', () => {
+    const text = 'ВЫБРАТЬ\n\tТ.Ссылка КАК Ссылка\nИЗ\n\t&ВременнаяТаблица КАК Т';
+    expect(generate(parseQuery(text))).toBe(text);
+  });
+
+  // Фикс 2: #Имя как имя источника ИЗ (подстановка временной таблицы).
+  it('6.4.2 принимает #Имя как источник ИЗ', () => {
+    const model = parseQuery('ВЫБРАТЬ Т.Ссылка КАК Ссылка ИЗ #Таблица КАК Т');
+    expect(model.tables[0].fullName).toBe('#Таблица');
+    expect(model.tables[0].alias).toBe('Т');
+  });
+
+  it('6.4.2b #Имя-источник переживает round-trip', () => {
+    const text = 'ВЫБРАТЬ\n\tТ.Ссылка КАК Ссылка\nИЗ\n\t#Таблица КАК Т';
+    expect(generate(parseQuery(text))).toBe(text);
+  });
+
+  // Фикс 3: подзапрос в источнике ИЗ — понятная ошибка, не «получено «(»».
+  it('6.4.3 подзапрос в ИЗ отклоняется с понятным сообщением', () => {
+    expect(() => parseQuery('ВЫБРАТЬ Т.Поле ИЗ (ВЫБРАТЬ 1 КАК Поле) КАК Т')).toThrow(
+      /подзапрос в источнике ИЗ/
+    );
+  });
+
+  // Фикс 4: КАК у источника необязателен.
+  it('6.4.4 источник без КАК с голым псевдонимом', () => {
+    const model = parseQuery('ВЫБРАТЬ Валюты.Код КАК Код ИЗ Справочник.Валюты Валюты');
+    expect(model.tables[0].fullName).toBe('Справочник.Валюты');
+    expect(model.tables[0].alias).toBe('Валюты');
+  });
+
+  it('6.4.4b источник без КАК и без псевдонима (синтез по умолчанию)', () => {
+    const model = parseQuery('ВЫБРАТЬ Валюты.Код КАК Код ИЗ Справочник.Валюты ГДЕ Валюты.Код = &К');
+    expect(model.tables[0].fullName).toBe('Справочник.Валюты');
+    expect(model.tables[0].alias).toBe('Валюты');
+    expect(model.conditions?.length).toBe(1);
+  });
+
+  // Фикс 6: имена-ключевые слова не искажаются (регистр сохраняется, не путаются
+  // с агрегатами).
+  it('6.4.6 поле Товары.Количество КАК Количество сохраняет регистр', () => {
+    const text = 'ВЫБРАТЬ\n\tТовары.Количество КАК Количество\nИЗ\n\tСправочник.Товары КАК Товары';
+    const model = parseQuery(text);
+    expect(model.fields[0].path).toBe('Количество');
+    expect(model.fields[0].alias).toBe('Количество');
+    // Не агрегат.
+    expect(model.grouping).toBeUndefined();
+    expect(generate(model)).toBe(text);
+  });
+
+  it('6.4.6b сегмент пути .Дата не уходит в верхний регистр', () => {
+    const text = 'ВЫБРАТЬ\n\tЗаказ.Дата КАК Дата\nИЗ\n\tДокумент.Заказ КАК Заказ';
+    const model = parseQuery(text);
+    expect(model.fields[0].path).toBe('Дата');
+    expect(generate(model)).toBe(text);
+  });
+
+  it('6.4.6c поле с именем-ключевым словом в имени таблицы (Год/Месяц/Сумма)', () => {
+    const text = 'ВЫБРАТЬ\n\tТ.Сумма КАК Сумма,\n\tТ.Год КАК Год\nИЗ\n\tРегистр.Обороты КАК Т';
+    const model = parseQuery(text);
+    expect(model.fields.map(f => f.path)).toEqual(['Сумма', 'Год']);
+    expect(generate(model)).toBe(text);
+  });
+});

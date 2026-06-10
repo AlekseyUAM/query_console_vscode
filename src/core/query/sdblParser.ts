@@ -45,6 +45,7 @@ import type {
   BuilderField,
 } from './queryModel';
 
+import { defaultTableAlias } from './queryModel';
 import { tokenize } from './sdblLexer';
 import type { Token } from './sdblLexer';
 import { fieldAlias } from './unionModel';
@@ -404,9 +405,9 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
   if (!cur.isPunct('.', 3)) return undefined;
   if (!cur.isPunct('(', 4)) return undefined;
 
-  const tableAlias = cur.next().value; // ident
+  const tableAlias = cur.next().text; // ident
   cur.expectPunct('.');
-  const tsName = cur.next().value; // ident
+  const tsName = cur.next().text; // ident
   cur.expectPunct('.');
   cur.expectPunct('(');
 
@@ -419,7 +420,7 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
     cur.expectKeyword('КАК');
     cur.next(); // псевдоним поля (= имя поля)
     // Исходный текст имени поля (для keyword-токенов value в верхнем регистре).
-    fields.push(cur.source.slice(f.pos, f.pos + f.value.length));
+    fields.push(f.text);
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -449,7 +450,7 @@ function parseOneField(cur: Cursor): RawField {
           throw cur.error('ожидался псевдоним после КАК', a);
         }
         cur.next();
-        alias = a.value;
+        alias = a.text;
         break;
       }
     }
@@ -552,6 +553,12 @@ function parseFrom(cur: Cursor): FromResult {
 
 /** Один источник таблицы: `<fullName> [(<params>)] КАК <alias>`. */
 function parseTableSource(cur: Cursor, index: number): SelectedTable {
+  // Подзапрос в источнике `ИЗ (ВЫБРАТЬ … ) КАК Т` — вне визуальной модели
+  // (QueryModel не хранит подзапрос-источник, см. спецификацию §7). Явно и
+  // понятно отклоняем, чтобы не выдавать загадочную «ожидалось имя (получено «(»)».
+  if (cur.isPunct('(')) {
+    throw cur.error('подзапрос в источнике ИЗ (…) не поддерживается визуальной моделью', cur.peek());
+  }
   const fullName = parseDottedName(cur);
 
   let virtual: VirtualParams | undefined;
@@ -559,20 +566,40 @@ function parseTableSource(cur: Cursor, index: number): SelectedTable {
     virtual = parseVirtualParams(cur, fullName);
   }
 
-  cur.expectKeyword('КАК');
-  const aliasTok = cur.peek();
-  if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
-    throw cur.error('ожидался псевдоним таблицы после КАК', aliasTok);
+  // `КАК` опционально: 1С допускает источник без явного псевдонима
+  // (`ИЗ Справочник.Валюты` или `ИЗ Справочник.Валюты Валюты`). Если `КАК`
+  // отсутствует, но дальше идёт голый идентификатор-псевдоним — берём его;
+  // иначе синтезируем псевдоним по умолчанию (как генератор/resolveAliases).
+  let alias: string | undefined;
+  if (cur.matchKeyword('КАК')) {
+    const aliasTok = cur.peek();
+    if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
+      throw cur.error('ожидался псевдоним таблицы после КАК', aliasTok);
+    }
+    cur.next();
+    alias = aliasTok.text;
+  } else if (canBeBareAlias(cur)) {
+    alias = cur.next().text;
+  } else {
+    alias = defaultTableAlias({ id: '', fullName });
   }
-  cur.next();
 
   const table: SelectedTable = {
     id: 't' + index,
     fullName,
-    alias: aliasTok.value,
+    alias,
   };
   if (virtual) table.virtual = virtual;
   return table;
+}
+
+/**
+ * Может ли следующий токен быть голым псевдонимом источника (без `КАК`).
+ * Консервативно: только обычный идентификатор (не ключевое слово), чтобы не
+ * перепутать со структурным ключевым словом (СОЕДИНЕНИЕ/ГДЕ/…) или join-видом.
+ */
+function canBeBareAlias(cur: Cursor): boolean {
+  return cur.peek().type === 'ident';
 }
 
 const JOIN_KEYWORDS = new Set(['ВНУТРЕННЕЕ', 'ЛЕВОЕ', 'ПРАВОЕ', 'ПОЛНОЕ']);
@@ -605,20 +632,26 @@ function readJoinCondition(cur: Cursor): { tokens: Token[]; text: string } {
   return { tokens, text: sliceSource(cur.source, tokens) };
 }
 
-/** Точечно-разделённое имя: ident (. ident)*. Возвращает исходную строку. */
+/**
+ * Точечно-разделённое имя: <head> (. ident)*. Возвращает исходную строку.
+ * `head` может быть идентификатором, ключевым словом (используется как имя) или
+ * параметром `&Имя` / подстановкой `#Имя` (источник `ИЗ` в реальных запросах 1С).
+ * Для ключевых слов берётся ИСХОДНОЕ написание (`text`), а не канонический верхний
+ * регистр, чтобы не искажать имена вроде `Дата`, `Количество`, `Сумма`.
+ */
 function parseDottedName(cur: Cursor): string {
   const first = cur.peek();
-  if (first.type !== 'ident' && first.type !== 'keyword') {
+  if (first.type !== 'ident' && first.type !== 'keyword' && first.type !== 'param') {
     throw cur.error('ожидалось имя', first);
   }
-  let name = cur.next().value;
+  let name = cur.next().text;
   while (cur.isPunct('.')) {
     cur.next();
     const seg = cur.peek();
     if (seg.type !== 'ident' && seg.type !== 'keyword') {
       throw cur.error('ожидался сегмент имени после «.»', seg);
     }
-    name += '.' + cur.next().value;
+    name += '.' + cur.next().text;
   }
   return name;
 }
@@ -867,7 +900,7 @@ function parseFieldRef(
     if (k % 2 === 0) {
       const t = tokens[k];
       if (t.type !== 'ident' && t.type !== 'keyword') return undefined;
-      segs.push(t.value);
+      segs.push(t.text);
     } else {
       const t = tokens[k];
       if (!(t.type === 'punct' && t.value === '.')) return undefined;
@@ -1170,7 +1203,7 @@ function parseOrder(cur: Cursor, aliasMap: Map<string, FieldRef>): Order {
         throw cur.error('ожидался псевдоним поля упорядочивания', aliasTok);
       }
       cur.next();
-      const ref = resolveSelectAlias(aliasTok.value, aliasMap);
+      const ref = resolveSelectAlias(aliasTok.text, aliasMap);
       const direction = cur.matchKeyword('УБЫВ') ? 'desc' : 'asc';
       fields.push({ tableId: ref.tableId, path: ref.path, direction });
       if (cur.matchPunct(',')) continue;
@@ -1258,7 +1291,7 @@ function matchSumAlias(tokens: Token[]): string | undefined {
   if (!(tokens[1].type === 'punct' && tokens[1].value === '(')) return undefined;
   if (tokens[2].type !== 'ident' && tokens[2].type !== 'keyword') return undefined;
   if (!(tokens[3].type === 'punct' && tokens[3].value === ')')) return undefined;
-  return tokens[2].value;
+  return tokens[2].text;
 }
 
 /** Одно группировочное поле итогов: `<псевдоним>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`. */
@@ -1268,7 +1301,7 @@ function parseTotalGroupField(cur: Cursor, aliasMap: Map<string, FieldRef>): Tot
     throw cur.error('ожидался псевдоним группировочного поля итогов', aliasTok);
   }
   cur.next();
-  const ref = resolveSelectAlias(aliasTok.value, aliasMap);
+  const ref = resolveSelectAlias(aliasTok.text, aliasMap);
 
   let kind: TotalKind = 'elements';
   if (cur.matchKeyword('ТОЛЬКО')) {
@@ -1283,7 +1316,7 @@ function parseTotalGroupField(cur: Cursor, aliasMap: Map<string, FieldRef>): Tot
     const a = cur.peek();
     if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
     cur.next();
-    field.alias = a.value;
+    field.alias = a.text;
   }
   return field;
 }
@@ -1336,7 +1369,7 @@ function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>): FieldRef
   const t = cur.peek();
   if (t.type !== 'ident' && t.type !== 'keyword') throw cur.error('ожидался псевдоним поля индекса', t);
   cur.next();
-  const ref = resolveSelectAlias(t.value, aliasMap);
+  const ref = resolveSelectAlias(t.text, aliasMap);
   return { tableId: ref.tableId, path: ref.path };
 }
 
@@ -1391,7 +1424,7 @@ function parseBuilderField(cur: Cursor): BuilderField {
   if (first.type !== 'ident' && first.type !== 'keyword') {
     throw cur.error('ожидалась ссылка поля построителя', first);
   }
-  let ref = cur.next().value;
+  let ref = cur.next().text;
   let child = false;
   while (cur.isPunct('.')) {
     cur.next();
@@ -1404,7 +1437,7 @@ function parseBuilderField(cur: Cursor): BuilderField {
     if (seg.type !== 'ident' && seg.type !== 'keyword') {
       throw cur.error('ожидался сегмент ссылки построителя после «.»', seg);
     }
-    ref += '.' + cur.next().value;
+    ref += '.' + cur.next().text;
   }
 
   const field: BuilderField = { ref, child };
@@ -1412,7 +1445,7 @@ function parseBuilderField(cur: Cursor): BuilderField {
     const a = cur.peek();
     if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
     cur.next();
-    field.alias = a.value;
+    field.alias = a.text;
   }
   return field;
 }
@@ -1447,7 +1480,7 @@ function splitUnionMembers(tokens: Token[], source: string): RawUnionMember[] {
   const flush = (distinct: boolean): void => {
     const last = current[current.length - 1];
     const eofPos = last ? last.pos + last.value.length : 0;
-    const eofTok: Token = { type: 'eof', value: '', pos: eofPos, line: last?.line ?? 1, col: last?.col ?? 1 };
+    const eofTok: Token = { type: 'eof', value: '', text: '', pos: eofPos, line: last?.line ?? 1, col: last?.col ?? 1 };
     members.push({ tokens: [...current, eofTok], distinct });
     current = [];
   };
