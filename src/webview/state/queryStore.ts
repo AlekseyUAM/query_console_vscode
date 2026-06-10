@@ -2,7 +2,7 @@ import type { MetaTable } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
-import { fieldAlias, type UnionMember } from '../../core/query/unionModel';
+import { fieldAlias, type UnionMember, type QueryDocument } from '../../core/query/unionModel';
 import type { BatchDocument } from '../../core/query/batchModel';
 
 /** Метаданные одного запроса-участника объединения. */
@@ -153,6 +153,7 @@ export type QueryAction =
   | { type: 'SET_ACTIVE_BATCH'; index: number }
   | { type: 'REMOVE_BATCH_QUERY'; index: number }
   | { type: 'MOVE_BATCH_QUERY'; index: number; dir: 'up' | 'down' }
+  | { type: 'LOAD_BATCH'; doc: BatchDocument }
   // --- порядок (УПОРЯДОЧИТЬ ПО) ---
   | { type: 'ADD_ORDER_FIELD'; tableId: string; path: string }
   | { type: 'REMOVE_ORDER_FIELD'; tableId: string; path: string }
@@ -300,6 +301,42 @@ export function buildModelFromFlat(flat: SavedQuery): QueryModel {
     totals: flat.totals,
     builder: flat.builder,
     indexing: flat.indexing,
+  };
+}
+
+/**
+ * Обратное преобразование `buildModelFromFlat`: модель → плоский SavedQuery.
+ * Поля-оптионалы модели, равные `undefined`, заполняются теми же пустыми значениями
+ * по умолчанию, что использует `restoreSaved`.
+ */
+export function modelToFlat(model: QueryModel): SavedQuery {
+  return {
+    selectedTables: model.tables,
+    selectedFields: model.fields,
+    tabSectionFields: model.tabSectionFields ?? [],
+    grouping: model.grouping ?? { multiple: false, groupFields: [], groupSets: [], aggregates: [] },
+    conditions: model.conditions ?? [],
+    joins: model.joins ?? [],
+    selection: model.selection ?? {},
+    queryType: model.queryType ?? 'select',
+    tempTableName: model.tempTableName ?? '',
+    lockForUpdate: model.lockForUpdate ?? [],
+    order: model.order ?? { fields: [], auto: false },
+    totals: model.totals ?? { groupFields: [], totalFields: [], grand: false },
+    builder: model.builder ?? emptyBuilder(),
+    indexing: model.indexing ?? { indexes: [] },
+  };
+}
+
+/**
+ * Снимок документа объединения из распарсенного `QueryDocument`: имя/distinct из
+ * участников, активный запрос — 0, savedQueries — плоские модели всех участников.
+ */
+export function docToSnapshot(doc: QueryDocument): BatchSnapshot {
+  return {
+    queryList: doc.members.map(m => ({ name: m.name, distinct: m.distinct })),
+    activeQuery: 0,
+    savedQueries: doc.members.map(m => modelToFlat(m.model)),
   };
 }
 
@@ -1019,6 +1056,35 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         batchSaved,
         activeBatch,
         ...restoreBatch(state, snap),
+      };
+    }
+
+    case 'LOAD_BATCH': {
+      // Загрузить весь распарсенный пакет в свежее состояние документа/пакета,
+      // сохранив метаданные (tables/expandedRefs). Пустой пакет → пустой initial.
+      if (action.doc.members.length === 0) {
+        return {
+          ...state,
+          activeBatch: 0,
+          batchSaved: [null],
+          ...restoreBatch(state, null),
+          focusedDbTableFullName: null,
+          focusedDbFieldPath: null,
+        };
+      }
+      const snaps = action.doc.members.map(docToSnapshot);
+      const savedQueries: (SavedQuery | null)[] = snaps[0].savedQueries.slice();
+      savedQueries[0] = null;
+      return {
+        ...state,
+        activeBatch: 0,
+        batchSaved: snaps.map((s, i) => (i === 0 ? null : s)),
+        queryList: snaps[0].queryList,
+        activeQuery: 0,
+        savedQueries,
+        ...restoreSaved(state, snaps[0].savedQueries[0]),
+        focusedDbTableFullName: null,
+        focusedDbFieldPath: null,
       };
     }
 
