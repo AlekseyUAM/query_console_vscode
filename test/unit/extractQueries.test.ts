@@ -1,0 +1,66 @@
+import { describe, it, expect } from 'vitest';
+import { extractQueryStrings } from '../../src/cli/extractQueries';
+
+describe('extractQueryStrings', () => {
+  it('извлекает один многострочный запрос с | и корректным lineStart', () => {
+    const src = [
+      'Процедура Тест()',
+      '\tЗапрос.Текст = "ВЫБРАТЬ',
+      '\t|\tТаблица.Поле',
+      '\t|ИЗ',
+      '\t|\tСправочник.Тест КАК Таблица";',
+      'КонецПроцедуры',
+    ].join('\n');
+    const res = extractQueryStrings(src);
+    expect(res).toHaveLength(1);
+    expect(res[0].text).toBe('ВЫБРАТЬ\n\tТаблица.Поле\nИЗ\n\tСправочник.Тест КАК Таблица');
+    expect(res[0].lineStart).toBe(2);
+  });
+
+  it('извлекает два запроса в одном источнике, нумеруя по порядку', () => {
+    const src = [
+      'А = "ВЫБРАТЬ Поле1";',
+      'Б = "ВЫБРАТЬ Поле2";',
+    ].join('\n');
+    const res = extractQueryStrings(src);
+    expect(res).toHaveLength(2);
+    expect(res[0].text).toBe('ВЫБРАТЬ Поле1');
+    expect(res[0].lineStart).toBe(1);
+    expect(res[1].text).toBe('ВЫБРАТЬ Поле2');
+    expect(res[1].lineStart).toBe(2);
+  });
+
+  it('игнорирует строковый литерал, не являющийся запросом', () => {
+    const src = 'Сообщить("Привет");';
+    expect(extractQueryStrings(src)).toHaveLength(0);
+  });
+
+  it('разэкранирует "" внутри строки', () => {
+    const src = 'Т = "ВЫБРАТЬ ""abc"" КАК Поле";';
+    const res = extractQueryStrings(src);
+    expect(res).toHaveLength(1);
+    expect(res[0].text).toBe('ВЫБРАТЬ "abc" КАК Поле');
+  });
+
+  it('игнорирует ВЫБРАТЬ внутри // комментария', () => {
+    const src = [
+      '// ВЫБРАТЬ это не запрос "ВЫБРАТЬ Поле"',
+      'Х = 1;',
+    ].join('\n');
+    expect(extractQueryStrings(src)).toHaveLength(0);
+  });
+
+  it('распознаёт УНИЧТОЖИТЬ и регистронезависимость', () => {
+    const src = 'Т = "уничтОжить Справочник.Тест";';
+    const res = extractQueryStrings(src);
+    expect(res).toHaveLength(1);
+    expect(res[0].text).toBe('уничтОжить Справочник.Тест');
+  });
+
+  it('игнорирует одинарные кавычки (даты) и не путает их со строками', () => {
+    const src = 'Д = \'20240101\'; Т = "ВЫБРАТЬ 1";';
+    const res = extractQueryStrings(src);
+    expect(res).toHaveLength(1);
+    expect(res[0].text).toBe('ВЫБРАТЬ 1');
+  });
+});
