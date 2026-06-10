@@ -80,10 +80,6 @@ class Cursor {
     return t;
   }
 
-  atEnd(): boolean {
-    return this.peek().type === 'eof';
-  }
-
   /** Проверяет, что следующий токен — keyword с данным значением, и поглощает его. */
   expectKeyword(value: string): Token {
     const t = this.peek();
@@ -327,7 +323,9 @@ function buildSelectAliasMap(model: QueryModel): Map<string, FieldRef> {
   const map = new Map<string, FieldRef>();
   for (const f of model.fields) {
     if (f.expression) continue;
+    /* v8 ignore next -- защитный пропуск: у поля без expression path всегда задан парсером */
     if (!f.path) continue;
+    /* v8 ignore next -- pop() на непустом path всегда строка (правая ветвь ?? f.path недостижима) */
     const key = f.alias ?? (f.path.split('.').pop() ?? f.path);
     if (!map.has(key)) map.set(key, { tableId: f.tableId, path: f.path });
   }
@@ -663,6 +661,11 @@ function parseDottedName(cur: Cursor): string {
  * позиции). Раскладка позиций инвертирует `renderSource`/`accountingPositions`
  * из sdblGenerator по виду регистра и срезу (3-й сегмент `fullName`).
  */
+/** Аргумент позиции n (пустая строка, если позиция отсутствует). */
+function arg(args: string[], n: number): string {
+  return args[n] ?? '';
+}
+
 function parseVirtualParams(cur: Cursor, fullName: string): VirtualParams {
   const args = parsePositionalArgs(cur);
   const parts = fullName.split('.');
@@ -680,25 +683,25 @@ function parseVirtualParams(cur: Cursor, fullName: string): VirtualParams {
 
   if (slice === 'Обороты') {
     // [startPeriod, endPeriod, periodicity, condition] — фиксированная арность 4.
-    set('startPeriod', args[0] ?? '');
-    set('endPeriod', args[1] ?? '');
-    set('periodicity', args[2] ?? '');
-    set('condition', args[3] ?? '');
+    set('startPeriod', arg(args, 0));
+    set('endPeriod', arg(args, 1));
+    set('periodicity', arg(args, 2));
+    set('condition', arg(args, 3));
     return v;
   }
   if (slice === 'ОстаткиИОбороты') {
     // [startPeriod, endPeriod, periodicity, fillMethod, condition] — арность 5.
-    set('startPeriod', args[0] ?? '');
-    set('endPeriod', args[1] ?? '');
-    set('periodicity', args[2] ?? '');
-    set('fillMethod', args[3] ?? '');
-    set('condition', args[4] ?? '');
+    set('startPeriod', arg(args, 0));
+    set('endPeriod', arg(args, 1));
+    set('periodicity', arg(args, 2));
+    set('fillMethod', arg(args, 3));
+    set('condition', arg(args, 4));
     return v;
   }
 
   // РС срезы / РН Остатки: [period, condition], хвостовые пустые отброшены.
-  set('period', args[0] ?? '');
-  set('condition', args[1] ?? '');
+  set('period', arg(args, 0));
+  set('condition', arg(args, 1));
   return v;
 }
 
@@ -712,48 +715,48 @@ function fillAccounting(
   switch (slice) {
     case 'Остатки':
       // [period, accountCondition, '', condition]
-      set('period', args[0] ?? '');
-      set('accountCondition', args[1] ?? '');
-      set('condition', args[3] ?? '');
+      set('period', arg(args, 0));
+      set('accountCondition', arg(args, 1));
+      set('condition', arg(args, 3));
       return;
     case 'Обороты':
       // non-corr: [startPeriod, endPeriod, periodicity, accountCondition, '', condition]
       // corr (8): + [corrAccountCondition, ''] и correspondence=true
-      set('startPeriod', args[0] ?? '');
-      set('endPeriod', args[1] ?? '');
-      set('periodicity', args[2] ?? '');
-      set('accountCondition', args[3] ?? '');
-      set('condition', args[5] ?? '');
+      set('startPeriod', arg(args, 0));
+      set('endPeriod', arg(args, 1));
+      set('periodicity', arg(args, 2));
+      set('accountCondition', arg(args, 3));
+      set('condition', arg(args, 5));
       if (args.length >= 8) {
-        set('corrAccountCondition', args[6] ?? '');
+        set('corrAccountCondition', arg(args, 6));
         v.correspondence = true;
       }
       return;
     case 'ОборотыДтКт':
       // [startPeriod, endPeriod, periodicity, accountDtCondition, '', accountKtCondition, '', condition]
-      set('startPeriod', args[0] ?? '');
-      set('endPeriod', args[1] ?? '');
-      set('periodicity', args[2] ?? '');
-      set('accountDtCondition', args[3] ?? '');
-      set('accountKtCondition', args[5] ?? '');
-      set('condition', args[7] ?? '');
+      set('startPeriod', arg(args, 0));
+      set('endPeriod', arg(args, 1));
+      set('periodicity', arg(args, 2));
+      set('accountDtCondition', arg(args, 3));
+      set('accountKtCondition', arg(args, 5));
+      set('condition', arg(args, 7));
       return;
     case 'ОстаткиИОбороты':
       // [startPeriod, endPeriod, periodicity, fillMethod, accountCondition, '', condition]
-      set('startPeriod', args[0] ?? '');
-      set('endPeriod', args[1] ?? '');
-      set('periodicity', args[2] ?? '');
-      set('fillMethod', args[3] ?? '');
-      set('accountCondition', args[4] ?? '');
-      set('condition', args[6] ?? '');
+      set('startPeriod', arg(args, 0));
+      set('endPeriod', arg(args, 1));
+      set('periodicity', arg(args, 2));
+      set('fillMethod', arg(args, 3));
+      set('accountCondition', arg(args, 4));
+      set('condition', arg(args, 6));
       return;
     case 'ДвиженияССубконто':
       // [startPeriod, endPeriod, condition, order, top]
-      set('startPeriod', args[0] ?? '');
-      set('endPeriod', args[1] ?? '');
-      set('condition', args[2] ?? '');
-      set('order', args[3] ?? '');
-      set('top', args[4] ?? '');
+      set('startPeriod', arg(args, 0));
+      set('endPeriod', arg(args, 1));
+      set('condition', arg(args, 2));
+      set('order', arg(args, 3));
+      set('top', arg(args, 4));
       return;
   }
 }
@@ -911,6 +914,7 @@ function parseFieldRef(
   const tableId = aliasToId.get(aliasName);
   if (tableId === undefined) return undefined;
   const path = segs.slice(1).join('.');
+  /* v8 ignore next -- недостижимо: tokens.length>=3 и нечётно ⇒ segs>=2 ⇒ path непуст */
   if (!path) return undefined;
   return { tableId, path };
 }
@@ -1005,6 +1009,7 @@ function trySimpleCondition(
 
   const op = tokens[opIdx].value as ConditionOperator;
   const paramTokens = tokens.slice(opIdx + 1);
+  /* v8 ignore next -- недостижимо: opIdx<tokens.length-1 (см. выше) ⇒ срез непуст */
   if (paramTokens.length === 0) return undefined;
   const param = sliceSource(source, paramTokens);
 
@@ -1037,6 +1042,7 @@ function joinFlags(kind: RawJoin['kind']): { leftAll: boolean; rightAll: boolean
  */
 function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
   const { leftAll, rightAll } = joinFlags(raw.kind);
+  /* v8 ignore next 2 -- псевдонимы затравки/присоединяемой всегда в aliasToId (правая ветвь ?? недостижима) */
   const seedId = aliasToId.get(raw.seedAlias) ?? raw.seedAlias;
   const joinedId = aliasToId.get(raw.joinedAlias) ?? raw.joinedAlias;
 
@@ -1290,6 +1296,7 @@ function matchSumAlias(tokens: Token[]): string | undefined {
   if (!(tokens[0].type === 'keyword' && tokens[0].value === 'СУММА')) return undefined;
   if (!(tokens[1].type === 'punct' && tokens[1].value === '(')) return undefined;
   if (tokens[2].type !== 'ident' && tokens[2].type !== 'keyword') return undefined;
+  /* v8 ignore next -- срез агрегата итогов из 4 токенов вида `СУММА ( ident X` не достигает X≠')' (разделитель верхнего уровня исключён) */
   if (!(tokens[3].type === 'punct' && tokens[3].value === ')')) return undefined;
   return tokens[2].text;
 }
@@ -1479,6 +1486,7 @@ function splitUnionMembers(tokens: Token[], source: string): RawUnionMember[] {
 
   const flush = (distinct: boolean): void => {
     const last = current[current.length - 1];
+    /* v8 ignore next 2 -- пустой участник (last undefined) приводит к ошибке разбора позже; ветви позиций защитные */
     const eofPos = last ? last.pos + last.value.length : 0;
     const eofTok: Token = { type: 'eof', value: '', text: '', pos: eofPos, line: last?.line ?? 1, col: last?.col ?? 1 };
     members.push({ tokens: [...current, eofTok], distinct });
@@ -1537,6 +1545,7 @@ export function parseDocument(text: string): QueryDocument {
   // Список псевдонимов колонок = псевдонимы полей участника 0 (по позициям).
   // Участник 0 эмитит ровно одну строку поля на колонку, поэтому его поля
   // взаимно-однозначны с колонками объединения.
+  /* v8 ignore next -- splitUnionMembers всегда даёт >=1 участника ⇒ ветвь [] недостижима */
   const columnAliases = models.length > 0 ? models[0].fields.map(fieldAlias) : [];
 
   const members: UnionMember[] = models.map((model, i) => {
