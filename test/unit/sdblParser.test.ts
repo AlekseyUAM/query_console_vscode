@@ -222,3 +222,318 @@ describe('parseQuery — model shape', () => {
     ]);
   });
 });
+
+describe('parseQuery 6.2.B — виртуальные таблицы (round-trip)', () => {
+  it('РС срез без параметров', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: {} }],
+      fields: [{ tableId: 't1', path: 'Период', alias: 'Период' }],
+    });
+  });
+
+  it('РС срез: period + condition', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { period: '&Период', condition: 'Валюта = &Валюта' } }],
+      fields: [{ tableId: 't1', path: 'Курс', alias: 'Курс' }],
+    });
+  });
+
+  it('РС срез: только period', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { period: '&Период' } }],
+      fields: [{ tableId: 't1', path: 'Курс', alias: 'Курс' }],
+    });
+  });
+
+  it('РС срез: только condition (пропущенная позиция period)', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { condition: 'Валюта = &Валюта' } }],
+      fields: [{ tableId: 't1', path: 'Курс', alias: 'Курс' }],
+    });
+  });
+
+  it('РН Обороты: фиксированная арность 4', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РН1.Обороты', virtual: { startPeriod: '&Нач', endPeriod: '&Кон', periodicity: 'Авто', condition: 'Измерение1 = &Пар' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Оборот', alias: 'Ресурс1Оборот' }],
+    });
+  });
+
+  it('РН Обороты: хвостовые пустые позиции сохраняются', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РН1.Обороты', virtual: { startPeriod: '&Нач', endPeriod: '&Кон' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Оборот', alias: 'Ресурс1Оборот' }],
+    });
+  });
+
+  it('РН Обороты: пропущенный endPeriod в середине', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РН1.Обороты', virtual: { startPeriod: '&Нач', periodicity: 'Месяц' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Оборот', alias: 'Ресурс1Оборот' }],
+    });
+  });
+
+  it('РН Остатки', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РН1.Остатки', virtual: { period: '&Период', condition: 'Измерение1 = &Пар' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Остаток', alias: 'Ресурс1Остаток' }],
+    });
+  });
+
+  it('РН ОстаткиИОбороты: фиксированная арность 5', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'РегистрНакопления.РН1.ОстаткиИОбороты', virtual: { startPeriod: '&Нач', endPeriod: '&Кон', periodicity: 'Авто', fillMethod: 'ДвиженияИГраницыПериода', condition: 'Измерение1 = &Пар' } }],
+      fields: [{ tableId: 't1', path: 'Ресурс1Оборот', alias: 'Ресурс1Оборот' }],
+    });
+  });
+
+  describe('РегистрБухгалтерии', () => {
+    const mk = (slice: string, virtual: any): QueryModel => ({
+      tables: [{ id: 't1', fullName: `РегистрБухгалтерии.РБ1.${slice}`, virtual }],
+      fields: [{ tableId: 't1', path: 'Счет', alias: 'Счет' }],
+    });
+
+    it('Остатки', () => roundTrip(mk('Остатки', { period: '&П', accountCondition: 'Счет = &С', condition: 'Организация = &О' })));
+    it('Обороты non-corr', () => roundTrip(mk('Обороты', { periodicity: 'Авто', correspondence: false })));
+    it('Обороты corr (арность 8, correspondence)', () => roundTrip(mk('Обороты', { periodicity: 'Период', correspondence: true })));
+    it('ОборотыДтКт (арность 8)', () => roundTrip(mk('ОборотыДтКт', { periodicity: 'Период' })));
+    it('ОстаткиИОбороты', () => roundTrip(mk('ОстаткиИОбороты', { periodicity: 'Период', fillMethod: 'ДвиженияИГраницыПериода' })));
+    it('ДвиженияССубконто без параметров', () => roundTrip(mk('ДвиженияССубконто', {})));
+    it('ДвиженияССубконто с top', () => roundTrip(mk('ДвиженияССубконто', { top: '3' })));
+  });
+
+  it('deep-equality: virtual params парсятся в правильную форму', () => {
+    const text = generate({
+      tables: [{ id: 't1', fullName: 'РегистрСведений.Курсы.СрезПоследних', virtual: { period: '&Период', condition: 'Валюта = &Валюта' } }],
+      fields: [{ tableId: 't1', path: 'Курс', alias: 'Курс' }],
+    });
+    const model = parseQuery(text);
+    expect(model.tables[0].virtual).toEqual({ period: '&Период', condition: 'Валюта = &Валюта' });
+  });
+
+  it('deep-equality: РБ Обороты corr → correspondence:true', () => {
+    const text = generate({
+      tables: [{ id: 't1', fullName: 'РегистрБухгалтерии.РБ1.Обороты', virtual: { periodicity: 'Период', correspondence: true } }],
+      fields: [{ tableId: 't1', path: 'Счет', alias: 'Счет' }],
+    });
+    const model = parseQuery(text);
+    expect(model.tables[0].virtual).toEqual({ periodicity: 'Период', correspondence: true });
+  });
+});
+
+describe('parseQuery 6.2.B — ГДЕ (round-trip)', () => {
+  const base = (): QueryModel => ({
+    tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+    fields: [
+      { tableId: 't1', path: 'Код', alias: 'Код' },
+      { tableId: 't1', path: 'Наименование', alias: 'Наименование' },
+    ],
+  });
+
+  it('одно простое условие', () => {
+    roundTrip({ ...base(), conditions: [{ custom: false, tableId: 't1', path: 'Код' }] });
+  });
+
+  it('два простых условия (И)', () => {
+    roundTrip({
+      ...base(),
+      conditions: [
+        { custom: false, tableId: 't1', path: 'Код' },
+        { custom: false, tableId: 't1', path: 'Наименование' },
+      ],
+    });
+  });
+
+  it('нестандартный оператор и явный параметр', () => {
+    roundTrip({ ...base(), conditions: [{ custom: false, tableId: 't1', path: 'Код', operator: '>=', param: '&МинКод' }] });
+  });
+
+  it('операторы В / МЕЖДУ / ПОДОБНО', () => {
+    roundTrip({ ...base(), conditions: [{ custom: false, tableId: 't1', path: 'Код', operator: 'ПОДОБНО', param: '&Шаблон' }] });
+  });
+
+  it('произвольное условие со скобками', () => {
+    roundTrip({ ...base(), conditions: [{ custom: true, expression: 'Валюты.Код В (&Список)' }] });
+  });
+
+  it('простое + произвольное условие', () => {
+    roundTrip({
+      ...base(),
+      conditions: [
+        { custom: false, tableId: 't1', path: 'Код' },
+        { custom: true, expression: 'Валюты.Код В (&Список)' },
+      ],
+    });
+  });
+
+  it('deep-equality: простое условие парсится в Condition', () => {
+    const text = generate({ ...base(), conditions: [{ custom: false, tableId: 't1', path: 'Код' }] });
+    const model = parseQuery(text);
+    expect(model.conditions).toEqual([
+      { custom: false, tableId: 't0', path: 'Код', operator: '=', param: '&Код' },
+    ]);
+  });
+});
+
+describe('parseQuery 6.2.B — соединения (round-trip)', () => {
+  const twoTables = (): QueryModel => ({
+    tables: [
+      { id: 't1', fullName: 'Справочник.Валюты' },
+      { id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' },
+    ],
+    fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+  });
+
+  const joinOf = (leftAll: boolean, rightAll: boolean): QueryModel => ({
+    ...twoTables(),
+    joins: [{
+      leftTableId: 't1', rightTableId: 't2',
+      leftAll, rightAll, custom: false,
+      leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+    }],
+  });
+
+  it('внутреннее соединение', () => roundTrip(joinOf(false, false)));
+  it('левое соединение', () => roundTrip(joinOf(true, false)));
+  it('полное соединение', () => roundTrip(joinOf(true, true)));
+
+  it('произвольное условие связи (скобки)', () => {
+    roundTrip({
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: true, rightAll: false, custom: true,
+        expression: 'Валюты.Ссылка = &Труляля',
+      }],
+    });
+  });
+
+  it('таблица без связи (trailing)', () => {
+    roundTrip({
+      tables: [
+        { id: 't1', fullName: 'Справочник.Валюты' },
+        { id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' },
+        { id: 't3', fullName: 'Документ.Счет' },
+      ],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+    });
+  });
+
+  it('deep-equality: внутреннее соединение парсится в Join', () => {
+    const text = generate(joinOf(false, false));
+    const model = parseQuery(text);
+    expect(model.joins).toEqual([
+      {
+        leftTableId: 't0', rightTableId: 't1',
+        leftAll: false, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      },
+    ]);
+    expect(model.tables.map(t => t.id)).toEqual(['t0', 't1']);
+  });
+});
+
+describe('parseQuery 6.2.B — группировка (round-trip)', () => {
+  it('одна группировка + агрегат', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+      ],
+      grouping: {
+        multiple: false,
+        groupFields: [
+          { tableId: 't1', path: 'Ссылка' },
+          { tableId: 't1', path: 'Код' },
+        ],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+  });
+
+  it('группирующие наборы', () => {
+    roundTrip({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'ОсновнаяВалюта', alias: 'ОсновнаяВалюта' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+        { tableId: 't1', path: 'Код', alias: 'Код' },
+        { tableId: 't1', path: 'Представление', alias: 'Представление' },
+      ],
+      grouping: {
+        multiple: true,
+        groupFields: [],
+        groupSets: [
+          [
+            { tableId: 't1', path: 'ОсновнаяВалюта' },
+            { tableId: 't1', path: 'Ссылка' },
+          ],
+          [{ tableId: 't1', path: 'Код' }],
+          [{ tableId: 't1', path: 'Представление' }],
+        ],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+  });
+
+  it('deep-equality: группировка сохраняет агрегаты и группировочные поля', () => {
+    const text = generate({
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      grouping: {
+        multiple: false,
+        groupFields: [{ tableId: 't1', path: 'Ссылка' }],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+    const model = parseQuery(text);
+    expect(model.grouping).toEqual({
+      multiple: false,
+      groupFields: [{ tableId: 't0', path: 'Ссылка' }],
+      groupSets: [],
+      aggregates: [{ tableId: 't0', path: 'Наценка', func: 'Сумма' }],
+    });
+  });
+});
+
+describe('parseQuery 6.2.B — комбинированный запрос (round-trip)', () => {
+  it('соединения + ГДЕ + группировка + агрегаты', () => {
+    roundTrip({
+      tables: [
+        { id: 't1', fullName: 'Справочник.Валюты' },
+        { id: 't2', fullName: 'Справочник.ВариантыОтветовАнкет' },
+      ],
+      fields: [
+        { tableId: 't1', path: 'Ссылка', alias: 'Ссылка' },
+        { tableId: 't1', path: 'Наценка', alias: 'Наценка' },
+      ],
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: true, rightAll: false, custom: false,
+        leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+      }],
+      conditions: [
+        { custom: false, tableId: 't1', path: 'Код' },
+        { custom: true, expression: 'Валюты.Наценка > (&Мин)' },
+      ],
+      grouping: {
+        multiple: false,
+        groupFields: [{ tableId: 't1', path: 'Ссылка' }],
+        groupSets: [],
+        aggregates: [{ tableId: 't1', path: 'Наценка', func: 'Сумма' }],
+      },
+    });
+  });
+});

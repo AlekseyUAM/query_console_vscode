@@ -27,6 +27,11 @@ import type {
   SummableField,
   Selection,
   Grouping,
+  Condition,
+  ConditionOperator,
+  Join,
+  FieldRef,
+  VirtualParams,
 } from './queryModel';
 
 import { tokenize } from './sdblLexer';
@@ -135,7 +140,9 @@ export function parseQuery(text: string): QueryModel {
   const selection = parseSelectionModifiers(cur);
   const rawFields = parseFieldList(cur);
   cur.expectKeyword('ИЗ');
-  const tables = parseFrom(cur);
+  const from = parseFrom(cur);
+  const tables = from.tables;
+  const joins = from.joins;
 
   // Карта псевдоним → tableId (по правилам resolveAliases, но псевдонимы уже
   // явно прочитаны из `КАК` каждой таблицы).
@@ -150,13 +157,32 @@ export function parseQuery(text: string): QueryModel {
     interpretField(rf, aliasToId, fields, aggregates);
   }
 
+  // Соединения: достроить ссылки на таблицы по псевдонимам.
+  const resolvedJoins = joins.map(j => resolveJoin(j, aliasToId));
+
+  // Секции после ИЗ — в каноническом порядке генератора: ГДЕ → СГРУППИРОВАТЬ ПО.
+  let conditions: Condition[] | undefined;
+  if (cur.isKeyword('ГДЕ')) {
+    conditions = parseWhere(cur, aliasToId);
+  }
+
+  let groupingFromClause: { multiple: boolean; groupFields: FieldRef[]; groupSets: FieldRef[][] } | undefined;
+  if (cur.isKeyword('СГРУППИРОВАТЬ')) {
+    groupingFromClause = parseGroupBy(cur, aliasToId);
+  }
+
   const model: QueryModel = { tables, fields };
   if (selection) model.selection = selection;
-  if (aggregates.length > 0) {
+  if (resolvedJoins.length > 0) model.joins = resolvedJoins;
+  if (conditions && conditions.length > 0) model.conditions = conditions;
+
+  // Группировка: объединяем агрегаты (из полей выборки) с группировочными полями
+  // и наборами из секции СГРУППИРОВАТЬ ПО. Не затираем агрегаты группировкой.
+  if (aggregates.length > 0 || groupingFromClause) {
     const grouping: Grouping = {
-      multiple: false,
-      groupFields: [],
-      groupSets: [],
+      multiple: groupingFromClause?.multiple ?? false,
+      groupFields: groupingFromClause?.groupFields ?? [],
+      groupSets: groupingFromClause?.groupSets ?? [],
       aggregates,
     };
     model.grouping = grouping;
@@ -245,42 +271,123 @@ function sliceSource(source: string, bodyTokens: Token[]): string {
   return source.slice(first.pos, end);
 }
 
+/** Псевдоним соединения до резолвинга (хранит псевдонимы вместо tableId). */
+interface RawJoin {
+  kind: 'ВНУТРЕННЕЕ' | 'ЛЕВОЕ' | 'ПРАВОЕ' | 'ПОЛНОЕ';
+  /** Псевдоним затравочной (левой по тексту) таблицы. */
+  seedAlias: string;
+  /** Псевдоним присоединяемой (правой по тексту) таблицы. */
+  joinedAlias: string;
+  /** Сырые токены условия после `ПО` (до следующего соединения/запятой/секции). */
+  condTokens: Token[];
+  condText: string;
+}
+
+interface FromResult {
+  tables: SelectedTable[];
+  joins: RawJoin[];
+}
+
 /**
- * Список источников `ИЗ` (без соединений). Каждый источник:
- * `<fullName> [(<params>)] КАК <alias>`. Параметры виртуальных таблиц на этом
- * слое НЕ разбираются (6.2.B): скобки поглощаются с балансировкой, `virtual`
- * остаётся undefined.
+ * Список источников `ИЗ`. Каждый источник:
+ * `<fullName> [(<params>)] КАК <alias>`. После затравочной таблицы может идти цепочка
+ * соединений `[ВНУТРЕННЕЕ|ЛЕВОЕ|ПОЛНОЕ] СОЕДИНЕНИЕ <источник> ПО <условие>`.
+ * Параметры виртуальных таблиц разбираются в `virtual` (6.2.B).
  */
-function parseFrom(cur: Cursor): SelectedTable[] {
+function parseFrom(cur: Cursor): FromResult {
   const tables: SelectedTable[] = [];
+  const joins: RawJoin[] = [];
   let index = 0;
-  for (;;) {
-    const fullName = parseDottedName(cur);
 
-    // Необязательные параметры виртуальной таблицы — пропускаем как сырой блок.
-    if (cur.isPunct('(')) {
-      skipBalancedParens(cur);
-    }
-
-    cur.expectKeyword('КАК');
-    const aliasTok = cur.peek();
-    if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
-      throw cur.error('ожидался псевдоним таблицы после КАК', aliasTok);
-    }
-    cur.next();
-
-    const table: SelectedTable = {
-      id: 't' + index,
-      fullName,
-      alias: aliasTok.value,
-    };
-    tables.push(table);
+  const readSource = (): SelectedTable => {
+    const table = parseTableSource(cur, index);
     index++;
+    return table;
+  };
+
+  for (;;) {
+    const seed = readSource();
+    tables.push(seed);
+    let lastAlias = seed.alias!;
+
+    // Цепочка соединений с этой затравкой.
+    while (isJoinKeyword(cur)) {
+      const kind = cur.next().value as RawJoin['kind'];
+      cur.expectKeyword('СОЕДИНЕНИЕ');
+      const joined = readSource();
+      tables.push(joined);
+      cur.expectKeyword('ПО');
+      const { tokens, text } = readJoinCondition(cur);
+      joins.push({
+        kind,
+        seedAlias: lastAlias,
+        joinedAlias: joined.alias!,
+        condTokens: tokens,
+        condText: text,
+      });
+      // Левоассоциативная цепочка: следующее соединение присоединяется к последней.
+      lastAlias = joined.alias!;
+    }
 
     if (cur.matchPunct(',')) continue;
     break;
   }
-  return tables;
+  return { tables, joins };
+}
+
+/** Один источник таблицы: `<fullName> [(<params>)] КАК <alias>`. */
+function parseTableSource(cur: Cursor, index: number): SelectedTable {
+  const fullName = parseDottedName(cur);
+
+  let virtual: VirtualParams | undefined;
+  if (cur.isPunct('(')) {
+    virtual = parseVirtualParams(cur, fullName);
+  }
+
+  cur.expectKeyword('КАК');
+  const aliasTok = cur.peek();
+  if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
+    throw cur.error('ожидался псевдоним таблицы после КАК', aliasTok);
+  }
+  cur.next();
+
+  const table: SelectedTable = {
+    id: 't' + index,
+    fullName,
+    alias: aliasTok.value,
+  };
+  if (virtual) table.virtual = virtual;
+  return table;
+}
+
+const JOIN_KEYWORDS = new Set(['ВНУТРЕННЕЕ', 'ЛЕВОЕ', 'ПРАВОЕ', 'ПОЛНОЕ']);
+function isJoinKeyword(cur: Cursor): boolean {
+  const t = cur.peek();
+  return t.type === 'keyword' && JOIN_KEYWORDS.has(t.value);
+}
+
+/**
+ * Сырые токены и текст условия `ПО` до следующего соединения / запятой верхнего
+ * уровня / конца секции ИЗ (ГДЕ/СГРУППИРОВАТЬ/eof). Скобки учитываются, чтобы
+ * запятые и ключевые слова внутри не обрывали условие.
+ */
+function readJoinCondition(cur: Cursor): { tokens: Token[]; text: string } {
+  const tokens: Token[] = [];
+  let depth = 0;
+  for (;;) {
+    const t = cur.peek();
+    if (t.type === 'eof') break;
+    if (depth === 0) {
+      if (t.type === 'punct' && t.value === ',') break;
+      if (isJoinKeyword(cur)) break;
+      if (t.type === 'keyword' && (t.value === 'ГДЕ' || t.value === 'СГРУППИРОВАТЬ')) break;
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    tokens.push(cur.next());
+  }
+  if (tokens.length === 0) throw cur.error('пустое условие соединения после ПО');
+  return { tokens, text: sliceSource(cur.source, tokens) };
 }
 
 /** Точечно-разделённое имя: ident (. ident)*. Возвращает исходную строку. */
@@ -301,22 +408,140 @@ function parseDottedName(cur: Cursor): string {
   return name;
 }
 
-/** Поглощает сбалансированный блок `( … )` целиком (для параметров ВТ). */
-function skipBalancedParens(cur: Cursor): void {
+/**
+ * Разбор параметров виртуальной таблицы `( arg0, arg1, … )` в `VirtualParams`.
+ * Аргументы разделяются запятыми ВЕРХНЕГО уровня (скобки внутри игнорируются),
+ * каждый аргумент — сырой срез исходника (может быть пустым для пропущенной
+ * позиции). Раскладка позиций инвертирует `renderSource`/`accountingPositions`
+ * из sdblGenerator по виду регистра и срезу (3-й сегмент `fullName`).
+ */
+function parseVirtualParams(cur: Cursor, fullName: string): VirtualParams {
+  const args = parsePositionalArgs(cur);
+  const parts = fullName.split('.');
+  const kind = parts[0];
+  const slice = parts[2];
+  const v: VirtualParams = {};
+  const set = (key: keyof VirtualParams, value: string): void => {
+    if (value !== '') (v as Record<string, unknown>)[key] = value;
+  };
+
+  if (kind === 'РегистрБухгалтерии') {
+    fillAccounting(v, slice, args, set);
+    return v;
+  }
+
+  if (slice === 'Обороты') {
+    // [startPeriod, endPeriod, periodicity, condition] — фиксированная арность 4.
+    set('startPeriod', args[0] ?? '');
+    set('endPeriod', args[1] ?? '');
+    set('periodicity', args[2] ?? '');
+    set('condition', args[3] ?? '');
+    return v;
+  }
+  if (slice === 'ОстаткиИОбороты') {
+    // [startPeriod, endPeriod, periodicity, fillMethod, condition] — арность 5.
+    set('startPeriod', args[0] ?? '');
+    set('endPeriod', args[1] ?? '');
+    set('periodicity', args[2] ?? '');
+    set('fillMethod', args[3] ?? '');
+    set('condition', args[4] ?? '');
+    return v;
+  }
+
+  // РС срезы / РН Остатки: [period, condition], хвостовые пустые отброшены.
+  set('period', args[0] ?? '');
+  set('condition', args[1] ?? '');
+  return v;
+}
+
+/** Раскладка позиций регистра бухгалтерии — инверсия `accountingPositions`. */
+function fillAccounting(
+  v: VirtualParams,
+  slice: string,
+  args: string[],
+  set: (key: keyof VirtualParams, value: string) => void
+): void {
+  switch (slice) {
+    case 'Остатки':
+      // [period, accountCondition, '', condition]
+      set('period', args[0] ?? '');
+      set('accountCondition', args[1] ?? '');
+      set('condition', args[3] ?? '');
+      return;
+    case 'Обороты':
+      // non-corr: [startPeriod, endPeriod, periodicity, accountCondition, '', condition]
+      // corr (8): + [corrAccountCondition, ''] и correspondence=true
+      set('startPeriod', args[0] ?? '');
+      set('endPeriod', args[1] ?? '');
+      set('periodicity', args[2] ?? '');
+      set('accountCondition', args[3] ?? '');
+      set('condition', args[5] ?? '');
+      if (args.length >= 8) {
+        set('corrAccountCondition', args[6] ?? '');
+        v.correspondence = true;
+      }
+      return;
+    case 'ОборотыДтКт':
+      // [startPeriod, endPeriod, periodicity, accountDtCondition, '', accountKtCondition, '', condition]
+      set('startPeriod', args[0] ?? '');
+      set('endPeriod', args[1] ?? '');
+      set('periodicity', args[2] ?? '');
+      set('accountDtCondition', args[3] ?? '');
+      set('accountKtCondition', args[5] ?? '');
+      set('condition', args[7] ?? '');
+      return;
+    case 'ОстаткиИОбороты':
+      // [startPeriod, endPeriod, periodicity, fillMethod, accountCondition, '', condition]
+      set('startPeriod', args[0] ?? '');
+      set('endPeriod', args[1] ?? '');
+      set('periodicity', args[2] ?? '');
+      set('fillMethod', args[3] ?? '');
+      set('accountCondition', args[4] ?? '');
+      set('condition', args[6] ?? '');
+      return;
+    case 'ДвиженияССубконто':
+      // [startPeriod, endPeriod, condition, order, top]
+      set('startPeriod', args[0] ?? '');
+      set('endPeriod', args[1] ?? '');
+      set('condition', args[2] ?? '');
+      set('order', args[3] ?? '');
+      set('top', args[4] ?? '');
+      return;
+  }
+}
+
+/**
+ * Разбор `( arg0, arg1, … )` в массив сырых строк-аргументов (по срезам
+ * исходника). Аргумент может быть пустым (`''`) для пропущенной позиции.
+ * Запятые верхнего уровня — разделители; скобки внутри учитываются.
+ */
+function parsePositionalArgs(cur: Cursor): string[] {
   cur.expectPunct('(');
-  let depth = 1;
+  const args: string[] = [];
+  let curTokens: Token[] = [];
+  let depth = 0;
+  const flush = (): void => {
+    args.push(curTokens.length > 0 ? sliceSource(cur.source, curTokens) : '');
+    curTokens = [];
+  };
   for (;;) {
     const t = cur.peek();
-    if (t.type === 'eof') throw cur.error('незакрытая скобка', t);
-    if (t.type === 'punct' && t.value === '(') depth++;
-    else if (t.type === 'punct' && t.value === ')') {
-      depth--;
+    if (t.type === 'eof') throw cur.error('незакрытая скобка параметров', t);
+    if (depth === 0 && t.type === 'punct' && t.value === ')') {
       cur.next();
-      if (depth === 0) break;
+      break;
+    }
+    if (depth === 0 && t.type === 'punct' && t.value === ',') {
+      cur.next();
+      flush();
       continue;
     }
-    cur.next();
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    curTokens.push(cur.next());
   }
+  flush();
+  return args;
 }
 
 /**
@@ -440,4 +665,270 @@ function parseFieldRef(
   const path = segs.slice(1).join('.');
   if (!path) return undefined;
   return { tableId, path };
+}
+
+// ───────────────────────────── ГДЕ (WHERE) ─────────────────────────────
+
+/** Множество токенов-операторов сравнения для условий. */
+const COND_OPERATORS = new Set<string>(['=', '<>', '>', '>=', '<', '<=', 'В', 'МЕЖДУ', 'ПОДОБНО']);
+
+/**
+ * Секция ГДЕ. Инвертирует `renderConditions`: первое условие, затем каждое
+ * последующее после `И` верхнего уровня. Каждый сегмент пытается распознаться как
+ * простое условие `<alias>.<path> <op> <param>`; иначе — произвольное (`custom`).
+ */
+function parseWhere(cur: Cursor, aliasToId: Map<string, string>): Condition[] {
+  cur.expectKeyword('ГДЕ');
+  const source = cur.source;
+  const segments = splitConditionSegments(cur);
+  return segments.map(seg => interpretCondition(seg, source, aliasToId));
+}
+
+/**
+ * Разбивает поток токенов условий на сегменты по `И` верхнего уровня (вне скобок),
+ * до конца секции ГДЕ (СГРУППИРОВАТЬ / eof / соединение не встречается здесь, т.к.
+ * ГДЕ идёт после ИЗ). Каждый сегмент — массив токенов одного условия.
+ */
+function splitConditionSegments(cur: Cursor): Token[][] {
+  const segments: Token[][] = [];
+  let current: Token[] = [];
+  let depth = 0;
+  const flush = (): void => {
+    if (current.length > 0) segments.push(current);
+    current = [];
+  };
+  for (;;) {
+    const t = cur.peek();
+    if (t.type === 'eof') break;
+    if (depth === 0) {
+      if (t.type === 'keyword' && t.value === 'СГРУППИРОВАТЬ') break;
+      if (t.type === 'keyword' && t.value === 'И') {
+        cur.next();
+        flush();
+        continue;
+      }
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    current.push(cur.next());
+  }
+  flush();
+  return segments;
+}
+
+/** Интерпретирует один сегмент условия: простое или произвольное. */
+function interpretCondition(
+  tokens: Token[],
+  source: string,
+  aliasToId: Map<string, string>
+): Condition {
+  const simple = trySimpleCondition(tokens, source, aliasToId);
+  if (simple) return simple;
+  return { custom: true, expression: sliceSource(source, tokens) };
+}
+
+/**
+ * Простое условие `<alias>.<path> <op> <param>`: ссылка на поле, оператор сравнения,
+ * затем произвольный остаток (параметр). Возвращает undefined, если структура не
+ * подходит (тогда сегмент трактуется как произвольное условие).
+ */
+function trySimpleCondition(
+  tokens: Token[],
+  source: string,
+  aliasToId: Map<string, string>
+): Condition | undefined {
+  // Найти первый оператор сравнения верхнего уровня.
+  let opIdx = -1;
+  let depth = 0;
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    else if (depth === 0 && isCondOperatorToken(t)) {
+      opIdx = k;
+      break;
+    }
+  }
+  if (opIdx <= 0 || opIdx >= tokens.length - 1) return undefined;
+
+  const lhs = tokens.slice(0, opIdx);
+  const ref = parseFieldRef(lhs, aliasToId);
+  if (!ref) return undefined;
+
+  const op = tokens[opIdx].value as ConditionOperator;
+  const paramTokens = tokens.slice(opIdx + 1);
+  if (paramTokens.length === 0) return undefined;
+  const param = sliceSource(source, paramTokens);
+
+  return { custom: false, tableId: ref.tableId, path: ref.path, operator: op, param };
+}
+
+function isCondOperatorToken(t: Token): boolean {
+  if (t.type === 'punct') return COND_OPERATORS.has(t.value);
+  if (t.type === 'keyword') return COND_OPERATORS.has(t.value);
+  return false;
+}
+
+// ───────────────────────── соединения (JOINs) ──────────────────────────
+
+/** Раскладка вида соединения → флаги leftAll/rightAll (инверсия joinKeyword). */
+function joinFlags(kind: RawJoin['kind']): { leftAll: boolean; rightAll: boolean } {
+  switch (kind) {
+    case 'ВНУТРЕННЕЕ': return { leftAll: false, rightAll: false };
+    case 'ЛЕВОЕ': return { leftAll: true, rightAll: false };
+    case 'ПРАВОЕ': return { leftAll: false, rightAll: true };
+    case 'ПОЛНОЕ': return { leftAll: true, rightAll: true };
+  }
+}
+
+/**
+ * Достраивает соединение из сырого вида: резолвит псевдонимы затравки/присоединяемой
+ * в tableId и разбирает условие `ПО`. Простое: `<aliasL>.<pathL> <op> <aliasR>.<pathR>`;
+ * иначе — произвольное (`custom`), причём генератор оборачивает произвольное в
+ * скобки, которые здесь снимаются.
+ */
+function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
+  const { leftAll, rightAll } = joinFlags(raw.kind);
+  const seedId = aliasToId.get(raw.seedAlias) ?? raw.seedAlias;
+  const joinedId = aliasToId.get(raw.joinedAlias) ?? raw.joinedAlias;
+
+  const simple = trySimpleJoinCondition(raw.condTokens, aliasToId);
+  if (simple) {
+    return {
+      leftTableId: simple.leftTableId,
+      rightTableId: simple.rightTableId,
+      leftAll, rightAll, custom: false,
+      leftPath: simple.leftPath,
+      operator: simple.operator,
+      rightPath: simple.rightPath,
+    };
+  }
+
+  // Произвольное условие: снять внешние скобки, добавленные генератором.
+  return {
+    leftTableId: seedId,
+    rightTableId: joinedId,
+    leftAll, rightAll, custom: true,
+    expression: stripOuterParens(raw.condText),
+  };
+}
+
+/**
+ * Простое условие соединения `<aliasL>.<pathL> <op> <aliasR>.<pathR>`. Обе стороны —
+ * ссылки на поля известных таблиц. leftTableId/rightTableId берутся из самих ссылок
+ * (а не из порядка таблиц — генератор строит условие по псевдонимам, не зависящим от
+ * перестановки правого соединения).
+ */
+function trySimpleJoinCondition(
+  tokens: Token[],
+  aliasToId: Map<string, string>
+): { leftTableId: string; leftPath: string; operator: ConditionOperator; rightTableId: string; rightPath: string } | undefined {
+  // Без внешних скобок (произвольное условие генератор заключает в скобки).
+  if (tokens.length > 0 && tokens[0].type === 'punct' && tokens[0].value === '(') return undefined;
+
+  let opIdx = -1;
+  let depth = 0;
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    else if (depth === 0 && isCondOperatorToken(t)) {
+      opIdx = k;
+      break;
+    }
+  }
+  if (opIdx <= 0 || opIdx >= tokens.length - 1) return undefined;
+
+  const left = parseFieldRef(tokens.slice(0, opIdx), aliasToId);
+  const right = parseFieldRef(tokens.slice(opIdx + 1), aliasToId);
+  if (!left || !right) return undefined;
+
+  return {
+    leftTableId: left.tableId,
+    leftPath: left.path,
+    operator: tokens[opIdx].value as ConditionOperator,
+    rightTableId: right.tableId,
+    rightPath: right.path,
+  };
+}
+
+/** Снимает ровно одну пару внешних скобок, если всё выражение в них заключено. */
+function stripOuterParens(text: string): string {
+  const s = text.trim();
+  if (!s.startsWith('(') || !s.endsWith(')')) return s;
+  // Проверить, что первая открывающая скобка закрывается последней.
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') {
+      depth--;
+      if (depth === 0) return i === s.length - 1 ? s.slice(1, -1).trim() : s;
+    }
+  }
+  return s;
+}
+
+// ──────────────────── СГРУППИРОВАТЬ ПО (GROUP BY) ───────────────────────
+
+/**
+ * Секция СГРУППИРОВАТЬ ПО. Инвертирует `renderGrouping`:
+ *  - `СГРУППИРОВАТЬ ПО <a.p>, …` → multiple:false, groupFields.
+ *  - `СГРУППИРОВАТЬ ПО ГРУППИРУЮЩИМ НАБОРАМ ( (a, b), (c) )` → multiple:true, groupSets.
+ */
+function parseGroupBy(
+  cur: Cursor,
+  aliasToId: Map<string, string>
+): { multiple: boolean; groupFields: FieldRef[]; groupSets: FieldRef[][] } {
+  cur.expectKeyword('СГРУППИРОВАТЬ');
+  cur.expectKeyword('ПО');
+
+  if (cur.matchKeyword('ГРУППИРУЮЩИМ')) {
+    cur.expectKeyword('НАБОРАМ');
+    const groupSets = parseGroupingSets(cur, aliasToId);
+    return { multiple: true, groupFields: [], groupSets };
+  }
+
+  // Одна группировка: список ссылок через запятую.
+  const groupFields: FieldRef[] = [];
+  for (;;) {
+    const ref = parseGroupFieldRef(cur, aliasToId);
+    groupFields.push(ref);
+    if (cur.matchPunct(',')) continue;
+    break;
+  }
+  return { multiple: false, groupFields, groupSets: [] };
+}
+
+/** Наборы группировки: `( (a, b), (c) )`. */
+function parseGroupingSets(cur: Cursor, aliasToId: Map<string, string>): FieldRef[][] {
+  cur.expectPunct('(');
+  const sets: FieldRef[][] = [];
+  for (;;) {
+    cur.expectPunct('(');
+    const set: FieldRef[] = [];
+    for (;;) {
+      set.push(parseGroupFieldRef(cur, aliasToId));
+      if (cur.matchPunct(',')) continue;
+      break;
+    }
+    cur.expectPunct(')');
+    sets.push(set);
+    if (cur.matchPunct(',')) continue;
+    break;
+  }
+  cur.expectPunct(')');
+  return sets;
+}
+
+/** Одна ссылка группировки `<alias>.<path>` → FieldRef. */
+function parseGroupFieldRef(cur: Cursor, aliasToId: Map<string, string>): FieldRef {
+  const tokens: Token[] = [];
+  for (;;) {
+    const t = cur.peek();
+    if (t.type !== 'ident' && t.type !== 'keyword' && !(t.type === 'punct' && t.value === '.')) break;
+    tokens.push(cur.next());
+  }
+  const ref = parseFieldRef(tokens, aliasToId);
+  if (!ref) throw cur.error('ожидалась ссылка на поле группировки', cur.peek());
+  return { tableId: ref.tableId, path: ref.path };
 }
