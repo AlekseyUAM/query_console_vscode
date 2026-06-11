@@ -1168,6 +1168,12 @@ function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
   const segments: Token[][] = [];
   let current: Token[] = [];
   let depth = 0;
+  // Глубина ВЫБОР … КОНЕЦ: верхнеуровневый `И` внутри значения ТОГДА/ИНАЧЕ
+  // оператора ВЫБОР не является разделителем условий ГДЕ/ИМЕЮЩИЕ (всё выражение
+  // ВЫБОР — одно условие). Без этого `ТОГДА a И b` разрывал бы оператор ВЫБОР.
+  let caseDepth = 0;
+  const isIdentWord = (t: Token, w: string): boolean =>
+    (t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === w;
   const flush = (): void => {
     if (current.length > 0) segments.push(current);
     current = [];
@@ -1175,7 +1181,7 @@ function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
   for (;;) {
     const t = cur.peek();
     if (t.type === 'eof') break;
-    if (depth === 0) {
+    if (depth === 0 && caseDepth === 0) {
       if (t.type === 'keyword' && stop.has(t.value)) break;
       if (t.type === 'keyword' && t.value === 'И') {
         cur.next();
@@ -1185,6 +1191,8 @@ function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
     }
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
+    else if (isIdentWord(t, 'ВЫБОР')) caseDepth++;
+    else if (isIdentWord(t, 'КОНЕЦ') && caseDepth > 0) caseDepth--;
     current.push(cur.next());
   }
   flush();
