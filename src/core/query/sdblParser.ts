@@ -159,6 +159,8 @@ type RawSelectItem =
   | { kind: 'tabSection'; ts: RawTabSection };
 
 const AUTO_ALIAS = /^Поле\d+$/;
+/** Голый параметр выборки `&Имя` (захватывает имя без `&`). */
+const BARE_PARAM_ALIAS = /^&([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)$/u;
 
 export function parseQuery(text: string): QueryModel {
   const tokens = tokenize(text);
@@ -874,7 +876,12 @@ function interpretField(
   // `КАК Поле{n}` сам). Это решает неоднозначность между настоящим агрегатом
   // (с явным псевдонимом) и выражением вида `СУММА(Алиас.Поле)` без псевдонима.
   if (rf.alias !== undefined && AUTO_ALIAS.test(rf.alias)) {
-    fields.push({ tableId: '', path: '', expression: rf.rawBody });
+    const field: SelectedField = { tableId: '', path: '', expression: rf.rawBody };
+    // Голый параметр `&Имя КАК Поле{n}`: разработчик задал явный `Поле{n}`, и
+    // конструктор его сохраняет (НЕ переалиасит в имя параметра). Фиксируем
+    // alias явно, иначе авто-правило `&Имя → Имя` сломает воспроизведение.
+    if (BARE_PARAM_ALIAS.test(rf.rawBody.trim())) field.alias = rf.alias;
+    fields.push(field);
     return;
   }
 
@@ -1814,7 +1821,11 @@ function assignExpressionFieldAliases(model: QueryModel): void {
     // Нумерация совпадает с `buildFieldLines`: счётчик растёт ТОЛЬКО для полей без
     // явного псевдонима (`f.alias ?? Поле${++exprCounter}`), т.е. произвольное поле
     // с явным `КАК` номер `Поле{n}` не занимает.
-    if (f.alias === undefined) f.alias = `Поле${++exprCounter}`;
+    if (f.alias !== undefined) continue;
+    // Голый параметр `&Имя` → псевдоним = имя параметра (без `&`), как у
+    // конструктора; счётчик `Поле{n}` им не занимается.
+    const m = BARE_PARAM_ALIAS.exec(f.expression.trim());
+    f.alias = m ? m[1] : `Поле${++exprCounter}`;
   }
 }
 
@@ -1864,7 +1875,11 @@ const BATCH_SEPARATOR = '\n;\n\n' + '/'.repeat(80) + '\n';
  * участником.
  */
 export function parseBatch(text: string): BatchDocument {
-  const chunks = text.split(BATCH_SEPARATOR);
+  // Хвостовой разделитель пакета `;` (с возможными пробелами/переводами строк)
+  // конструктор отбрасывает: `;` — концерн МЕЖДУ операторами, после последнего
+  // оператора его нет. Снимаем до разбиения, чтобы он не попал в текст условия.
+  const normalized = text.replace(/\s*;\s*$/u, '');
+  const chunks = normalized.split(BATCH_SEPARATOR);
   const members = chunks.map(parseDocument);
   return { members };
 }

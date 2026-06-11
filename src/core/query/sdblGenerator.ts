@@ -323,6 +323,20 @@ function buildQueryBlock(
   ].join('\n');
 }
 
+/** Голый параметр выборки `&Имя` (без вызова/индексации/прочего). */
+const BARE_PARAM = /^&([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)$/u;
+
+/**
+ * Автопсевдоним произвольного поля выборки без явного `КАК`. Конструктор 1С
+ * для голого параметра `&Имя` ставит псевдоним = имени параметра (без `&`),
+ * для остального — сквозной `Поле{n}`. Возвращает выбранный псевдоним; для
+ * варианта `Поле{n}` инкрементирует переданный счётчик.
+ */
+function exprAutoAlias(expression: string, next: () => string): string {
+  const m = BARE_PARAM.exec(expression.trim());
+  return m ? m[1] : next();
+}
+
 /**
  * Строки элементов выборки (БЕЗ хвостовых запятых) из собственных полей модели:
  * `model.fields`, табличные части и хвостовые поля. Совпадает байт-в-байт с тем,
@@ -340,7 +354,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
 
   for (const f of model.fields) {
     if (f.expression) {
-      const alias = f.alias ?? `Поле${++exprCounter}`;
+      const alias = f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
       const expr = formatSelectExpression(f.expression);
       allLines.push(`\t${expr} КАК ${alias}`);
       continue;
@@ -370,7 +384,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
   // Поля, которые должны появляться после табличных частей (Предопределенный, ИмяПредопределенныхДанных).
   for (const f of model.trailingFields ?? []) {
     if (f.expression) {
-      const alias = f.alias ?? `Поле${++exprCounter}`;
+      const alias = f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
       const expr = formatSelectExpression(f.expression);
       allLines.push(`\t${expr} КАК ${alias}`);
       continue;
