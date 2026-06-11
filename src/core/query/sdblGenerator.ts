@@ -500,7 +500,9 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
     const tableAliases = resolveAliases(model.tables);
     lines.push('УПОРЯДОЧИТЬ ПО');
     order.fields.forEach((f, i) => {
-      const ref = f.qualified
+      const ref = f.expression
+        ? f.expression
+        : f.qualified
         ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
         : selectAliasFor(model, f.tableId, f.path);
       const suffix = f.direction === 'desc' ? ' УБЫВ' : '';
@@ -573,7 +575,8 @@ export function renderIndex(indexing: Indexing | undefined, model: QueryModel): 
   const indexes = indexing.indexes.filter(ix => ix.fields.length > 0);
   if (indexes.length === 0) return [];
 
-  const aliasOf = (f: FieldRef): string => selectAliasFor(model, f.tableId, f.path);
+  const aliasOf = (f: FieldRef): string =>
+    f.expression ? f.expression : selectAliasFor(model, f.tableId, f.path);
 
   if (indexes.length === 1) {
     const fields = indexes[0].fields;

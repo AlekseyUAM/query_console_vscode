@@ -1602,6 +1602,15 @@ function parseOrder(
     cur.expectKeyword('ПО');
     for (;;) {
       const headTok = cur.peek();
+      // `УПОРЯДОЧИТЬ ПО &Параметр` — параметр запроса вместо псевдонима поля.
+      // Сохраняем дословно через expression; направление (УБЫВ) после него допустимо.
+      if (headTok.type === 'param') {
+        cur.next();
+        const dir = cur.matchKeyword('УБЫВ') ? 'desc' : 'asc';
+        fields.push({ tableId: '', path: '', direction: dir, expression: headTok.text });
+        if (cur.matchPunct(',')) continue;
+        break;
+      }
       if (headTok.type !== 'ident' && headTok.type !== 'keyword') {
         throw cur.error('ожидался псевдоним поля упорядочивания', headTok);
       }
@@ -1793,9 +1802,15 @@ function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>): Indexing {
   return { indexes: [{ unique: false, fields }] };
 }
 
-/** Одно поле индекса: псевдоним выборки → FieldRef. */
+/** Одно поле индекса: псевдоним выборки → FieldRef, либо `&Параметр` (рендерится дословно). */
 function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>): FieldRef {
   const t = cur.peek();
+  // `ИНДЕКСИРОВАТЬ ПО &Параметр` — параметр запроса вместо псевдонима поля
+  // (приём генерации динамических ВТ). Сохраняем дословно через expression.
+  if (t.type === 'param') {
+    cur.next();
+    return { tableId: '', path: '', expression: t.text };
+  }
   if (t.type !== 'ident' && t.type !== 'keyword') throw cur.error('ожидался псевдоним поля индекса', t);
   cur.next();
   const ref = resolveSelectAlias(t.text, aliasMap);
