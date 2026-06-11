@@ -341,9 +341,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
   for (const f of model.fields) {
     if (f.expression) {
       const alias = f.alias ?? `Поле${++exprCounter}`;
-      const expr = needsFormatting(f.expression)
-        ? formatExpression(f.expression.trim(), 'select')
-        : normalizeLeafCase(f.expression);
+      const expr = formatSelectExpression(f.expression);
       allLines.push(`\t${expr} КАК ${alias}`);
       continue;
     }
@@ -373,9 +371,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
   for (const f of model.trailingFields ?? []) {
     if (f.expression) {
       const alias = f.alias ?? `Поле${++exprCounter}`;
-      const expr = needsFormatting(f.expression)
-        ? formatExpression(f.expression.trim(), 'select')
-        : normalizeLeafCase(f.expression);
+      const expr = formatSelectExpression(f.expression);
       allLines.push(`\t${expr} КАК ${alias}`);
       continue;
     }
@@ -388,14 +384,28 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
 }
 
 /**
+ * Каноническое выражение произвольного поля выборки (без части `КАК <псевдоним>`).
+ * Единый источник правды для одиночного запроса (`buildFieldLines`) и для ячеек
+ * колонок объединения (`fieldExpr`): структурные выражения (ВЫБОР/ИЛИ/И) проходят
+ * переотрисовку конструктора через `formatExpression(..., 'select')`, остальные —
+ * только нормализацию регистра/пробелов листа.
+ */
+export function formatSelectExpression(expression: string): string {
+  return needsFormatting(expression)
+    ? formatExpression(expression.trim(), 'select')
+    : normalizeLeafCase(expression);
+}
+
+/**
  * Выражение элемента выборки для одного поля БЕЗ части `КАК <псевдоним>`:
  * `${псевдонимТаблицы}.${path}` (с обёрткой агрегата, если поле суммируемое),
- * либо сырое `expression` для произвольного поля. Карта псевдонимов
- * вычисляется по `resolveAliases(model.tables)` — ровно та же, что у `generate`.
+ * либо произвольное `expression` для произвольного поля (с переотрисовкой
+ * структуры конструктором). Карта псевдонимов вычисляется по
+ * `resolveAliases(model.tables)` — ровно та же, что у `generate`.
  * Используется генератором объединений для формирования ячеек колонок.
  */
 export function fieldExpr(model: QueryModel, field: SelectedField): string {
-  if (field.expression) return normalizeLeafCase(field.expression);
+  if (field.expression) return formatSelectExpression(field.expression);
   const aliases = resolveAliases(model.tables);
   const tableAlias = aliases.get(field.tableId) ?? field.tableId;
   const func = (model.grouping?.aggregates ?? []).find(

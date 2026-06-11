@@ -65,6 +65,85 @@ function tokUpper(t: Token): string {
 /** Операторы сравнения (пунктуация), вокруг которых конструктор ставит ровно один пробел. */
 const COMPARISON_PUNCT = new Set(['=', '<>', '<', '>', '<=', '>=']);
 
+/**
+ * Сплющивает лист в ОДНУ строку: конструктор 1С печатает листовое подвыражение
+ * (значение после ТОГДА/ИНАЧЕ, операнд условия КОГДА, сравнение/вызов) на одной
+ * строке вне зависимости от того, как разработчик разбил его в исходнике. Любая
+ * серия пробельных символов МЕЖДУ токенами (включая переводы строк и табы)
+ * схлопывается в один пробел; содержимое строковых ("…") и датовых ('…') литералов
+ * сохраняется дословно (лексер выдаёт литерал одним токеном, промежутки правятся
+ * только между токенами). Возвращает исходник без изменений, если он не
+ * токенизируется.
+ */
+/**
+ * Содержит ли лист вложенный подзапрос (ключевое слово ВЫБРАТЬ среди токенов).
+ * Подзапрос в `В (ВЫБРАТЬ …)` конструктор раскладывает по строкам как полноценный
+ * запрос — такой лист нельзя сплющивать в одну строку.
+ */
+export function leafHasSubquery(raw: string): boolean {
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return false;
+  }
+  return toks.some((t) => (t.type === 'keyword' || t.type === 'ident') && t.value.toUpperCase() === 'ВЫБРАТЬ');
+}
+
+/**
+ * Содержит ли лист верхнеуровневый булев оператор И/ИЛИ (вне скобок и вне `МЕЖДУ a
+ * И b`). Такой «лист» — на самом деле булево значение-выражение, которое конструктор
+ * раскладывает по строкам с переносом по оператору; сплющивать его нельзя.
+ */
+export function leafHasTopBoolean(raw: string): boolean {
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return false;
+  }
+  let depth = 0;
+  let betweenPending = 0;
+  for (const t of toks) {
+    if (t.type === 'eof') break;
+    if (t.type === 'punct' && t.value === '(') { depth++; continue; }
+    if (t.type === 'punct' && t.value === ')') { if (depth > 0) depth--; continue; }
+    if (depth !== 0) continue;
+    if (isWord(t, 'МЕЖДУ')) { betweenPending++; continue; }
+    if (isOr(t)) return true;
+    if (isAnd(t)) {
+      if (betweenPending > 0) betweenPending--;
+      else return true;
+    }
+  }
+  return false;
+}
+
+export function flattenLeafText(raw: string): string {
+  if (!raw || !/\s/.test(raw)) return raw;
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return raw;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length === 0) return raw;
+  let out = '';
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    const text = t.text ?? t.value;
+    if (i > 0) {
+      const prev = sig[i - 1];
+      const gapFrom = prev.pos + (prev.text ?? prev.value).length;
+      const gap = raw.slice(gapFrom, t.pos);
+      out += gap.length > 0 ? ' ' : '';
+    }
+    out += text;
+  }
+  return out;
+}
+
 export function normalizeLeafWhitespace(raw: string): string {
   if (!raw) return raw;
   let toks: Token[];
@@ -249,9 +328,17 @@ class Parser {
   private toks: Token[];
   private raw: string;
   private i = 0;
+  /**
+   * Сплющивать ли многострочные листья в одну строку. Включается только для слота
+   * `select` (поля выборки и значения ВЫБОР), где конструктор печатает листовое
+   * подвыражение на одной строке. В слотах ГДЕ/ИМЕЮЩИЕ/ПО исторически сохраняется
+   * многострочная структура исходника дословно (нулевая регрессия принятых файлов).
+   */
+  private flattenLeaves: boolean;
 
-  constructor(raw: string) {
+  constructor(raw: string, flattenLeaves = false) {
     this.raw = raw;
+    this.flattenLeaves = flattenLeaves;
     // исключаем eof из рабочего набора (но позиция eof нужна для среза «до конца»)
     this.toks = tokenize(raw);
   }
@@ -266,6 +353,26 @@ class Parser {
   /** Срез исходной строки [from, to) с обрезкой хвостовых пробелов. */
   private slice(from: number, to: number): string {
     return this.raw.slice(from, to).replace(/\s+$/u, '');
+  }
+
+  /**
+   * Текст листа [from, to): сплющивает многострочный лист в одну строку (конструктор
+   * печатает листовые подвыражения на одной строке), затем нормализует регистр и
+   * пробелы. Однострочные листья проходят только нормализацию (поведение принятых
+   * запросов не меняется).
+   */
+  private leafText(from: number, to: number): string {
+    const raw = this.raw.slice(from, to).replace(/\s+$/u, '');
+    // Сплющиваем многострочный лист в одну строку ТОЛЬКО если это действительно
+    // листовое подвыражение: без вложенного подзапроса (`В (ВЫБРАТЬ …)` —
+    // раскладывается конструктором как запрос) и без верхнеуровневого булева
+    // оператора И/ИЛИ (значение-слот вида `a ИЛИ b` конструктор переотрисовывает с
+    // переносом по оператору — не сплющиваем, сохраняя структуру исходника).
+    const flat =
+      this.flattenLeaves && raw.includes('\n') && !leafHasSubquery(raw) && !leafHasTopBoolean(raw)
+        ? flattenLeafText(raw)
+        : raw;
+    return normalizeLeafCase(flat);
   }
 
   parse(): Node {
@@ -440,7 +547,7 @@ class Parser {
       to = t.pos + t.value.length;
       this.i++;
     }
-    return { kind: 'leaf', text: normalizeLeafCase(this.raw.slice(from, to).replace(/\s+$/u, '')) };
+    return { kind: 'leaf', text: this.leafText(from, to) };
   }
 
   private parseCase(): Node {
@@ -503,7 +610,7 @@ class Parser {
       to = t.pos + t.value.length;
       this.i++;
     }
-    return { kind: 'leaf', text: normalizeLeafCase(this.raw.slice(from, to).replace(/\s+$/u, '')) };
+    return { kind: 'leaf', text: this.leafText(from, to) };
   }
 }
 
@@ -752,7 +859,11 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
  */
 export function formatExpression(raw: string, slot: ExprSlot): string {
   const trimmed = raw.trim();
-  const parser = new Parser(trimmed);
+  // Сплющивание многострочных листьев в одну строку — только для полей выборки
+  // (слот select); в ГДЕ/ИМЕЮЩИЕ/ПО структура исходника сохраняется дословно
+  // (там конструктор переотрисовывает булевы операторы и внутри скобок листа —
+  // отдельный механизм; сплющивание дало бы регрессии).
+  const parser = new Parser(trimmed, slot === 'select');
   const tree = parser.parse();
 
   // Дословный хвост: то, что парсер не потребил (например, ошибочно захваченные
