@@ -254,7 +254,9 @@ function buildQueryBlock(
   const tableLines = renderFrom(model, aliases);
 
   const conditionLines = renderConditions(model.conditions, aliases);
-  const groupingLines = renderGrouping(model.grouping, aliases);
+  // Конструктор 1С отделяет блок группировки пустой строкой (в отличие от ГДЕ).
+  const groupingInner = renderGrouping(model.grouping, aliases);
+  const groupingLines = groupingInner.length ? ['', ...groupingInner] : [];
 
   // ПОМЕСТИТЬ/ДОБАВИТЬ <ВТ> между списком полей и ИЗ.
   const placeLines: string[] =
