@@ -317,10 +317,10 @@ function parseSingleQuery(cur: Cursor): QueryModel {
     model.order = parseOrder(cur, selectAliasMap, aliasToId);
   }
   if (cur.isKeyword('ИТОГИ')) {
-    model.totals = parseTotals(cur, selectAliasMap);
+    model.totals = parseTotals(cur, selectAliasMap, aliasToId);
   }
   if (cur.isKeyword('ИНДЕКСИРОВАТЬ')) {
-    model.indexing = parseIndex(cur, selectAliasMap);
+    model.indexing = parseIndex(cur, selectAliasMap, aliasToId);
   }
 
   if (builder.fields.length || builder.conditions.length || builder.order.length || builder.totals.length) {
@@ -1155,11 +1155,11 @@ const WHERE_STOP = new Set<string>([
   // parseWhere дословно затягивал хвост (`…\nУПОРЯДОЧИТЬ ПО …`) в param последнего
   // условия, и УПОРЯДОЧИТЬ воспроизводилось как сырой текст (теряя нормализацию
   // отступов конструктора). Остановка здесь передаёт управление штатному parseOrder.
-  // ИТОГИ/ИНДЕКСИРОВАТЬ НЕ включаем: их рендер пока не сохраняет квалификацию
-  // `Таблица.Поле`, поэтому секции без предшествующего УПОРЯДОЧИТЬ оставляем
-  // дословному хвосту (регрессий нет).
   'УПОРЯДОЧИТЬ',
   'АВТОУПОРЯДОЧИВАНИЕ',
+  'ИТОГИ',
+  'ИНДЕКСИРОВАТЬ',
+  'ДЛЯ',
 ]);
 /** Ключевые слова, завершающие секцию ИМЕЮЩИЕ. */
 const HAVING_STOP = new Set<string>(['УПОРЯДОЧИТЬ', 'ИТОГИ', 'ИНДЕКСИРОВАТЬ', 'АВТОУПОРЯДОЧИВАНИЕ', 'ДЛЯ']);
@@ -1708,7 +1708,7 @@ function parseOrder(
  * expression = сырой текст. Группы: `ОБЩИЕ` (первый) → grand; остальные —
  * `<псевдоним>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`.
  */
-function parseTotals(cur: Cursor, aliasMap: Map<string, FieldRef>): Totals {
+function parseTotals(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map<string, string>): Totals {
   cur.expectKeyword('ИТОГИ');
   const totalFields: TotalField[] = [];
 
@@ -1729,7 +1729,7 @@ function parseTotals(cur: Cursor, aliasMap: Map<string, FieldRef>): Totals {
     if (cur.matchKeyword('ОБЩИЕ')) {
       grand = true;
     } else {
-      groupFields.push(parseTotalGroupField(cur, aliasMap));
+      groupFields.push(parseTotalGroupField(cur, aliasMap, aliasToId));
     }
     if (cur.matchPunct(',')) continue;
     break;
@@ -1776,14 +1776,16 @@ function matchSumAlias(tokens: Token[]): string | undefined {
   return tokens[2].text;
 }
 
-/** Одно группировочное поле итогов: `<псевдоним>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`. */
-function parseTotalGroupField(cur: Cursor, aliasMap: Map<string, FieldRef>): TotalGroupField {
+/** Одно группировочное поле итогов: `<поле>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`. */
+function parseTotalGroupField(
+  cur: Cursor,
+  aliasMap: Map<string, FieldRef>,
+  aliasToId: Map<string, string>
+): TotalGroupField {
   const aliasTok = cur.peek();
-  if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
-    throw cur.error('ожидался псевдоним группировочного поля итогов', aliasTok);
-  }
-  cur.next();
-  const ref = resolveSelectAlias(aliasTok.text, aliasMap);
+  const segs = readDottedPath(cur);
+  if (!segs) throw cur.error('ожидался псевдоним группировочного поля итогов', aliasTok);
+  const ref = resolveSectionFieldRef(segs, aliasMap, aliasToId);
 
   let kind: TotalKind = 'elements';
   if (cur.matchKeyword('ТОЛЬКО')) {
@@ -1794,6 +1796,7 @@ function parseTotalGroupField(cur: Cursor, aliasMap: Map<string, FieldRef>): Tot
   }
 
   const field: TotalGroupField = { tableId: ref.tableId, path: ref.path, kind };
+  if (ref.qualified) field.qualified = true;
   if (cur.matchKeyword('КАК')) {
     const a = cur.peek();
     if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
@@ -1811,7 +1814,7 @@ function parseTotalGroupField(cur: Cursor, aliasMap: Map<string, FieldRef>): Tot
  *  - `ИНДЕКСИРОВАТЬ ПО НАБОРАМ ( (a, b)[ УНИКАЛЬНО], (c) )` → несколько индексов.
  * Поля адресуются по псевдониму выборки.
  */
-function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>): Indexing {
+function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map<string, string>): Indexing {
   cur.expectKeyword('ИНДЕКСИРОВАТЬ');
   cur.expectKeyword('ПО');
 
@@ -1822,7 +1825,7 @@ function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>): Indexing {
       cur.expectPunct('(');
       const fields: FieldRef[] = [];
       for (;;) {
-        fields.push(parseIndexField(cur, aliasMap));
+        fields.push(parseIndexField(cur, aliasMap, aliasToId));
         if (cur.matchPunct(',')) continue;
         break;
       }
@@ -1839,15 +1842,50 @@ function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>): Indexing {
   // Один индекс: список псевдонимов через запятую.
   const fields: FieldRef[] = [];
   for (;;) {
-    fields.push(parseIndexField(cur, aliasMap));
+    fields.push(parseIndexField(cur, aliasMap, aliasToId));
     if (cur.matchPunct(',')) continue;
     break;
   }
   return { indexes: [{ unique: false, fields }] };
 }
 
-/** Одно поле индекса: псевдоним выборки → FieldRef, либо `&Параметр` (рендерится дословно). */
-function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>): FieldRef {
+/**
+ * Точечный путь `<голова>(.<сегмент>)*`, начиная с уже не потреблённого токена.
+ * Возвращает сегменты или undefined, если первый токен не имя.
+ */
+function readDottedPath(cur: Cursor): string[] | undefined {
+  const head = cur.peek();
+  if (head.type !== 'ident' && head.type !== 'keyword') return undefined;
+  cur.next();
+  const segs = [head.text];
+  while (cur.isPunct('.')) {
+    cur.next();
+    const seg = cur.peek();
+    if (seg.type !== 'ident' && seg.type !== 'keyword') throw cur.error('ожидался сегмент имени после «.»', seg);
+    segs.push(cur.next().text);
+  }
+  return segs;
+}
+
+/**
+ * Поле, адресуемое в секциях ИНДЕКСИРОВАТЬ ПО / ИТОГИ ПО: либо квалифицированная
+ * ссылка `<псевдонимТаблицы>.<path>` (qualified, выводится дословно), либо
+ * псевдоним выборки. Конструктор 1С сохраняет ту форму, что задал пользователь.
+ */
+function resolveSectionFieldRef(
+  segs: string[],
+  aliasMap: Map<string, FieldRef>,
+  aliasToId: Map<string, string>
+): FieldRef {
+  if (segs.length > 1 && aliasToId.has(segs[0])) {
+    return { tableId: aliasToId.get(segs[0])!, path: segs.slice(1).join('.'), qualified: true };
+  }
+  const ref = resolveSelectAlias(segs.join('.'), aliasMap);
+  return { tableId: ref.tableId, path: ref.path };
+}
+
+/** Одно поле индекса: квалиф. ссылка/псевдоним выборки → FieldRef, либо `&Параметр`. */
+function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map<string, string>): FieldRef {
   const t = cur.peek();
   // `ИНДЕКСИРОВАТЬ ПО &Параметр` — параметр запроса вместо псевдонима поля
   // (приём генерации динамических ВТ). Сохраняем дословно через expression.
@@ -1855,10 +1893,9 @@ function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>): FieldRef
     cur.next();
     return { tableId: '', path: '', expression: t.text };
   }
-  if (t.type !== 'ident' && t.type !== 'keyword') throw cur.error('ожидался псевдоним поля индекса', t);
-  cur.next();
-  const ref = resolveSelectAlias(t.text, aliasMap);
-  return { tableId: ref.tableId, path: ref.path };
+  const segs = readDottedPath(cur);
+  if (!segs) throw cur.error('ожидался псевдоним поля индекса', t);
+  return resolveSectionFieldRef(segs, aliasMap, aliasToId);
 }
 
 // ───────────────────── ДЛЯ ИЗМЕНЕНИЯ (FOR UPDATE) ──────────────────────

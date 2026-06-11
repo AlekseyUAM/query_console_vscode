@@ -54,6 +54,12 @@ export interface FieldRef {
    * ссылкой. Сырой срез исходника, переотрисовывается генератором.
    */
   expression?: string;
+  /**
+   * Поле задано как `<псевдонимТаблицы>.<path>` (ссылка на поле таблицы) —
+   * генератор выводит его квалифицированно `Псевдоним.path` (как УПОРЯДОЧИТЬ ПО).
+   * Используется секциями ИНДЕКСИРОВАТЬ ПО / ИТОГИ ПО.
+   */
+  qualified?: boolean;
 }
 
 export interface SummableField extends FieldRef {
@@ -105,6 +111,8 @@ export interface TotalGroupField {
   kind: TotalKind;
   /** Псевдоним группировки (КАК …), опционально. */
   alias?: string;
+  /** Поле задано как `<псевдонимТаблицы>.<path>` — выводится квалифицированно. */
+  qualified?: boolean;
 }
 
 export interface TotalField {

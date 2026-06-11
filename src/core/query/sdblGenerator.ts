@@ -547,10 +547,13 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   const active = totals.groupFields.length > 0 || totals.grand;
   if (!active) return [];
 
+  const tableAliases = resolveAliases(model.tables);
   const byList: string[] = [];
   if (totals.grand) byList.push('ОБЩИЕ');
   for (const g of totals.groupFields) {
-    const alias = selectAliasFor(model, g.tableId, g.path);
+    const alias = g.qualified
+      ? `${tableAliases.get(g.tableId) ?? g.tableId}.${g.path}`
+      : selectAliasFor(model, g.tableId, g.path);
     const as = g.alias ? ` КАК ${g.alias}` : '';
     byList.push(`${alias}${totalKindSuffix(g.kind)}${as}`);
   }
@@ -583,8 +586,13 @@ export function renderIndex(indexing: Indexing | undefined, model: QueryModel): 
   const indexes = indexing.indexes.filter(ix => ix.fields.length > 0);
   if (indexes.length === 0) return [];
 
+  const tableAliases = resolveAliases(model.tables);
   const aliasOf = (f: FieldRef): string =>
-    f.expression ? f.expression : selectAliasFor(model, f.tableId, f.path);
+    f.expression
+      ? f.expression
+      : f.qualified
+      ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
+      : selectAliasFor(model, f.tableId, f.path);
 
   if (indexes.length === 1) {
     const fields = indexes[0].fields;
