@@ -1378,6 +1378,12 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
   // разработчик; флаг здесь всегда false, скобок во вводе не было.
   const simple = trySimpleJoinCondition(raw.condTokens, aliasToId);
   if (simple) {
+    // leftTableId/rightTableId берём из операндов условия (порядок рендера `ПО`),
+    // НО порядок сцепления `ИЗ` задаём из текста (seedTableId/joinedTableId): иначе
+    // затравка цепочки бралась бы из левого операнда условия, а конструктор 1С
+    // сохраняет порядок источников разработчика (`ИЗ B ВНУТРЕННЕЕ СОЕДИНЕНИЕ A ПО
+    // a.x = b.y` остаётся B → A). Если порядок совпадает — поля избыточны, но
+    // безвредны (фаза 6.12).
     return {
       leftTableId: simple.leftTableId,
       rightTableId: simple.rightTableId,
@@ -1385,6 +1391,8 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
       leftPath: simple.leftPath,
       operator: simple.operator,
       rightPath: simple.rightPath,
+      seedTableId: seedId,
+      joinedTableId: joinedId,
     };
   }
 
@@ -1397,6 +1405,8 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
     leftAll, rightAll, custom: true,
     expression: stripOuterParens(raw.condText),
     parenthesized,
+    seedTableId: seedId,
+    joinedTableId: joinedId,
   };
 }
 

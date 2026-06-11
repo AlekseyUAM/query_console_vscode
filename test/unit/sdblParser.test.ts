@@ -449,6 +449,7 @@ describe('parseQuery 6.2.B — соединения (round-trip)', () => {
         leftTableId: 't0', rightTableId: 't1',
         leftAll: false, rightAll: false, custom: false,
         leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
+        seedTableId: 't0', joinedTableId: 't1',
       },
     ]);
     expect(model.tables.map(t => t.id)).toEqual(['t0', 't1']);

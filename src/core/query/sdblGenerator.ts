@@ -244,9 +244,13 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
 
   joins.forEach((join, idx) => {
     // Источники соединения в порядке записи: затравка — левая таблица, присоединяемая —
-    // правая. ПРАВОЕ соединение конструктор сохраняет без перестановки.
-    const seedId = join.leftTableId;
-    const joinedId = join.rightTableId;
+    // правая. ПРАВОЕ соединение конструктор сохраняет без перестановки. Порядок
+    // СЦЕПЛЕНИЯ берём из seedTableId/joinedTableId (текстовый порядок источников),
+    // а не из leftTableId/rightTableId (порядок операндов условия) — конструктор 1С
+    // сохраняет порядок источников разработчика. Для соединений из UI (без этих
+    // полей) — откат к left/rightTableId (фаза 6.12).
+    const seedId = join.seedTableId ?? join.leftTableId;
+    const joinedId = join.joinedTableId ?? join.rightTableId;
     const keyword = joinKeyword(join.leftAll, join.rightAll);
     const seed = byId.get(seedId);
     const joined = byId.get(joinedId);
