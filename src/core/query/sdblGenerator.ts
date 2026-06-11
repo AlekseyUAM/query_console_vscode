@@ -612,8 +612,11 @@ export function generate(model: QueryModel): string {
     return model.tempTableName ? `УНИЧТОЖИТЬ ${model.tempTableName}` : '';
   }
 
-  if (model.tables.length === 0) return '';
+  // Запрос без источника (`ВЫБРАТЬ <конст/параметр> КАК Поле [ПОМЕСТИТЬ ВТ]`) —
+  // допустим в 1С (создание ВТ из констант/параметров), buildQueryBlock не выводит
+  // секцию ИЗ. Пусто только когда нет ни таблиц, ни полей.
   const hasFields = model.fields.length > 0 || (model.tabSectionFields?.length ?? 0) > 0;
+  if (model.tables.length === 0 && !hasFields) return '';
   if (!hasFields) return '';
 
   const aliases = resolveAliases(model.tables);

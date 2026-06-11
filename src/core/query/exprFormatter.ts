@@ -156,6 +156,18 @@ export function flattenLeafText(raw: string): string {
   return out;
 }
 
+/**
+ * Удаляет незначащие ведущие нули из целой части числового литерала:
+ * `01` → `1`, `007` → `7`, `00` → `0`, `00.5` → `0.5`. Дробную часть не трогает.
+ */
+function stripLeadingZeros(value: string): string {
+  const dot = value.indexOf('.');
+  const intPart = dot >= 0 ? value.slice(0, dot) : value;
+  const frac = dot >= 0 ? value.slice(dot) : '';
+  const trimmed = intPart.replace(/^0+(?=\d)/, '');
+  return trimmed + frac;
+}
+
 export function normalizeLeafWhitespace(raw: string): string {
   if (!raw) return raw;
   let toks: Token[];
@@ -165,12 +177,23 @@ export function normalizeLeafWhitespace(raw: string): string {
     return raw;
   }
   const sig = toks.filter((t) => t.type !== 'eof');
-  if (sig.length < 2) return raw;
 
   const isCmp = (t: Token): boolean => t.type === 'punct' && COMPARISON_PUNCT.has(t.value);
 
   // Правки промежутков (gap) между соседними токенами, применяем справа налево.
   const edits: Array<{ from: number; to: number; text: string }> = [];
+
+  // Нормализация числовых литералов: удаление незначащих ведущих нулей
+  // (`01` → `1`, `00` → `0`), как делает конструктор 1С (напр. `ДАТАВРЕМЯ(2000, 1, 1)`).
+  for (const t of sig) {
+    if (t.type !== 'number') continue;
+    const v = t.value;
+    const stripped = stripLeadingZeros(v);
+    if (stripped !== v) {
+      edits.push({ from: t.pos, to: t.pos + v.length, text: stripped });
+    }
+  }
+
   for (let i = 0; i < sig.length - 1; i++) {
     const a = sig[i];
     const b = sig[i + 1];
