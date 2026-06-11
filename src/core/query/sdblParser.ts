@@ -221,6 +221,8 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   const aggregates: SummableField[] = [];
   const tabSectionFields: SelectedTabSectionField[] = [];
   const trailingFields: SelectedField[] = [];
+  // Единственный источник → можно квалифицировать голые поля без метаинформации.
+  const soleSource = soleSourceOf(tables, joins);
   let sawTabSection = false;
   for (const item of items) {
     if (item.kind === 'tabSection') {
@@ -230,9 +232,9 @@ function parseSingleQuery(cur: Cursor): QueryModel {
     }
     if (sawTabSection) {
       // Поле после табличной части → trailingFields (порядок генератора).
-      interpretField(item.field, aliasToId, trailingFields, aggregates);
+      interpretField(item.field, aliasToId, trailingFields, aggregates, soleSource);
     } else {
-      interpretField(item.field, aliasToId, fields, aggregates);
+      interpretField(item.field, aliasToId, fields, aggregates, soleSource);
     }
   }
 
@@ -244,7 +246,7 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   //   → УПОРЯДОЧИТЬ ПО → ИТОГИ → ИНДЕКСИРОВАТЬ ПО → ДЛЯ ИЗМЕНЕНИЯ.
   let conditions: Condition[] | undefined;
   if (cur.isKeyword('ГДЕ')) {
-    conditions = parseWhere(cur, aliasToId);
+    conditions = parseWhere(cur, aliasToId, soleSource);
   }
 
   if (cur.isBuilderBlock('ГДЕ')) {
@@ -846,8 +848,27 @@ function interpretField(
   rf: RawField,
   aliasToId: Map<string, string>,
   fields: SelectedField[],
-  aggregates: SummableField[]
+  aggregates: SummableField[],
+  soleSource?: SoleSource
 ): void {
+  // Голое поле при единственном источнике (фаза 6.12): разработчик не
+  // квалифицировал поле псевдонимом таблицы (`ВЫБРАТЬ Ссылка ИЗ … КАК Т`).
+  // Конструктор 1С квалифицирует его псевдонимом единственного источника и
+  // автоалиасит последним сегментом пути (`Т.Ссылка КАК Ссылка`). Делаем это
+  // ДО короткого замыкания на `Поле{n}`, т.к. конструктор переалиасит даже
+  // явно написанный разработчиком `КАК Поле1` (`Код КАК Поле1` → `Т.Код КАК Код`).
+  // Безопасно: bare-проверка требует чистый точечный путь без скобок, поэтому
+  // агрегато-образные выражения `СУММА(Алиас.Поле) КАК Поле1` сюда не попадают.
+  if (soleSource) {
+    const bare = tryBareField(rf.bodyTokens, aliasToId, soleSource.alias);
+    if (bare) {
+      const field: SelectedField = { tableId: soleSource.id, path: bare.path };
+      if (rf.alias !== undefined && !AUTO_ALIAS.test(rf.alias)) field.alias = rf.alias;
+      fields.push(field);
+      return;
+    }
+  }
+
   // Автопсевдоним `Поле{n}` → поле было произвольным выражением; сохраняем сырой
   // LHS как expression, alias оставляем undefined (генератор воспроизведёт
   // `КАК Поле{n}` сам). Это решает неоднозначность между настоящим агрегатом
@@ -958,6 +979,79 @@ function parseFieldRef(
   return { tableId, path };
 }
 
+/** Единственный источник запроса (для квалификации голых полей, фаза 6.12). */
+interface SoleSource {
+  id: string;
+  alias: string;
+}
+
+/**
+ * Единственный ли это источник, к которому можно безопасно (без метаинформации
+ * схемы) привязать голое поле: ровно одна таблица в `ИЗ`, без соединений, без
+ * подзапроса-источника и с непустым псевдонимом. Многоисточниковые запросы
+ * требуют реальной схемы — здесь не трогаются.
+ */
+function soleSourceOf(tables: SelectedTable[], joins: RawJoin[]): SoleSource | undefined {
+  if (joins.length > 0) return undefined;
+  if (tables.length !== 1) return undefined;
+  const t = tables[0];
+  if (t.subquery) return undefined;
+  if (!t.alias) return undefined;
+  return { id: t.id, alias: t.alias };
+}
+
+/** Литералы-значения, которые НЕ являются голыми полями (одиночный токен). */
+const LITERAL_VALUES = new Set(['НЕОПРЕДЕЛЕНО', 'ИСТИНА', 'ЛОЖЬ', 'NULL']);
+
+/**
+ * Голое поле = чистый точечный путь идентификаторов (`Ссылка`, `Владелец.Код`),
+ * который разработчик НЕ квалифицировал псевдонимом источника. Возвращает path,
+ * если тело — такой путь, его голова не совпадает с псевдонимом источника и не
+ * является известным псевдонимом таблицы, и это не литерал-значение. Иначе
+ * undefined (тогда поле трактуется как раньше: простое/агрегат/выражение).
+ */
+function tryBareField(
+  tokens: Token[],
+  aliasToId: Map<string, string>,
+  soleAlias: string
+): { path: string } | undefined {
+  if (tokens.length === 0) return undefined;
+  const segs: string[] = [];
+  for (let k = 0; k < tokens.length; k++) {
+    if (k % 2 === 0) {
+      const t = tokens[k];
+      if (t.type !== 'ident' && t.type !== 'keyword') return undefined;
+      segs.push(t.text);
+    } else {
+      const t = tokens[k];
+      if (!(t.type === 'punct' && t.value === '.')) return undefined;
+    }
+  }
+  if (tokens.length % 2 === 0) return undefined; // путь оканчивается сегментом
+  const head = segs[0];
+  // Уже квалифицировано псевдонимом источника или известной таблицей — не голое.
+  if (head === soleAlias) return undefined;
+  if (aliasToId.has(head)) return undefined;
+  // Литерал-значение из одного сегмента (НЕОПРЕДЕЛЕНО/ИСТИНА/ЛОЖЬ/NULL).
+  if (segs.length === 1 && LITERAL_VALUES.has(head.toUpperCase())) return undefined;
+  return { path: segs.join('.') };
+}
+
+/**
+ * Ссылка на поле для голого LHS условия при единственном источнике: если `lhs` —
+ * чистый точечный путь, не квалифицированный псевдонимом источника, возвращает
+ * `(soleSource.id, path)`. Иначе undefined.
+ */
+function bareLhsRef(
+  lhs: Token[],
+  aliasToId: Map<string, string>,
+  soleSource: SoleSource
+): { tableId: string; path: string } | undefined {
+  const bare = tryBareField(lhs, aliasToId, soleSource.alias);
+  if (!bare) return undefined;
+  return { tableId: soleSource.id, path: bare.path };
+}
+
 // ───────────────────────────── ГДЕ (WHERE) ─────────────────────────────
 
 /** Множество токенов-операторов сравнения для условий. */
@@ -968,11 +1062,11 @@ const COND_OPERATORS = new Set<string>(['=', '<>', '>', '>=', '<', '<=', 'В', '
  * последующее после `И` верхнего уровня. Каждый сегмент пытается распознаться как
  * простое условие `<alias>.<path> <op> <param>`; иначе — произвольное (`custom`).
  */
-function parseWhere(cur: Cursor, aliasToId: Map<string, string>): Condition[] {
+function parseWhere(cur: Cursor, aliasToId: Map<string, string>, soleSource?: SoleSource): Condition[] {
   cur.expectKeyword('ГДЕ');
   const source = cur.source;
   const segments = splitConditionSegments(cur, WHERE_STOP);
-  return segments.map(seg => interpretCondition(seg, source, aliasToId));
+  return segments.map(seg => interpretCondition(seg, source, aliasToId, soleSource));
 }
 
 /**
@@ -1032,9 +1126,20 @@ function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
 function interpretCondition(
   tokens: Token[],
   source: string,
-  aliasToId: Map<string, string>
+  aliasToId: Map<string, string>,
+  soleSource?: SoleSource
 ): Condition {
-  const simple = trySimpleCondition(tokens, source, aliasToId);
+  // Голое поле-условие при единственном источнике (`ГДЕ Предопределенный` →
+  // `ГДЕ Т.Предопределенный`): весь сегмент — чистый точечный путь без оператора,
+  // голова не псевдоним источника. Квалифицируем как произвольное выражение
+  // `<псевдоним>.<path>` (генератор рендерит произвольные условия дословно).
+  if (soleSource) {
+    const bare = tryBareField(tokens, aliasToId, soleSource.alias);
+    if (bare) {
+      return { custom: true, expression: `${soleSource.alias}.${bare.path}` };
+    }
+  }
+  const simple = trySimpleCondition(tokens, source, aliasToId, soleSource);
   if (simple) return simple;
   return { custom: true, expression: sliceSource(source, tokens) };
 }
@@ -1047,7 +1152,8 @@ function interpretCondition(
 function trySimpleCondition(
   tokens: Token[],
   source: string,
-  aliasToId: Map<string, string>
+  aliasToId: Map<string, string>,
+  soleSource?: SoleSource
 ): Condition | undefined {
   // Найти первый оператор сравнения верхнего уровня.
   let opIdx = -1;
@@ -1064,7 +1170,12 @@ function trySimpleCondition(
   if (opIdx <= 0 || opIdx >= tokens.length - 1) return undefined;
 
   const lhs = tokens.slice(0, opIdx);
-  const ref = parseFieldRef(lhs, aliasToId);
+  // Голое поле слева (`Код = &Код` при единственном источнике) → квалифицируем
+  // псевдонимом источника, как сделал бы конструктор 1С.
+  const ref = parseFieldRef(lhs, aliasToId)
+    ?? (soleSource
+      ? bareLhsRef(lhs, aliasToId, soleSource)
+      : undefined);
   if (!ref) return undefined;
 
   const op = tokens[opIdx].value as ConditionOperator;
