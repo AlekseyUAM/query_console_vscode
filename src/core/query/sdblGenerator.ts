@@ -99,10 +99,14 @@ function selectionModifiers(selection: QueryModel['selection']): string {
   return m;
 }
 
-/** Ключевое слово соединения по галочкам «Все» (без нормализации перестановки). */
+/**
+ * Ключевое слово соединения по галочкам «Все». Конструктор 1С сохраняет ПРАВОЕ
+ * соединение как есть (не нормализует перестановкой в ЛЕВОЕ).
+ */
 function joinKeyword(leftAll: boolean, rightAll: boolean): string {
   if (leftAll && rightAll) return 'ПОЛНОЕ';
-  if (leftAll || rightAll) return 'ЛЕВОЕ';
+  if (leftAll && !rightAll) return 'ЛЕВОЕ';
+  if (!leftAll && rightAll) return 'ПРАВОЕ';
   return 'ВНУТРЕННЕЕ';
 }
 
@@ -147,10 +151,10 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
   const lines: string[] = [];
 
   joins.forEach((join, idx) => {
-    // Нормализация правого соединения: перестановка таблиц, вид → ЛЕВОЕ.
-    const swap = !join.leftAll && join.rightAll;
-    const seedId = swap ? join.rightTableId : join.leftTableId;
-    const joinedId = swap ? join.leftTableId : join.rightTableId;
+    // Источники соединения в порядке записи: затравка — левая таблица, присоединяемая —
+    // правая. ПРАВОЕ соединение конструктор сохраняет без перестановки.
+    const seedId = join.leftTableId;
+    const joinedId = join.rightTableId;
     const keyword = joinKeyword(join.leftAll, join.rightAll);
     const seed = byId.get(seedId);
     const joined = byId.get(joinedId);
