@@ -163,7 +163,13 @@ export function flattenLeafText(raw: string): string {
       const prev = sig[i - 1];
       const gapFrom = prev.pos + (prev.text ?? prev.value).length;
       const gap = raw.slice(gapFrom, t.pos);
-      out += gap.length > 0 ? ' ' : '';
+      // Пунктуационное сплющивание как у конструктора 1С: пробел не ставится
+      // СРАЗУ ПОСЛЕ открывающей `(` и ПЕРЕД закрывающей `)` / запятой, даже если в
+      // исходнике там был перенос строки/отступ (`(\n\tЗНАЧЕНИЕ…` → `(ЗНАЧЕНИЕ…`).
+      const prevText = prev.text ?? prev.value;
+      const noSpaceAfter = prevText === '(';
+      const noSpaceBefore = text === ')' || text === ',';
+      out += gap.length > 0 && !noSpaceAfter && !noSpaceBefore ? ' ' : '';
     }
     out += text;
   }

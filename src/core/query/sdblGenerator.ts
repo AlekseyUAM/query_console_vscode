@@ -451,7 +451,9 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
 export function formatSelectExpression(expression: string): string {
   return needsFormatting(expression)
     ? formatExpression(expression.trim(), 'select')
-    : normalizeLeafCase(expression);
+    // Квирк `… ЕСТЬ НЕ NULL ` (хвостовой пробел) действует и в слоте выборки: при
+    // наличии `КАК <псевдоним>` это даёт двойной пробел `NULL  КАК` (как конструктор).
+    : appendIsNotNullTrailingSpace(normalizeLeafCase(expression));
 }
 
 /**
