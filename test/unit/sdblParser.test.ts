@@ -370,6 +370,19 @@ describe('parseQuery 6.2.B — ГДЕ (round-trip)', () => {
     });
   });
 
+  it('секция ИМЕЮЩИЕ (round-trip, агрегатное условие)', () => {
+    const model: QueryModel = {
+      ...base(),
+      grouping: { multiple: false, groupFields: [{ tableId: 't1', path: 'Код' }], groupSets: [], aggregates: [] },
+      having: [{ custom: true, expression: 'КОЛИЧЕСТВО(Валюты.Ссылка) = 0' }],
+    };
+    const text = generate(model);
+    expect(text).toContain('\n\nИМЕЮЩИЕ\n\tКОЛИЧЕСТВО(Валюты.Ссылка) = 0');
+    const reparsed = parseQuery(text);
+    expect(reparsed.having).toEqual([{ custom: true, expression: 'КОЛИЧЕСТВО(Валюты.Ссылка) = 0' }]);
+    expect(generate(reparsed)).toBe(text);
+  });
+
   it('deep-equality: простое условие парсится в Condition', () => {
     const text = generate({ ...base(), conditions: [{ custom: false, tableId: 't1', path: 'Код' }] });
     const model = parseQuery(text);

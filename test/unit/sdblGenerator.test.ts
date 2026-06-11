@@ -530,6 +530,16 @@ describe('generate — условия (ГДЕ)', () => {
     expect(text).not.toContain('ГДЕ');
   });
 
+  it('секция ИМЕЮЩИЕ: пустая строка-разделитель, после группировки', () => {
+    const model = base();
+    model.grouping = { multiple: false, groupFields: [{ tableId: 't1', path: 'Код' }], groupSets: [], aggregates: [] };
+    model.having = [{ custom: true, expression: 'КОЛИЧЕСТВО(Валюты.Ссылка) = 0' }];
+    const text = generate(model);
+    expect(text).toContain(
+      '\nСГРУППИРОВАТЬ ПО\n\tВалюты.Код\n\nИМЕЮЩИЕ\n\tКОЛИЧЕСТВО(Валюты.Ссылка) = 0'
+    );
+  });
+
   it('lastSegment берётся из последнего сегмента пути', () => {
     const model = base();
     model.conditions = [{ custom: false, tableId: 't1', path: 'Владелец.Код' }];

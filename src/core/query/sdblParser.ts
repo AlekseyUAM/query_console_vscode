@@ -256,6 +256,12 @@ function parseSingleQuery(cur: Cursor): QueryModel {
     groupingFromClause = parseGroupBy(cur, aliasToId);
   }
 
+  // ИМЕЮЩИЕ — фильтр по агрегатам, сразу за СГРУППИРОВАТЬ ПО.
+  let having: Condition[] | undefined;
+  if (cur.isKeyword('ИМЕЮЩИЕ')) {
+    having = parseHaving(cur, aliasToId);
+  }
+
   if (cur.isBuilderBlock('УПОРЯДОЧИТЬ')) {
     builder.order = parseBuilderBlock(cur, 'УПОРЯДОЧИТЬ');
   }
@@ -279,6 +285,7 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   if (trailingFields.length > 0) model.trailingFields = trailingFields;
   if (resolvedJoins.length > 0) model.joins = resolvedJoins;
   if (conditions && conditions.length > 0) model.conditions = conditions;
+  if (having && having.length > 0) model.having = having;
   if (lockForUpdate && lockForUpdate.length > 0) model.lockForUpdate = lockForUpdate;
 
   // Группировка: объединяем агрегаты (из полей выборки) с группировочными полями
@@ -932,7 +939,28 @@ const COND_OPERATORS = new Set<string>(['=', '<>', '>', '>=', '<', '<=', 'В', '
 function parseWhere(cur: Cursor, aliasToId: Map<string, string>): Condition[] {
   cur.expectKeyword('ГДЕ');
   const source = cur.source;
-  const segments = splitConditionSegments(cur);
+  const segments = splitConditionSegments(cur, WHERE_STOP);
+  return segments.map(seg => interpretCondition(seg, source, aliasToId));
+}
+
+/**
+ * Ключевые слова, завершающие секцию ГДЕ. Только `СГРУППИРОВАТЬ` — как было до 6.9
+ * (ИМЕЮЩИЕ идёт лишь после группировки, поэтому ГДЕ до него не доходит). Расширять это
+ * множество нельзя без регрессий: меняет разбор `ГДЕ` у запросов без группировки.
+ */
+const WHERE_STOP = new Set<string>(['СГРУППИРОВАТЬ']);
+/** Ключевые слова, завершающие секцию ИМЕЮЩИЕ. */
+const HAVING_STOP = new Set<string>(['УПОРЯДОЧИТЬ', 'ИТОГИ', 'ИНДЕКСИРОВАТЬ', 'АВТОУПОРЯДОЧИВАНИЕ', 'ДЛЯ']);
+
+/**
+ * Секция ИМЕЮЩИЕ (фильтр по агрегатам после группировки). Те же сегменты по
+ * верхнеуровневому `И`, что и ГДЕ; условия обычно агрегатные → сохраняются как
+ * произвольные выражения.
+ */
+function parseHaving(cur: Cursor, aliasToId: Map<string, string>): Condition[] {
+  cur.expectKeyword('ИМЕЮЩИЕ');
+  const source = cur.source;
+  const segments = splitConditionSegments(cur, HAVING_STOP);
   return segments.map(seg => interpretCondition(seg, source, aliasToId));
 }
 
@@ -941,7 +969,7 @@ function parseWhere(cur: Cursor, aliasToId: Map<string, string>): Condition[] {
  * до конца секции ГДЕ (СГРУППИРОВАТЬ / eof / соединение не встречается здесь, т.к.
  * ГДЕ идёт после ИЗ). Каждый сегмент — массив токенов одного условия.
  */
-function splitConditionSegments(cur: Cursor): Token[][] {
+function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
   const segments: Token[][] = [];
   let current: Token[] = [];
   let depth = 0;
@@ -953,7 +981,7 @@ function splitConditionSegments(cur: Cursor): Token[][] {
     const t = cur.peek();
     if (t.type === 'eof') break;
     if (depth === 0) {
-      if (t.type === 'keyword' && t.value === 'СГРУППИРОВАТЬ') break;
+      if (t.type === 'keyword' && stop.has(t.value)) break;
       if (t.type === 'keyword' && t.value === 'И') {
         cur.next();
         flush();
@@ -1422,7 +1450,7 @@ function parseLockForUpdate(cur: Cursor): string[] {
   return names;
 }
 
-const SECTION_KEYWORDS = new Set(['ИНДЕКСИРОВАТЬ', 'ИТОГИ', 'УПОРЯДОЧИТЬ', 'АВТОУПОРЯДОЧИВАНИЕ', 'ДЛЯ']);
+const SECTION_KEYWORDS = new Set(['ИМЕЮЩИЕ', 'ИНДЕКСИРОВАТЬ', 'ИТОГИ', 'УПОРЯДОЧИТЬ', 'АВТОУПОРЯДОЧИВАНИЕ', 'ДЛЯ']);
 function isSectionKeyword(value: string): boolean {
   return SECTION_KEYWORDS.has(value);
 }

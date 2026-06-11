@@ -257,6 +257,8 @@ function buildQueryBlock(
   // Конструктор 1С отделяет блок группировки пустой строкой (в отличие от ГДЕ).
   const groupingInner = renderGrouping(model.grouping, aliases);
   const groupingLines = groupingInner.length ? ['', ...groupingInner] : [];
+  // ИМЕЮЩИЕ — сразу за группировкой, тоже с предшествующей пустой строкой.
+  const havingLines = renderHaving(model.having, aliases);
 
   // ПОМЕСТИТЬ/ДОБАВИТЬ <ВТ> между списком полей и ИЗ.
   const placeLines: string[] =
@@ -286,6 +288,7 @@ function buildQueryBlock(
     ...conditionLines,
     ...builderWhere,
     ...groupingLines,
+    ...havingLines,
     ...builderOrder,
     ...builderTotals,
     ...lockLines,
@@ -632,12 +635,12 @@ function renderOperatorRhs(op: string, param: string): string {
  * тогда вывод байт-в-байт как раньше. Первое условие на отдельной строке,
  * каждое последующее — с префиксом «И ».
  */
-function renderConditions(
+/** Строки отдельных условий (без ключевого слова секции и префиксов `И`). */
+function buildConditionStrings(
   conditions: Condition[] | undefined,
   aliases: Map<string, string>
 ): string[] {
   if (!conditions || conditions.length === 0) return [];
-
   const conds: string[] = [];
   for (const c of conditions) {
     if (c.custom) {
@@ -651,9 +654,29 @@ function renderConditions(
     const op = c.operator ?? '=';
     conds.push(`${alias}.${c.path} ${renderOperatorRhs(op, param)}`);
   }
+  return conds;
+}
 
+function renderConditions(
+  conditions: Condition[] | undefined,
+  aliases: Map<string, string>
+): string[] {
+  const conds = buildConditionStrings(conditions, aliases);
   if (conds.length === 0) return [];
   return ['ГДЕ', ...conds.map((c, i) => (i === 0 ? `\t${c}` : `\tИ ${c}`))];
+}
+
+/**
+ * Секция ИМЕЮЩИЕ (фильтр по агрегатам). Конструктор 1С отделяет её пустой строкой и
+ * форматирует условия как ГДЕ. Возвращает [] если условий нет.
+ */
+function renderHaving(
+  having: Condition[] | undefined,
+  aliases: Map<string, string>
+): string[] {
+  const conds = buildConditionStrings(having, aliases);
+  if (conds.length === 0) return [];
+  return ['', 'ИМЕЮЩИЕ', ...conds.map((c, i) => (i === 0 ? `\t${c}` : `\tИ ${c}`))];
 }
 
 export function formatAsBslString(text: string): string {
