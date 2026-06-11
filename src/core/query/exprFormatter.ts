@@ -481,10 +481,24 @@ export function needsFormatting(raw: string): boolean {
 interface RenderCtx {
   cont: number; // C — контентный отступ секции
   caseBoolean: boolean; // CASE в этой позиции — булев слот (E=C+1) или value (E=C)
+  stripNotParens?: boolean; // ГДЕ/ИМЕЮЩИЕ: `(НЕ поле)` → `НЕ поле` (конструктор снимает скобки)
 }
 
 function tabs(n: number): string {
   return TAB.repeat(n);
+}
+
+/**
+ * В ГДЕ/ИМЕЮЩИЕ конструктор снимает скобки вокруг отрицания одиночной ссылки на
+ * поле: `(НЕ Алиас.Путь[.Путь…])` → `НЕ Алиас.Путь`. Скобки сохраняются, если под
+ * `НЕ` стоит что-то сложнее ссылки (сравнение, ЕСТЬ NULL, В(…), вложенные скобки,
+ * вызов функции и т. п.). Лист уже включает внешние скобки дословно.
+ */
+const NEGATED_FIELD_RE = /^\(\s*НЕ\s+([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)\s*\)$/u;
+export function stripNegatedFieldParens(text: string): string {
+  const m = NEGATED_FIELD_RE.exec(text);
+  if (!m) return text;
+  return `НЕ ${m[1]}`;
 }
 
 function renderBool(
@@ -551,7 +565,7 @@ function renderBool(
       return renderCaseE(node, caseE, ctx);
     }
     case 'leaf': {
-      return [node.text];
+      return [ctx.stripNotParens ? stripNegatedFieldParens(node.text) : node.text];
     }
   }
 }
@@ -672,7 +686,7 @@ export function formatExpression(raw: string, slot: ExprSlot): string {
 
   let body: string;
   if (slot === 'where' || slot === 'having') {
-    const ctx: RenderCtx = { cont: 1, caseBoolean: true };
+    const ctx: RenderCtx = { cont: 1, caseBoolean: true, stripNotParens: true };
     if (tree.kind === 'case') {
       body = renderCase(tree, ctx.cont, ctx, true).join('\n');
     } else {

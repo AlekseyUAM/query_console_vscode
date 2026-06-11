@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { needsFormatting, formatExpression } from '../../src/core/query/exprFormatter';
+import { needsFormatting, formatExpression, stripNegatedFieldParens } from '../../src/core/query/exprFormatter';
 
 describe('needsFormatting', () => {
   it('false for a pure leaf comparison', () => {
@@ -302,6 +302,52 @@ describe('formatExpression — leaf case normalization inside structure', () => 
     expect(formatExpression(raw, 'where')).toBe(
       '(t.X = ЗНАЧЕНИЕ(Перечисление.А.Б)\n' +
         '\t\t\tИЛИ t.Y = НЕОПРЕДЕЛЕНО)'
+    );
+  });
+});
+
+// Класс C-paren (фаза 6.12): конструктор в ГДЕ/ИМЕЮЩИЕ снимает скобки вокруг
+// отрицания одиночной ссылки на поле — `(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`.
+// Если под НЕ стоит что-то сложнее ссылки (сравнение, ЕСТЬ NULL, В(…), группа),
+// скобки сохраняются; в условии соединения скобки также сохраняются.
+describe('stripNegatedFieldParens — bare negation of a field', () => {
+  it('strips parens around a simple negated field', () => {
+    expect(stripNegatedFieldParens('(НЕ Таблица.ПометкаУдаления)')).toBe('НЕ Таблица.ПометкаУдаления');
+  });
+  it('strips parens around a negated dotted-nav field', () => {
+    expect(stripNegatedFieldParens('(НЕ Таблица.Ссылка.ПометкаУдаления)')).toBe('НЕ Таблица.Ссылка.ПометкаУдаления');
+  });
+  it('keeps parens when negation wraps ЕСТЬ NULL', () => {
+    expect(stripNegatedFieldParens('(НЕ Таблица.Поле ЕСТЬ NULL)')).toBe('(НЕ Таблица.Поле ЕСТЬ NULL)');
+  });
+  it('keeps parens when negation wraps a В(…) predicate', () => {
+    expect(stripNegatedFieldParens('(НЕ Таблица.Поле В (&Список))')).toBe('(НЕ Таблица.Поле В (&Список))');
+  });
+  it('leaves an already-bare negation untouched', () => {
+    expect(stripNegatedFieldParens('НЕ Таблица.ПометкаУдаления')).toBe('НЕ Таблица.ПометкаУдаления');
+  });
+});
+
+describe('formatExpression — НЕ-conjunct parens (WHERE/HAVING vs join)', () => {
+  it('strips parens around a standalone negated field in WHERE', () => {
+    expect(formatExpression('(НЕ Таблица.ПометкаУдаления)', 'where')).toBe('НЕ Таблица.ПометкаУдаления');
+  });
+  it('strips parens around a negated field conjunct in WHERE', () => {
+    expect(formatExpression('Таблица.Поле = &П И (НЕ Таблица.ПометкаУдаления)', 'where')).toBe(
+      'Таблица.Поле = &П\n\tИ НЕ Таблица.ПометкаУдаления'
+    );
+  });
+  it('strips parens in HAVING too', () => {
+    expect(formatExpression('(НЕ Таблица.ПометкаУдаления)', 'having')).toBe('НЕ Таблица.ПометкаУдаления');
+  });
+  it('keeps parens when НЕ wraps a comparison (ЕСТЬ NULL) in WHERE', () => {
+    expect(formatExpression('Таблица.Поле = &П И (НЕ Таблица.Идентификатор ЕСТЬ NULL)', 'where')).toBe(
+      'Таблица.Поле = &П\n\tИ (НЕ Таблица.Идентификатор ЕСТЬ NULL)'
+    );
+  });
+  it('keeps parens around a negated field inside a join condition', () => {
+    expect(formatExpression('a.X = b.Y И (НЕ Таблица.ПометкаУдаления)', 'join')).toBe(
+      'a.X = b.Y\n\t\t\tИ (НЕ Таблица.ПометкаУдаления)'
     );
   });
 });

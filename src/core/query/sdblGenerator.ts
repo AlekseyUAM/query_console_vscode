@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, formatExpression, normalizeLeafCase } from './exprFormatter';
+import { needsFormatting, formatExpression, normalizeLeafCase, stripNegatedFieldParens } from './exprFormatter';
 
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
@@ -661,7 +661,9 @@ function buildConditionStrings(
   for (const c of conditions) {
     if (c.custom) {
       const expr = (c.expression ?? '').trim();
-      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : normalizeLeafCase(expr));
+      // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
+      // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.
+      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : stripNegatedFieldParens(normalizeLeafCase(expr)));
       continue;
     }
     if (!c.path) continue;
