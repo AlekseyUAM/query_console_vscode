@@ -279,7 +279,10 @@ function buildQueryBlock(
 ): string {
   const lines = fieldLines.map((l, i) => (i < fieldLines.length - 1 ? l + ',' : l));
 
-  const tableLines = renderFrom(model, aliases);
+  // Запрос без источника (`ВЫБРАТЬ &Параметр КАК Поле [ПОМЕСТИТЬ ВТ]`) —
+  // конструктор не выводит секцию `ИЗ`. Иначе обычный список таблиц.
+  const hasFrom = model.tables.length > 0;
+  const fromLines = hasFrom ? ['ИЗ', ...renderFrom(model, aliases)] : [];
 
   const conditionLines = renderConditions(model.conditions, aliases);
   // Конструктор 1С отделяет блок группировки пустой строкой (в отличие от ГДЕ).
@@ -311,8 +314,7 @@ function buildQueryBlock(
     ...lines,
     ...builderSelect,
     ...placeLines,
-    'ИЗ',
-    ...tableLines,
+    ...fromLines,
     ...conditionLines,
     ...builderWhere,
     ...groupingLines,
@@ -652,6 +654,9 @@ export function generateBatch(batch: BatchDocument): string {
 
 /** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */
 function fieldRefExpr(f: FieldRef, aliases: Map<string, string>): string {
+  // Произвольное выражение группировки (`ГОД(Т.Дата)`, `ВЫБОР … КОНЕЦ`) —
+  // переотрисовываем тем же форматтером, что и выражения секции ВЫБРАТЬ.
+  if (f.expression) return formatSelectExpression(f.expression);
   const tableAlias = aliases.get(f.tableId) ?? f.tableId;
   return `${tableAlias}.${f.path}`;
 }

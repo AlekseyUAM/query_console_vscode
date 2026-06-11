@@ -48,6 +48,12 @@ export type AggregateFunction =
 export interface FieldRef {
   tableId: string;
   path: string;
+  /**
+   * Произвольное выражение группировки (вызов функции `ГОД(Т.Дата)`,
+   * `ВЫБОР … КОНЕЦ`, арифметика) — когда элемент не является простой точечной
+   * ссылкой. Сырой срез исходника, переотрисовывается генератором.
+   */
+  expression?: string;
 }
 
 export interface SummableField extends FieldRef {

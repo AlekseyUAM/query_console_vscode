@@ -205,8 +205,13 @@ function parseSingleQuery(cur: Cursor): QueryModel {
     tempTableName = parseDottedName(cur);
   }
 
-  cur.expectKeyword('ИЗ');
-  const from = parseFrom(cur);
+  // `ИЗ` опционально: 1С допускает выборку без источника
+  // (`ВЫБРАТЬ &Параметр КАК Поле [ПОМЕСТИТЬ ВТ] [ГДЕ …]`) — частый приём для
+  // создания временной таблицы из констант/параметров. При отсутствии `ИЗ`
+  // секция-источник пуста (нет таблиц/соединений), генератор не выводит `ИЗ`.
+  const from: FromResult = cur.matchKeyword('ИЗ')
+    ? parseFrom(cur)
+    : { tables: [], joins: [] };
   const tables = from.tables;
   const joins = from.joins;
 
@@ -530,30 +535,61 @@ function parseFrom(cur: Cursor): FromResult {
     return table;
   };
 
-  for (;;) {
-    const seed = readSource();
-    tables.push(seed);
-    let lastAlias = seed.alias!;
-
-    // Цепочка соединений с этой затравкой.
+  /**
+   * Разбор join-выражения: источник, за которым следует цепочка соединений.
+   * 1С допускает две формы вложенности:
+   *  - плоская/левоассоциативная: `A СОЕД B ПО c1 СОЕД C ПО c2` — каждое `ПО`
+   *    идёт сразу за своим источником;
+   *  - правовложенная (конструктор пишет именно её для вложенных соединений):
+   *    `A СОЕД B СОЕД C ПО c_BC ПО c_AB` — присоединяемая таблица сама несёт
+   *    вложенную цепочку, а `ПО` внешнего соединения идёт ПОСЛЕ внутренних.
+   * Обе разбираются единообразно: после `СОЕДИНЕНИЕ <источник>` либо сразу `ПО`
+   * (тогда условие принадлежит этому соединению), либо ещё одно `СОЕДИНЕНИЕ`
+   * (тогда сначала рекурсивно дочитываем вложенную цепочку с её `ПО`, и только
+   * потом ждём `ПО` текущего соединения). Возвращает псевдоним головной таблицы
+   * выражения. `RawJoin` накапливаются в `joins` в порядке «затравка раньше
+   * использования», совместимом с плоским рендером генератора.
+   */
+  /**
+   * Дочитывает цепочку соединений с левой затравкой `seedAlias`. Каждое
+   * соединение: `<вид> СОЕДИНЕНИЕ <источник> [вложенная цепочка] ПО <условие>`.
+   * Поддерживает две формы вложенности, которые допускает 1С:
+   *  - плоская/левоассоциативная: `A СОЕД B ПО c1 СОЕД C ПО c2` — каждое `ПО`
+   *    идёт сразу за своим источником, C присоединяется к B;
+   *  - правовложенная (так пишет конструктор): `A СОЕД B СОЕД C ПО c_BC ПО c_AB`
+   *    — присоединяемый источник сам несёт вложенную цепочку, чьи `ПО` идут
+   *    раньше `ПО` внешнего соединения. Дочитываем её рекурсивно до нашего `ПО`.
+   * `RawJoin` накапливаются в порядке «затравка раньше использования»,
+   * совместимом с плоским рендером генератора.
+   */
+  const parseJoinChainFrom = (seedAlias: string): void => {
+    let lastAlias = seedAlias;
     while (isJoinKeyword(cur)) {
       const kind = cur.next().value as RawJoin['kind'];
       cur.expectKeyword('СОЕДИНЕНИЕ');
-      const joined = readSource();
-      tables.push(joined);
+      const joinedSource = readSource();
+      tables.push(joinedSource);
+      const joinedHead = joinedSource.alias!;
+      // Вложенная цепочка присоединяемого источника (её `ПО` раньше нашего).
+      if (isJoinKeyword(cur)) parseJoinChainFrom(joinedHead);
       cur.expectKeyword('ПО');
       const { tokens, text } = readJoinCondition(cur);
       joins.push({
         kind,
         seedAlias: lastAlias,
-        joinedAlias: joined.alias!,
+        joinedAlias: joinedHead,
         condTokens: tokens,
         condText: text,
       });
-      // Левоассоциативная цепочка: следующее соединение присоединяется к последней.
-      lastAlias = joined.alias!;
+      // Левоассоциативность плоской цепочки: следующее `СОЕД` к последней таблице.
+      lastAlias = joinedHead;
     }
+  };
 
+  for (;;) {
+    const seed = readSource();
+    tables.push(seed);
+    parseJoinChainFrom(seed.alias!);
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -646,6 +682,9 @@ function isJoinKeyword(cur: Cursor): boolean {
 const JOIN_COND_STOP = new Set<string>([
   'ГДЕ', 'СГРУППИРОВАТЬ', 'ИМЕЮЩИЕ', 'УПОРЯДОЧИТЬ', 'АВТОУПОРЯДОЧИВАНИЕ',
   'ИТОГИ', 'ИНДЕКСИРОВАТЬ', 'ДЛЯ', 'ОБЪЕДИНИТЬ', 'ВЫБРАТЬ',
+  // `ПО` верхнего уровня завершает условие текущего соединения: это `ПО`
+  // внешнего соединения в правовложенной цепочке (`A СОЕД B СОЕД C ПО c1 ПО c2`).
+  'ПО',
 ]);
 
 /**
@@ -1390,20 +1429,40 @@ function parseGroupingSets(cur: Cursor, aliasToId: Map<string, string>): FieldRe
   return sets;
 }
 
-/** Одна ссылка группировки `<alias>.<path>` → FieldRef. */
+/**
+ * Один элемент группировки. Чаще всего это простая ссылка `<alias>.<path>`,
+ * но конструктор 1С допускает произвольные выражения (вызов функции
+ * `ГОД(Т.Дата)`, `ВЫБОР … КОНЕЦ`, арифметика). Собираем токены до запятой
+ * верхнего уровня / секционного ключевого слова, учитывая баланс скобок.
+ * Если выражение — чистая точечная ссылка, возвращаем FieldRef; иначе сохраняем
+ * сырой срез как `expression` (генератор переотрисует его как поле выборки).
+ */
 function parseGroupFieldRef(cur: Cursor, aliasToId: Map<string, string>): FieldRef {
   const tokens: Token[] = [];
+  let depth = 0;
   for (;;) {
     const t = cur.peek();
-    // Стоп на секционных ключевых словах (ДЛЯ ИЗМЕНЕНИЯ / порядок / итоги / индекс),
-    // которые могут идти сразу после списка группировки.
-    if (t.type === 'keyword' && isSectionKeyword(t.value)) break;
-    if (t.type !== 'ident' && t.type !== 'keyword' && !(t.type === 'punct' && t.value === '.')) break;
+    if (depth === 0) {
+      // Стоп на секционных ключевых словах (ДЛЯ ИЗМЕНЕНИЯ / порядок / итоги /
+      // индекс) и на запятой/конце — границах элемента группировки.
+      if (t.type === 'keyword' && isSectionKeyword(t.value)) break;
+      if (t.type === 'punct' && (t.value === ',' || t.value === ';' || t.value === '{' || t.value === '}')) break;
+      if (t.type === 'eof') break;
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') {
+      if (depth === 0) break; // закрывающая скобка набора группировки
+      depth--;
+    }
     tokens.push(cur.next());
   }
+  if (tokens.length === 0) {
+    throw cur.error('ожидалась ссылка на поле группировки', cur.peek());
+  }
+  // Простая точечная ссылка → FieldRef; произвольное выражение → expression.
   const ref = parseFieldRef(tokens, aliasToId);
-  if (!ref) throw cur.error('ожидалась ссылка на поле группировки', cur.peek());
-  return { tableId: ref.tableId, path: ref.path };
+  if (ref) return { tableId: ref.tableId, path: ref.path };
+  return { tableId: '', path: '', expression: sliceSource(cur.source, tokens) };
 }
 
 // ────────────────────── УПОРЯДОЧИТЬ ПО (ORDER BY) ───────────────────────
