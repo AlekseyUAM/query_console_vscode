@@ -224,5 +224,8 @@ export interface QueryModel {
 export function defaultTableAlias(t: SelectedTable): string {
   if (t.alias) return t.alias;
   const parts = t.fullName.split('.');
+  // Виртуальная таблица (Тип.Имя.ВТ): псевдоним по умолчанию в 1С — склейка имени
+  // таблицы и имени ВТ без разделителя, напр. АрхивСообщенийОбменовСрезПоследних.
+  if (parts.length > 2) return parts[1] + parts.slice(2).join('');
   return parts[1] ?? t.fullName;
 }

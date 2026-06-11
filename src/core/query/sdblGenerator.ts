@@ -81,12 +81,12 @@ function renderSource(t: SelectedTable): string {
     return `${t.fullName}(${positions.join(', ')})`;
   }
 
-  // Остатки/срезы регистра сведений: хвостовые пустые позиции отбрасываются.
+  // Остатки/срезы регистра сведений и накопления: фиксированная арность (Период, Условие),
+  // как у регистра бухгалтерии и по эталону конструктора 1С — хвостовые пустые позиции
+  // сохраняются. Скобки — только если задан хоть один параметр.
   const positions = [v.period ?? '', v.condition ?? ''];
-  let last = positions.length - 1;
-  while (last >= 0 && positions[last] === '') last--;
-  if (last < 0) return t.fullName;
-  return `${t.fullName}(${positions.slice(0, last + 1).join(', ')})`;
+  if (!positions.some(p => p !== '')) return t.fullName;
+  return `${t.fullName}(${positions.join(', ')})`;
 }
 
 /** Модификаторы выборки записей: РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N. */

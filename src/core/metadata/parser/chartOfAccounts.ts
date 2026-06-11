@@ -39,7 +39,18 @@ export function parseChartOfAccounts(objectEl: any): ParsedObject | null {
   std('ИмяПредопределенныхДанных', [{ kind: 'Строка', length: 255 }]);
 
   const { attributes, tabularSections } = parseChildObjects(objectEl);
-  fields.push(...attributes);
+
+  // Признаки учёта счёта (AccountingFlag) — например ПР, ВР, НУ — становятся полями
+  // объекта и идут в конструкторе 1С после Забалансовый и перед реквизитами.
+  const accountFlags: ParsedField[] = [];
+  const childObjs = childByLocalName(objectEl, 'ChildObjects');
+  if (childObjs) {
+    for (const f of childrenByLocalName(childObjs, 'AccountingFlag')) {
+      const parsed = parseAttribute(f);
+      if (parsed) accountFlags.push(parsed);
+    }
+  }
+  fields.push(...accountFlags, ...attributes);
 
   // Признаки учёта субконто (ExtDimensionAccountingFlag) — это колонки
   // стандартной табличной части ВидыСубконто. Сама ТЧ состоит из стандартных
