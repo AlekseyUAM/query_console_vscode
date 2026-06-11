@@ -145,26 +145,45 @@ function hasTopLevelBooleanOp(expr: string): boolean {
 }
 
 /**
+ * Голое сравнение двух полей-ссылок: `<dotted> <op> <dotted>`, где каждая сторона —
+ * точечный путь идентификаторов без скобок/параметров/литералов/функций. Такое условие
+ * конструктор печатает без внешних скобок, даже когда оно попало в произвольный путь
+ * из-за нерезолвимого псевдонима (фаза 6.12).
+ */
+function isPlainFieldComparison(expr: string): boolean {
+  return /^[\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*\s*(?:<>|>=|<=|=|>|<)\s*[\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*$/u.test(expr.trim());
+}
+
+/**
  * Текст условия `ПО`. Простое: `<alias>.<path> <op> <alias>.<path>`; произвольное
  * оборачивается в скобки. Условие построено по псевдонимам и от порядка таблиц
  * (перестановки при правом соединении) не зависит. Возвращает '' если условия нет.
  */
 function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
   if (join.custom) {
-    // Конструктор 1С оборачивает в скобки одиночное условие соединения (`ПО (a = b)`),
-    // но НЕ добавляет внешние скобки вокруг составного с верхнеуровневым И/ИЛИ
-    // (`ПО (a) И (b)`). Многострочный реиндент составных условий — фаза 6.10.
+    // Составное условие (верхнеуровневый И/ИЛИ) или структура (ИЛИ/ВЫБОР) —
+    // переотрисовываем форматером (фаза 6.10); внешние скобки тут НЕ ставятся,
+    // они уже распределены по подконъюнктам (`(a) И (b)`).
     const expr = (join.expression ?? '').trim();
     if (!expr) return '';
-    // Составное условие (верхнеуровневый И/ИЛИ) или структура (ИЛИ/ВЫБОР) —
-    // переотрисовываем форматером (фаза 6.10). Простое одиночное — как раньше: `(a = b)`.
     if (hasTopLevelBooleanOp(expr)) return formatExpression(expr, 'join');
     if (needsFormatting(expr)) return formatExpression(expr, 'join');
-    return `(${normalizeLeafCase(expr)})`;
+    // Одиночное произвольное условие. Решение о внешних скобках (фаза 6.12):
+    //  - конструктор СОХРАНЯЕТ скобки, если разработчик обернул всё во вводе
+    //    (`ПО (a = b)` → `(a = b)`);
+    //  - голое сравнение полей `a.b = c.d`, попавшее в произвольный путь лишь из-за
+    //    нерезолвимого псевдонима (временные таблицы), конструктор печатает БЕЗ
+    //    скобок — как и резолвленное простое условие;
+    //  - всё прочее голое (параметр `&X`, константа `ИСТИНА`, функция `ТИПЗНАЧЕНИЯ(…)`)
+    //    конструктор оборачивает в скобки.
+    const leaf = normalizeLeafCase(expr);
+    const wrap = join.parenthesized || !isPlainFieldComparison(expr);
+    return wrap ? `(${leaf})` : leaf;
   }
   const leftAlias = aliases.get(join.leftTableId) ?? join.leftTableId;
   const rightAlias = aliases.get(join.rightTableId) ?? join.rightTableId;
   const op = join.operator ?? '=';
+  // Простое резолвленное условие конструктор всегда печатает без внешних скобок.
   return `${leftAlias}.${join.leftPath ?? ''} ${op} ${rightAlias}.${join.rightPath ?? ''}`;
 }
 
@@ -568,6 +587,21 @@ export function generateDocument(doc: QueryDocument): string {
   for (let i = 1; i < blocks.length; i++) {
     const keyword = members[i].distinct ? 'ОБЪЕДИНИТЬ' : 'ОБЪЕДИНИТЬ ВСЕ';
     out += `\n\n${keyword}\n\n${blocks[i]}`;
+  }
+
+  // Модификаторы УПОРЯДОЧИТЬ ПО / ИТОГИ ПО / ИНДЕКСИРОВАТЬ ПО относятся ко ВСЕМУ
+  // объединению и записываются после последнего участника. ИНДЕКСИРОВАТЬ ПО валидно
+  // лишь для `ПОМЕСТИТЬ`-объединения, чей маркер createTemp несёт первый участник, —
+  // поэтому индекс рендерим в контексте createTemp-участника (фаза 6.12).
+  const last = members[members.length - 1].model;
+  const orderLines = renderOrder(last.order, last);
+  if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
+  const totalsLines = renderTotals(last.totals, last);
+  if (totalsLines.length > 0) out += '\n' + totalsLines.join('\n');
+  const tempCarrier = members.find(m => m.model.queryType === 'createTemp')?.model;
+  if (last.indexing && tempCarrier) {
+    const indexLines = renderIndex(last.indexing, { ...tempCarrier, fields: last.fields, tables: last.tables });
+    if (indexLines.length > 0) out += '\n\n' + indexLines.join('\n');
   }
   return out;
 }

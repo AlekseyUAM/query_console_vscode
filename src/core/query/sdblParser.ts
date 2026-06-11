@@ -634,9 +634,20 @@ function isJoinKeyword(cur: Cursor): boolean {
 }
 
 /**
+ * Ключевые слова верхнего уровня, завершающие условие соединения `ПО`. Помимо
+ * ГДЕ/СГРУППИРОВАТЬ это секции, идущие после ИЗ, когда фильтра/группировки нет
+ * (УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКСИРОВАТЬ/…) и `ОБЪЕДИНИТЬ`/`ВЫБРАТЬ` следующего запроса.
+ * Без них условие «съедало» хвост запроса при отсутствии ГДЕ (фаза 6.12).
+ */
+const JOIN_COND_STOP = new Set<string>([
+  'ГДЕ', 'СГРУППИРОВАТЬ', 'ИМЕЮЩИЕ', 'УПОРЯДОЧИТЬ', 'АВТОУПОРЯДОЧИВАНИЕ',
+  'ИТОГИ', 'ИНДЕКСИРОВАТЬ', 'ДЛЯ', 'ОБЪЕДИНИТЬ', 'ВЫБРАТЬ',
+]);
+
+/**
  * Сырые токены и текст условия `ПО` до следующего соединения / запятой верхнего
- * уровня / конца секции ИЗ (ГДЕ/СГРУППИРОВАТЬ/eof). Скобки учитываются, чтобы
- * запятые и ключевые слова внутри не обрывали условие.
+ * уровня / конца секции ИЗ (ГДЕ/СГРУППИРОВАТЬ/секция/«;»/eof). Скобки учитываются,
+ * чтобы запятые и ключевые слова внутри не обрывали условие.
  */
 function readJoinCondition(cur: Cursor): { tokens: Token[]; text: string } {
   const tokens: Token[] = [];
@@ -646,8 +657,9 @@ function readJoinCondition(cur: Cursor): { tokens: Token[]; text: string } {
     if (t.type === 'eof') break;
     if (depth === 0) {
       if (t.type === 'punct' && t.value === ',') break;
+      if (t.type === 'punct' && t.value === ';') break;
       if (isJoinKeyword(cur)) break;
-      if (t.type === 'keyword' && (t.value === 'ГДЕ' || t.value === 'СГРУППИРОВАТЬ')) break;
+      if (t.type === 'keyword' && JOIN_COND_STOP.has(t.value)) break;
     }
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
@@ -1094,6 +1106,16 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
   const seedId = aliasToId.get(raw.seedAlias) ?? raw.seedAlias;
   const joinedId = aliasToId.get(raw.joinedAlias) ?? raw.joinedAlias;
 
+  // Обернул ли разработчик всё условие в одну сбалансированную внешнюю пару скобок
+  // (`ПО (a = b)`). Только это решение конструктор 1С сохраняет; скобки вокруг
+  // подконъюнктов составного условия (`(a) И (b)`) сюда не относятся (фаза 6.12).
+  const parenthesized = hasBalancedOuterParens(raw.condTokens);
+
+  // Простое условие (`a = b`) резолвим как раньше — обе таблицы из ссылок полей,
+  // что задаёт порядок таблиц в цепочке ИЗ. Обёрнутую форму (`(a = b)`) НЕ
+  // переводим в простой путь: иначе менялся бы порядок таблиц (затравка из ссылки,
+  // а не из текста). Голое простое условие рендерится без скобок — как ввёл
+  // разработчик; флаг здесь всегда false, скобок во вводе не было.
   const simple = trySimpleJoinCondition(raw.condTokens, aliasToId);
   if (simple) {
     return {
@@ -1106,13 +1128,41 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
     };
   }
 
-  // Произвольное условие: снять внешние скобки, добавленные генератором.
+  // Произвольное условие: снять внешние скобки, добавленные генератором/вводом.
+  // parenthesized сохраняет, были ли скобки во вводе, чтобы генератор воспроизвёл
+  // решение разработчика для одиночного условия (фаза 6.12).
   return {
     leftTableId: seedId,
     rightTableId: joinedId,
     leftAll, rightAll, custom: true,
     expression: stripOuterParens(raw.condText),
+    parenthesized,
   };
+}
+
+/**
+ * Заключены ли все токены в одну сбалансированную внешнюю пару скобок
+ * (`( … )`, где первая открывающая закрывается последней). Используется для
+ * восстановления решения разработчика о внешних скобках условия `ПО`.
+ */
+function hasBalancedOuterParens(tokens: Token[]): boolean {
+  if (tokens.length < 2) return false;
+  const first = tokens[0];
+  const last = tokens[tokens.length - 1];
+  if (!(first.type === 'punct' && first.value === '(')) return false;
+  if (!(last.type === 'punct' && last.value === ')')) return false;
+  let depth = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') {
+      depth--;
+      // Первая внешняя скобка закрылась раньше последнего токена → не общая пара.
+      if (depth === 0) return i === tokens.length - 1;
+    }
+  }
+  /* v8 ignore next -- несбалансированные скобки отсеёт лексер/курсор раньше */
+  return false;
 }
 
 /**
