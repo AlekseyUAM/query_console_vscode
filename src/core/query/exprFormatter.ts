@@ -200,6 +200,14 @@ export function normalizeLeafWhitespace(raw: string): string {
 
   const isCmp = (t: Token): boolean => t.type === 'punct' && COMPARISON_PUNCT.has(t.value);
 
+  // Оператор включения `В (…)` / `В ИЕРАРХИИ (…)` в листовом (произвольном)
+  // выражении конструктор 1С печатает С пробелом перед скобкой, даже если
+  // разработчик написал `В(…)`. (Простые структурированные условия идут другим
+  // путём — renderOperatorRhs, где у одиночного элемента пробела нет.)
+  const isInOpWord = (t: Token): boolean =>
+    (t.type === 'keyword' || t.type === 'ident') &&
+    (t.value.toUpperCase() === 'В' || t.value.toUpperCase() === 'ИЕРАРХИИ');
+
   // Правки промежутков (gap) между соседними токенами, применяем справа налево.
   const edits: Array<{ from: number; to: number; text: string }> = [];
 
@@ -224,7 +232,9 @@ export function normalizeLeafWhitespace(raw: string): string {
       // сравнения, либо предыдущий токен — запятая (`(1,1)` → `(1, 1)`). Запятую
       // перед `)` не разделяем (висячих запятых в выражениях нет, но на всякий случай).
       const needSpace =
-        isCmp(a) || isCmp(b) || (a.type === 'punct' && a.value === ',' && !(b.type === 'punct' && b.value === ')'));
+        isCmp(a) || isCmp(b) ||
+        (a.type === 'punct' && a.value === ',' && !(b.type === 'punct' && b.value === ')')) ||
+        (isInOpWord(a) && b.type === 'punct' && b.value === '(');
       if (needSpace) edits.push({ from: gapFrom, to: gapTo, text: ' ' });
       continue;
     }
