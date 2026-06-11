@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generate, generateDocument, generateBatch } from '../../src/core/query/sdblGenerator';
-import type { QueryDocument } from '../../src/core/query/unionModel';
+import type { QueryDocument, UnionMember } from '../../src/core/query/unionModel';
 import type { BatchDocument } from '../../src/core/query/batchModel';
 import type { QueryModel } from '../../src/core/query/queryModel';
 import { assertValidSdbl } from '../helpers/assertValidSdbl';
@@ -1634,5 +1634,56 @@ describe('ИНДЕКСИРОВАТЬ (фаза 5.10)', () => {
 
   it('отсутствие indexing не меняет вывод', () => {
     expect(generate(fiveFieldModel())).toBe(head);
+  });
+});
+
+describe('источник-подзапрос (ИЗ (ВЫБРАТЬ …) КАК …)', () => {
+  it('одиночный источник-подзапрос с одним внутренним ВЫБРАТЬ', () => {
+    const inner: QueryDocument = {
+      members: [
+        {
+          name: 'Запрос 1',
+          distinct: false,
+          model: {
+            tables: [{ id: 't0', fullName: 'Справочник.Валюты', alias: 'Валюты' }],
+            fields: [{ tableId: 't0', path: 'Код', alias: 'Код' }],
+          },
+        },
+      ],
+    };
+    const model: QueryModel = {
+      tables: [{ id: 't0', fullName: '', alias: 'Данные', subquery: inner }],
+      fields: [{ tableId: 't0', path: 'Код', alias: 'Код' }],
+    };
+    expect(generate(model)).toBe(
+      'ВЫБРАТЬ\n' +
+      '\tДанные.Код КАК Код\n' +
+      'ИЗ\n' +
+      '\t(ВЫБРАТЬ\n' +
+      '\t\tВалюты.Код КАК Код\n' +
+      '\tИЗ\n' +
+      '\t\tСправочник.Валюты КАК Валюты) КАК Данные'
+    );
+  });
+
+  it('источник-подзапрос с ОБЪЕДИНИТЬ ВСЕ реиндентирует и пустую строку-разделитель в один таб', () => {
+    const member = (distinct: boolean, codeField: string): UnionMember => ({
+      name: 'Запрос',
+      distinct,
+      model: {
+        tables: [{ id: 't0', fullName: 'Справочник.Валюты', alias: 'Валюты' }],
+        fields: [{ tableId: 't0', path: codeField, alias: 'Код' }],
+      },
+    });
+    const inner: QueryDocument = { members: [member(false, 'Код'), member(false, 'Наименование')] };
+    const model: QueryModel = {
+      tables: [{ id: 't0', fullName: '', alias: 'Данные', subquery: inner }],
+      fields: [{ tableId: 't0', path: 'Код', alias: 'Код' }],
+    };
+    const out = generate(model);
+    // Пустая строка-разделитель ОБЪЕДИНИТЬ внутри подзапроса реиндентируется в один таб.
+    expect(out).toContain('\n\t\n\tОБЪЕДИНИТЬ ВСЕ\n\t\n');
+    // Хвост закрывается `) КАК Данные`.
+    expect(out.endsWith(') КАК Данные')).toBe(true);
   });
 });

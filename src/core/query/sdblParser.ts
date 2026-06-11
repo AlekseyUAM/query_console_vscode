@@ -558,11 +558,31 @@ function parseFrom(cur: Cursor): FromResult {
 
 /** Один источник таблицы: `<fullName> [(<params>)] КАК <alias>`. */
 function parseTableSource(cur: Cursor, index: number): SelectedTable {
-  // Подзапрос в источнике `ИЗ (ВЫБРАТЬ … ) КАК Т` — вне визуальной модели
-  // (QueryModel не хранит подзапрос-источник, см. спецификацию §7). Явно и
-  // понятно отклоняем, чтобы не выдавать загадочную «ожидалось имя (получено «(»)».
+  // Подзапрос в источнике `ИЗ (<подзапрос>) КАК Т` — полноценный узел модели
+  // (фаза 6.11). Поглощаем сбалансированную скобку, рекурсивно разбираем
+  // содержимое через parseDocument (поддержка ОБЪЕДИНИТЬ), затем обязательный
+  // `КАК <псевдоним>`.
   if (cur.isPunct('(')) {
-    throw cur.error('подзапрос в источнике ИЗ (…) не поддерживается визуальной моделью', cur.peek());
+    const open = cur.expectPunct('(');
+    let depth = 1;
+    let close: Token | undefined;
+    for (;;) {
+      const t = cur.next();
+      if (t.type === 'eof') throw cur.error('незакрытый подзапрос в источнике ИЗ', t);
+      if (t.type === 'punct' && t.value === '(') depth++;
+      else if (t.type === 'punct' && t.value === ')') { depth--; if (depth === 0) { close = t; break; } }
+    }
+    const innerText = cur.source.slice(open.pos + 1, close.pos);
+    const subquery = parseDocument(innerText);
+    if (!cur.matchKeyword('КАК')) {
+      throw cur.error('ожидалось КАК <псевдоним> после подзапроса в источнике ИЗ', cur.peek());
+    }
+    const aliasTok = cur.peek();
+    if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
+      throw cur.error('ожидался псевдоним подзапроса после КАК', aliasTok);
+    }
+    cur.next();
+    return { id: 't' + index, fullName: '', alias: aliasTok.text, subquery };
   }
   const fullName = parseDottedName(cur);
 

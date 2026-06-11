@@ -1,3 +1,5 @@
+import type { QueryDocument } from './unionModel';
+
 export interface VirtualParams {
   period?: string;       // срез РС, Остатки РН
   startPeriod?: string;  // НачалоПериода (Обороты, ОстаткиИОбороты)
@@ -20,6 +22,9 @@ export interface SelectedTable {
   fullName: string;
   alias?: string;
   virtual?: VirtualParams;
+  /** Источник-подзапрос: `ИЗ (<подзапрос>) КАК <alias>`. Если задан — fullName/virtual
+   *  игнорируются, источник рендерится как вложенный запрос; alias обязателен, fullName === ''. */
+  subquery?: QueryDocument;
 }
 
 export interface SelectedField {

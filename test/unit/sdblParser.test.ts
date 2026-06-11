@@ -1309,11 +1309,12 @@ describe('parseQuery — 6.4: реальные запросы из корпус�
     expect(generate(parseQuery(text))).toBe(text);
   });
 
-  // Фикс 3: подзапрос в источнике ИЗ — понятная ошибка, не «получено «(»».
-  it('6.4.3 подзапрос в ИЗ отклоняется с понятным сообщением', () => {
-    expect(() => parseQuery('ВЫБРАТЬ Т.Поле ИЗ (ВЫБРАТЬ 1 КАК Поле) КАК Т')).toThrow(
-      /подзапрос в источнике ИЗ/
-    );
+  // 6.11: подзапрос в источнике ИЗ — полноценный узел модели (узел subquery + alias).
+  it('6.4.3 подзапрос в ИЗ разбирается как узел модели (subquery + alias)', () => {
+    const model = parseQuery('ВЫБРАТЬ Т.Поле ИЗ (ВЫБРАТЬ В.Код КАК Поле ИЗ Спр.В КАК В) КАК Т');
+    expect(model.tables[0].fullName).toBe('');
+    expect(model.tables[0].alias).toBe('Т');
+    expect(model.tables[0].subquery).toBeDefined();
   });
 
   // Фикс 4: КАК у источника необязателен.
@@ -1411,8 +1412,10 @@ describe('parseQuery — ошибки разбора (error paths)', () => {
     expect(() => parseQuery('ВЫБРАТЬ Т.А ИЗ Справочник.Валюты КАК ,')).toThrow(/псевдоним таблицы после КАК/);
   });
 
-  it('подзапрос в источнике ИЗ (…) отклоняется', () => {
-    expect(() => parseQuery('ВЫБРАТЬ Т.А ИЗ (ВЫБРАТЬ 1) КАК Т')).toThrow(/подзапрос в источнике/);
+  it('подзапрос в источнике ИЗ (…) разбирается в узел subquery (6.11)', () => {
+    const model = parseQuery('ВЫБРАТЬ Т.А ИЗ (ВЫБРАТЬ В.А КАК А ИЗ Спр.В КАК В) КАК Т');
+    expect(model.tables[0].subquery).toBeDefined();
+    expect(model.tables[0].alias).toBe('Т');
   });
 
   it('ИЗ без имени источника', () => {
@@ -1807,5 +1810,90 @@ describe('parseDocument — переписывание псевдонимов к
     const doc = parseDocument(text);
     expect(doc.members[1].model.fields[0].alias).toBe('Код');
     expect(doc.members[1].model.fields[0].expression).toBeDefined();
+  });
+});
+
+describe('источник-подзапрос (ИЗ (ВЫБРАТЬ …) КАК …)', () => {
+  // Простой подзапрос с одним внутренним ВЫБРАТЬ (эталон Test A из плана 6.11).
+  const SIMPLE =
+    'ВЫБРАТЬ\n' +
+    '\tДанные.Код КАК Код\n' +
+    'ИЗ\n' +
+    '\t(ВЫБРАТЬ\n' +
+    '\t\tВалюты.Код КАК Код\n' +
+    '\tИЗ\n' +
+    '\t\tСправочник.Валюты КАК Валюты) КАК Данные';
+
+  // Канонический эталон спек §4: подзапрос с ОБЪЕДИНИТЬ ВСЕ + внешние
+  // СГРУППИРОВАТЬ ПО / ИМЕЮЩИЕ.
+  const REFERENCE =
+    'ВЫБРАТЬ\n' +
+    '\tДанные.Роль КАК Роль\n' +
+    'ИЗ\n' +
+    '\t(ВЫБРАТЬ РАЗЛИЧНЫЕ\n' +
+    '\t\tРолиПрофилей.Роль КАК Роль,\n' +
+    '\t\t-1 КАК ВидИзмененияСтроки\n' +
+    '\tИЗ\n' +
+    '\t\tСправочник.ПрофилиГруппДоступа.Роли КАК РолиПрофилей\n' +
+    '\tГДЕ\n' +
+    '\t\tРолиПрофилей.Ссылка = &СтарыйПрофиль\n' +
+    '\t\n' +
+    '\tОБЪЕДИНИТЬ ВСЕ\n' +
+    '\t\n' +
+    '\tВЫБРАТЬ РАЗЛИЧНЫЕ\n' +
+    '\t\tРолиПрофилей.Роль,\n' +
+    '\t\t1\n' +
+    '\tИЗ\n' +
+    '\t\tСправочник.ПрофилиГруппДоступа.Роли КАК РолиПрофилей\n' +
+    '\tГДЕ\n' +
+    '\t\tРолиПрофилей.Ссылка = &НовыйПрофиль) КАК Данные\n' +
+    '\n' +
+    'СГРУППИРОВАТЬ ПО\n' +
+    '\tДанные.Роль\n' +
+    '\n' +
+    'ИМЕЮЩИЕ\n' +
+    '\tСУММА(Данные.ВидИзмененияСтроки) <> 0';
+
+  it('round-trip простого подзапроса (один внутренний ВЫБРАТЬ)', () => {
+    expect(generate(parseQuery(SIMPLE))).toBe(SIMPLE);
+  });
+
+  it('парсит источник-подзапрос как узел модели с subquery и alias', () => {
+    const model = parseQuery(SIMPLE);
+    expect(model.tables.length).toBe(1);
+    expect(model.tables[0].fullName).toBe('');
+    expect(model.tables[0].alias).toBe('Данные');
+    expect(model.tables[0].subquery?.members.length).toBe(1);
+  });
+
+  it('round-trip эталона §4 (ОБЪЕДИНИТЬ ВСЕ + СГРУППИРОВАТЬ/ИМЕЮЩИЕ)', () => {
+    expect(generate(parseQuery(REFERENCE))).toBe(REFERENCE);
+  });
+
+  it('subquery эталона §4 содержит два участника ОБЪЕДИНИТЬ', () => {
+    const model = parseQuery(REFERENCE);
+    expect(model.tables[0].subquery?.members.length).toBe(2);
+  });
+
+  it('идемпотентность parse∘generate∘parse (эталон §4)', () => {
+    const once = generate(parseQuery(REFERENCE));
+    expect(generate(parseQuery(once))).toBe(once);
+  });
+
+  it('идемпотентность parse∘generate∘parse (простой подзапрос)', () => {
+    const once = generate(parseQuery(SIMPLE));
+    expect(generate(parseQuery(once))).toBe(once);
+  });
+
+  it('подзапрос без КАК → ошибка', () => {
+    expect(() =>
+      parseQuery('ВЫБРАТЬ Т.Поле ИЗ (ВЫБРАТЬ А.Б ИЗ Спр.В КАК А) Данные')
+    ).toThrow();
+  });
+
+  it('незакрытый подзапрос → ошибка', () => {
+    expect(() =>
+      parseQuery('ВЫБРАТЬ Т.Поле ИЗ (ВЫБРАТЬ А.Б ИЗ Спр.В КАК А КАК Данные')
+    ).toThrow();
   });
 });

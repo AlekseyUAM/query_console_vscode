@@ -55,6 +55,10 @@ function accountingPositions(slice: string, v: SelectedTable['virtual'] & {}): s
 }
 
 function renderSource(t: SelectedTable): string {
+  if (t.subquery) {
+    const inner = generateDocument(t.subquery).split('\n');
+    return inner.map((l, k) => (k === 0 ? '(' + l : '\t' + l)).join('\n') + ')';
+  }
   if (!t.virtual) return t.fullName;
   const v = t.virtual;
   const parts = t.fullName.split('.');
