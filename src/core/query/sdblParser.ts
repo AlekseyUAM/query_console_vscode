@@ -35,6 +35,7 @@ import type {
   VirtualParams,
   Order,
   OrderField,
+  SortDirection,
   Totals,
   TotalGroupField,
   TotalField,
@@ -1148,7 +1149,18 @@ function parseWhere(cur: Cursor, aliasToId: Map<string, string>, soleSource?: So
  * (ИМЕЮЩИЕ идёт лишь после группировки, поэтому ГДЕ до него не доходит). Расширять это
  * множество нельзя без регрессий: меняет разбор `ГДЕ` у запросов без группировки.
  */
-const WHERE_STOP = new Set<string>(['СГРУППИРОВАТЬ']);
+const WHERE_STOP = new Set<string>([
+  'СГРУППИРОВАТЬ',
+  // Секция УПОРЯДОЧИТЬ ПО, идущая после ГДЕ в запросе без группировки. Без неё
+  // parseWhere дословно затягивал хвост (`…\nУПОРЯДОЧИТЬ ПО …`) в param последнего
+  // условия, и УПОРЯДОЧИТЬ воспроизводилось как сырой текст (теряя нормализацию
+  // отступов конструктора). Остановка здесь передаёт управление штатному parseOrder.
+  // ИТОГИ/ИНДЕКСИРОВАТЬ НЕ включаем: их рендер пока не сохраняет квалификацию
+  // `Таблица.Поле`, поэтому секции без предшествующего УПОРЯДОЧИТЬ оставляем
+  // дословному хвосту (регрессий нет).
+  'УПОРЯДОЧИТЬ',
+  'АВТОУПОРЯДОЧИВАНИЕ',
+]);
 /** Ключевые слова, завершающие секцию ИМЕЮЩИЕ. */
 const HAVING_STOP = new Set<string>(['УПОРЯДОЧИТЬ', 'ИТОГИ', 'ИНДЕКСИРОВАТЬ', 'АВТОУПОРЯДОЧИВАНИЕ', 'ДЛЯ']);
 
@@ -1595,8 +1607,29 @@ function parseGroupFieldRef(cur: Cursor, aliasToId: Map<string, string>): FieldR
 // ────────────────────── УПОРЯДОЧИТЬ ПО (ORDER BY) ───────────────────────
 
 /**
+ * Модификаторы поля упорядочивания после самого поля: направление
+ * (`УБЫВ` → desc; `ВОЗР` — явное возрастание, лексер выдаёт его как ident) и
+ * `ИЕРАРХИЯ` (иерархический порядок). Порядок токенов: направление, затем
+ * ИЕРАРХИЯ. Возвращает выбранное направление и флаг иерархии.
+ */
+function parseOrderModifiers(cur: Cursor): { direction: SortDirection; hierarchy: boolean } {
+  let direction: SortDirection = 'asc';
+  if (cur.matchKeyword('УБЫВ')) {
+    direction = 'desc';
+  } else {
+    // `ВОЗР` — явное возрастание (не keyword в лексере); поглощаем как ident.
+    const t = cur.peek();
+    if ((t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === 'ВОЗР') {
+      cur.next();
+    }
+  }
+  const hierarchy = cur.matchKeyword('ИЕРАРХИЯ');
+  return { direction, hierarchy };
+}
+
+/**
  * Секция УПОРЯДОЧИТЬ ПО / АВТОУПОРЯДОЧИВАНИЕ. Инвертирует `renderOrder`:
- *  - `УПОРЯДОЧИТЬ ПО <псевдоним>[ УБЫВ], …` → order.fields (резолв псевдонима выборки).
+ *  - `УПОРЯДОЧИТЬ ПО <псевдоним>[ УБЫВ][ ИЕРАРХИЯ], …` → order.fields (резолв псевдонима выборки).
  *  - последняя строка `АВТОУПОРЯДОЧИВАНИЕ` (с полями или без) → order.auto=true.
  */
 function parseOrder(
@@ -1615,8 +1648,8 @@ function parseOrder(
       // Сохраняем дословно через expression; направление (УБЫВ) после него допустимо.
       if (headTok.type === 'param') {
         cur.next();
-        const dir = cur.matchKeyword('УБЫВ') ? 'desc' : 'asc';
-        fields.push({ tableId: '', path: '', direction: dir, expression: headTok.text });
+        const { direction: dir, hierarchy } = parseOrderModifiers(cur);
+        fields.push({ tableId: '', path: '', direction: dir, expression: headTok.text, ...(hierarchy ? { hierarchy } : {}) });
         if (cur.matchPunct(',')) continue;
         break;
       }
@@ -1634,7 +1667,8 @@ function parseOrder(
         }
         segs.push(cur.next().text);
       }
-      const direction = cur.matchKeyword('УБЫВ') ? 'desc' : 'asc';
+      const { direction, hierarchy } = parseOrderModifiers(cur);
+      const hier = hierarchy ? { hierarchy } : {};
 
       if (segs.length > 1 && aliasToId.has(segs[0])) {
         // Квалифицированная ссылка `<псевдонимТаблицы>.<path>` — сохраняем как есть.
@@ -1643,13 +1677,14 @@ function parseOrder(
           path: segs.slice(1).join('.'),
           direction,
           qualified: true,
+          ...hier,
         });
       } else {
         // Бара́я ссылка — псевдоним выборки (или нерезолвимое имя). Квалификацию бара́го
         // поля по таблице конструктор делает по схеме метаданных — здесь недоступно
         // (см. ROADMAP 6.8, R3, многотабличный остаток).
         const ref = resolveSelectAlias(segs.join('.'), aliasMap);
-        fields.push({ tableId: ref.tableId, path: ref.path, direction });
+        fields.push({ tableId: ref.tableId, path: ref.path, direction, ...hier });
       }
 
       if (cur.matchPunct(',')) continue;

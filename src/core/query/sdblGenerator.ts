@@ -505,7 +505,15 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
         : f.qualified
         ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
         : selectAliasFor(model, f.tableId, f.path);
-      const suffix = f.direction === 'desc' ? ' УБЫВ' : '';
+      // `ИЕРАРХИЯ` после поля упорядочивания конструктор 1С выводит ТОЛЬКО когда
+      // поле — иерархическая ссылка (по схеме метаданных, недоступной здесь): для
+      // стандартного поля `Ссылка` сохраняет (оно всегда ссылочное в иерархических
+      // справочниках), для `Наименование`/`ЭтоГруппа`/`Элемент` — убирает. Прочие
+      // имена (`Группа`↔`Элемент`) текстом не различимы, но в корпусе все KEEP-случаи
+      // адресуются именно `…Ссылка`, поэтому ограничиваемся этим признаком. R3, 6.8.
+      const lastSeg = f.path.split('.').pop();
+      const hierSuffix = f.hierarchy && lastSeg === 'Ссылка' ? ' ИЕРАРХИЯ' : '';
+      const suffix = (f.direction === 'desc' ? ' УБЫВ' : '') + hierSuffix;
       const comma = i < order.fields.length - 1 ? ',' : '';
       lines.push(`\t${ref}${suffix}${comma}`);
     });
