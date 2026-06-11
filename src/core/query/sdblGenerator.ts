@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, formatExpression, normalizeLeafCase, stripNegatedFieldParens } from './exprFormatter';
+import { needsFormatting, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -779,7 +779,7 @@ function buildConditionStrings(
       const expr = (c.expression ?? '').trim();
       // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
       // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.
-      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : stripNegatedFieldParens(normalizeLeafCase(expr)));
+      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(expr))));
       continue;
     }
     if (!c.path) continue;

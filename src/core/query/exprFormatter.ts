@@ -91,6 +91,18 @@ export function leafHasSubquery(raw: string): boolean {
 }
 
 /**
+ * Квирк конструктора 1С: листовое булево условие, оканчивающееся предикатом
+ * `ЕСТЬ НЕ NULL`, печатается с ОДНИМ хвостовым пробелом (`… ЕСТЬ НЕ NULL `). Форма
+ * без `НЕ` (`ЕСТЬ NULL`) хвостового пробела НЕ получает. Подтверждено по корпусу:
+ * `ЕСТЬ НЕ NULL` — 5/5 строк с хвостовым пробелом, `ЕСТЬ NULL` — 0/219. Применяется
+ * к финальной строке листа в булевом слоте (ГДЕ/ИМЕЮЩИЕ/КОГДА).
+ */
+const EST_NE_NULL_RE = /(^|[^\p{L}\p{N}_])ЕСТЬ\s+НЕ\s+NULL$/u;
+export function appendIsNotNullTrailingSpace(text: string): string {
+  return EST_NE_NULL_RE.test(text) ? text + ' ' : text;
+}
+
+/**
  * Содержит ли лист верхнеуровневый булев оператор И/ИЛИ (вне скобок и вне `МЕЖДУ a
  * И b`). Такой «лист» — на самом деле булево значение-выражение, которое конструктор
  * раскладывает по строкам с переносом по оператору; сплющивать его нельзя.
@@ -755,7 +767,8 @@ function renderBool(
       return renderCaseE(node, caseE, ctx);
     }
     case 'leaf': {
-      return [ctx.stripNotParens ? stripNegatedFieldParens(node.text) : node.text];
+      const t = ctx.stripNotParens ? stripNegatedFieldParens(node.text) : node.text;
+      return [appendIsNotNullTrailingSpace(t)];
     }
   }
 }
