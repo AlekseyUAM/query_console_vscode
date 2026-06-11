@@ -1,6 +1,13 @@
 /**
  * Сборщик golden-эталонов: для каждого tmp/query1c/*.txt вызывает validate_query
  * и дописывает строку в tmp/query1c/oracle/golden.jsonl. Резюмируемо.
+ *
+ * Это единственная ступень конвейера с доступом к mcp, поэтому здесь же — ворота
+ * валидности корпуса: запрос, который не проходит validate_query, в golden НЕ
+ * попадает, а его исходный .txt удаляется из tmp/query1c. После прогона корпус и
+ * golden содержат только валидные запросы (extractQueries — чистый текст-скан без
+ * валидации — пишет все литералы; отбраковка происходит здесь).
+ *
  * Запуск: node out/cli/harvestOracle.js [--force]
  */
 import * as fs from 'fs';
@@ -32,27 +39,34 @@ async function run(): Promise<void> {
   const files = fs.readdirSync(corpusDir).filter((f) => f.endsWith('.txt') && !done.has(f)).sort();
   const url = readMcpUrl();
   const out = fs.createWriteStream(goldenPath, { flags: 'a' });
-  let i = 0, ok = 0, fail = 0;
+  let i = 0, ok = 0, removed = 0, fail = 0;
 
   async function worker(): Promise<void> {
     while (i < files.length) {
       const file = files[i++];
-      const input = normInput(fs.readFileSync(path.join(corpusDir, file), 'utf8'));
+      const txtPath = path.join(corpusDir, file);
+      const input = normInput(fs.readFileSync(txtPath, 'utf8'));
       try {
         const r = await validateQuery(input, url);
-        out.write(JSON.stringify({ file, valid: r.valid, input, query_text: normalizeQueryText(r.query_text) }) + '\n');
-        ok++;
+        if (r.valid) {
+          out.write(JSON.stringify({ file, valid: true, input, query_text: normalizeQueryText(r.query_text) }) + '\n');
+          ok++;
+        } else {
+          // Невалидный запрос в корпусе не храним: не пишем в golden и удаляем .txt.
+          fs.rmSync(txtPath, { force: true });
+          removed++;
+        }
       } catch (e) {
         fail++;
         process.stderr.write(`FAIL ${file}: ${e instanceof Error ? e.message : String(e)}\n`);
       }
-      if ((ok + fail) % 50 === 0) process.stderr.write(`… ${ok + fail}/${files.length}\n`);
+      if ((ok + removed + fail) % 50 === 0) process.stderr.write(`… ${ok + removed + fail}/${files.length}\n`);
     }
   }
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   out.end();
-  process.stderr.write(`Готово: собрано ${ok}, ошибок ${fail}, пропущено ${done.size}.\n`);
+  process.stderr.write(`Готово: собрано ${ok}, отбраковано (удалено) ${removed}, ошибок ${fail}, пропущено ${done.size}.\n`);
 }
 
 if (require.main === module) run();
