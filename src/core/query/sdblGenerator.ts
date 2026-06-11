@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace } from './exprFormatter';
+import { needsFormatting, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, flattenLeafText, leafHasSubquery } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -751,10 +751,20 @@ function renderGrouping(
 function renderOperatorRhs(op: string, param: string): string {
   if (op === 'В') {
     if (param.startsWith('(')) {
+      // Список значений `В (a, b, …)` конструктор печатает ИНЛАЙН на одной строке,
+      // даже если разработчик разбил его по запятым на несколько строк. Сплющиваем
+      // многострочный список в одну строку. Сплющиваем ТОЛЬКО если param —
+      // сбалансированный список `( … )` БЕЗ хвоста (иногда парсер ошибочно
+      // захватывает в param хвостовые секции вида `\n\nУПОРЯДОЧИТЬ ПО …` — их
+      // сплющивать нельзя) и БЕЗ вложенного подзапроса `(ВЫБРАТЬ …)`.
+      const list =
+        param.includes('\n') && isPureBalancedList(param) && !leafHasSubquery(param)
+          ? flattenLeafText(param)
+          : param;
       // Список из 2+ элементов конструктор отделяет пробелом: `В (a, b)`; список из
       // одного элемента — без пробела: `В(a)` (доказано на корпусе оракула:
       // multi 18 пробел / 0 без; single 14 пробел / 249 без — single оставляем как есть).
-      return `В${valueListIsMulti(param) ? ' ' : ''}${param}`;
+      return `В${valueListIsMulti(list) ? ' ' : ''}${list}`;
     }
     if (param.startsWith('ИЕРАРХИИ (')) return 'В ИЕРАРХИИ' + param.slice('ИЕРАРХИИ'.length).replace(/^ \(/, '(');
   }
@@ -766,6 +776,25 @@ function renderOperatorRhs(op: string, param: string): string {
  * Считает запятые вне вложенных скобок (ЗНАЧЕНИЕ(…) и т.п. — один элемент).
  * Подзапрос (`(ВЫБРАТЬ …)`) — не список значений, трактуется как один элемент.
  */
+/**
+ * `param` — сбалансированный список `( … )` без хвостовых символов после внешней
+ * закрывающей скобки. Используется, чтобы НЕ сплющивать param, в который парсер
+ * ошибочно затянул хвост запроса (`(&X)\n\nУПОРЯДОЧИТЬ ПО …`).
+ */
+function isPureBalancedList(param: string): boolean {
+  if (param[0] !== '(') return false;
+  let depth = 0;
+  for (let i = 0; i < param.length; i++) {
+    const ch = param[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      if (depth === 0) return i === param.length - 1;
+    }
+  }
+  return false;
+}
+
 function valueListIsMulti(param: string): boolean {
   const inner = param.slice(1, param.lastIndexOf(')'));
   if (/(^|[^\p{L}\p{N}_])ВЫБРАТЬ([^\p{L}\p{N}_]|$)/u.test(inner)) return false;
