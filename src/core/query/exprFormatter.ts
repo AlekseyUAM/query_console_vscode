@@ -44,6 +44,20 @@ const LITERAL_WORDS = new Set(['НЕОПРЕДЕЛЕНО', 'ИСТИНА', 'ЛО
 /** Примитивные типы: верхний регистр в позиции типа (ВЫРАЗИТЬ … КАК <Тип>, ТИП(<Тип>)). */
 const PRIMITIVE_TYPE_WORDS = new Set(['СТРОКА', 'ЧИСЛО', 'ДАТА', 'БУЛЕВО']);
 
+/**
+ * Литералы периода (гранулярность) в позиции аргумента `<Период>` функций дат
+ * (НАЧАЛОПЕРИОДА, КОНЕЦПЕРИОДА, ДОБАВИТЬКДАТЕ, РАЗНОСТЬДАТ): конструктор 1С приводит
+ * их к ВЕРХНЕМУ регистру (`…, День)` → `…, ДЕНЬ)`). Распознаются как голый токен-слово
+ * в позиции аргумента (после `,` или `(`), НЕ как `.`-квалифицированное поле и НЕ как
+ * имя функции (за словом не следует `(`).
+ */
+const PERIOD_WORDS = new Set([
+  'ГОД', 'ПОЛУГОДИЕ', 'КВАРТАЛ', 'МЕСЯЦ', 'ДЕКАДА', 'НЕДЕЛЯ', 'ДЕНЬ', 'ЧАС', 'МИНУТА', 'СЕКУНДА',
+]);
+
+/** Функции дат, принимающие аргумент `<Период>` (гранулярность). */
+const PERIOD_FUNCTIONS = new Set(['НАЧАЛОПЕРИОДА', 'КОНЕЦПЕРИОДА', 'ДОБАВИТЬКДАТЕ', 'РАЗНОСТЬДАТ']);
+
 function tokUpper(t: Token): string {
   return (t.text ?? t.value).toUpperCase();
 }
@@ -240,6 +254,28 @@ export function normalizeLeafWhitespace(raw: string): string {
  * сохраняя всё остальное (идентификаторы, строки, параметры, пробелы) дословно.
  * Применяется к каждому листовому срезу перед выводом.
  */
+/**
+ * Имя функции, чьему списку аргументов непосредственно принадлежит токен sig[idx]:
+ * идёт назад по значимым токенам, отслеживая баланс скобок, до «лишней» открывающей
+ * скобки текущего уровня; токен-слово прямо перед ней — имя функции. Возвращает true,
+ * если это имя (в верхнем регистре) входит в `names`.
+ */
+function enclosingFunctionIs(sig: Token[], idx: number, names: Set<string>): boolean {
+  let depth = 0;
+  for (let k = idx - 1; k >= 0; k--) {
+    const t = sig[k];
+    if (t.type === 'punct' && t.value === ')') depth++;
+    else if (t.type === 'punct' && t.value === '(') {
+      if (depth === 0) {
+        const fn = sig[k - 1];
+        return !!fn && (fn.type === 'ident' || fn.type === 'keyword') && names.has(tokUpper(fn));
+      }
+      depth--;
+    }
+  }
+  return false;
+}
+
 export function normalizeLeafCase(raw: string): string {
   if (!raw) return raw;
   let toks: Token[];
@@ -289,6 +325,20 @@ export function normalizeLeafCase(raw: string): string {
         if (pp && isWordTok(pp) && tokUpper(pp) === 'ТИП') insideTip = true;
       }
       if (afterKak || insideTip) shouldUpper = true;
+    }
+
+    // 4) Литерал периода в позиции аргумента функции даты (НАЧАЛОПЕРИОДА/КОНЕЦПЕРИОДА/
+    //    ДОБАВИТЬКДАТЕ/РАЗНОСТЬДАТ). Голый токен-слово внутри списка аргументов такой
+    //    функции, за которым НЕ следует `(` (иначе это имя функции ДЕНЬ(…)) и НЕ
+    //    следует `.` (иначе голова `.`-пути). Принадлежность аргументного списка
+    //    конкретной функции проверяем по имени перед охватывающей скобкой — это не
+    //    даёт задеть голый идентификатор `Год`, стоящий после запятой в списках
+    //    УПОРЯДОЧИТЬ ПО / ВЫБРАТЬ и т. п.
+    if (!shouldUpper && PERIOD_WORDS.has(up)) {
+      const nextIsDot = !!next && next.type === 'punct' && next.value === '.';
+      if (!followedByParen && !nextIsDot && enclosingFunctionIs(sig, i, PERIOD_FUNCTIONS)) {
+        shouldUpper = true;
+      }
     }
 
     if (shouldUpper) spans.push({ pos: t.pos, len: text.length, up });
