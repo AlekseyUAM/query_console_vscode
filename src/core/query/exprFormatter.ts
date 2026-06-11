@@ -291,7 +291,7 @@ type Node =
   | { kind: 'and'; operands: Node[] }
   | { kind: 'not'; child: Node }
   | { kind: 'group'; child: Node } // скобочная группа верхнего уровня
-  | { kind: 'case'; clauses: CaseClause[]; elseExpr?: Node | null; elseText?: string }
+  | { kind: 'case'; clauses: CaseClause[]; elseExpr?: Node | null; elseText?: string; selector?: string }
   | { kind: 'leaf'; text: string };
 
 interface CaseClause {
@@ -564,6 +564,13 @@ class Parser {
 
   private parseCase(): Node {
     this.i++; // съесть ВЫБОР
+    // Селекторная форма: ВЫБОР <выражение> КОГДА <значение> ТОГДА … Если сразу за
+    // ВЫБОР идёт не КОГДА — это селектор (выражение-лист до первого верхнеуровневого
+    // КОГДА), который конструктор печатает инлайн на строке `ВЫБОР <селектор>`.
+    let selector: string | undefined;
+    if (!this.atEof() && !isWhen(this.peek())) {
+      selector = this.parseCaseSelector();
+    }
     const clauses: CaseClause[] = [];
     let elseNode: Node | null = null;
     while (!this.atEof()) {
@@ -588,7 +595,38 @@ class Parser {
       }
       break;
     }
-    return { kind: 'case', clauses, elseExpr: elseNode };
+    return { kind: 'case', clauses, elseExpr: elseNode, selector };
+  }
+
+  /**
+   * Селектор формы `ВЫБОР <выражение> КОГДА …` — листовое выражение между ВЫБОР и
+   * первым верхнеуровневым КОГДА. Печатается инлайн; нормализуется как лист.
+   */
+  private parseCaseSelector(): string {
+    const startTok = this.peek();
+    const from = startTok.pos;
+    let to = from;
+    let depth = 0;
+    while (!this.atEof()) {
+      const t = this.peek();
+      if (t.type === 'punct' && t.value === '(') {
+        depth++;
+        to = t.pos + t.value.length;
+        this.i++;
+        continue;
+      }
+      if (t.type === 'punct' && t.value === ')') {
+        if (depth === 0) break;
+        depth--;
+        to = t.pos + t.value.length;
+        this.i++;
+        continue;
+      }
+      if (depth === 0 && isWhen(t)) break;
+      to = t.pos + t.value.length;
+      this.i++;
+    }
+    return this.leafText(from, to);
   }
 
   /**
@@ -841,7 +879,7 @@ function valueText(node: Node): string {
 }
 
 function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): string[] {
-  const lines: string[] = ['ВЫБОР'];
+  const lines: string[] = [node.selector ? 'ВЫБОР ' + node.selector : 'ВЫБОР'];
   for (const cl of node.clauses) {
     const whenInd = E + 1;
     const whenLines = renderWhenCondition(cl.whenNode, whenInd, ctx);
