@@ -357,7 +357,7 @@ describe('parseQuery 6.2.B — ГДЕ (round-trip)', () => {
   });
 
   it('произвольное условие со скобками', () => {
-    roundTrip({ ...base(), conditions: [{ custom: true, expression: 'Валюты.Код В (&Список)' }] });
+    roundTrip({ ...base(), conditions: [{ custom: true, expression: 'Валюты.Код В(&Список)' }] });
   });
 
   it('простое + произвольное условие', () => {
@@ -365,7 +365,7 @@ describe('parseQuery 6.2.B — ГДЕ (round-trip)', () => {
       ...base(),
       conditions: [
         { custom: false, tableId: 't1', path: 'Код' },
-        { custom: true, expression: 'Валюты.Код В (&Список)' },
+        { custom: true, expression: 'Валюты.Код В(&Список)' },
       ],
     });
   });

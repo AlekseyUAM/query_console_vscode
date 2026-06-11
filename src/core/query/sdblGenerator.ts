@@ -574,6 +574,20 @@ function renderGrouping(
 }
 
 /**
+ * Правая часть простого условия `<op> <param>`. Конструктор 1С не ставит пробел перед
+ * скобкой списка значений у оператора `В` (и `В ИЕРАРХИИ`): `В (&Список)` → `В(&Список)`,
+ * `В ИЕРАРХИИ (&Род)` → `В ИЕРАРХИИ(&Род)`. Перед подзапросом (`В (ВЫБРАТЬ …)`) конструктор
+ * переносит на новую строку — это вне модели простых условий (фаза 6.11), здесь не трогаем.
+ */
+function renderOperatorRhs(op: string, param: string): string {
+  if (op === 'В') {
+    if (param.startsWith('(')) return `В${param}`;
+    if (param.startsWith('ИЕРАРХИИ (')) return 'В ИЕРАРХИИ' + param.slice('ИЕРАРХИИ'.length).replace(/^ \(/, '(');
+  }
+  return `${op} ${param}`;
+}
+
+/**
  * Секция ГДЕ (условия отбора). Возвращает [] если рендерящихся условий нет —
  * тогда вывод байт-в-байт как раньше. Первое условие на отдельной строке,
  * каждое последующее — с префиксом «И ».
@@ -594,7 +608,8 @@ function renderConditions(
     if (!c.path) continue;
     const alias = aliases.get(c.tableId ?? '') ?? c.tableId;
     const param = c.param ?? `&${c.path.split('.').pop()}`;
-    conds.push(`${alias}.${c.path} ${c.operator ?? '='} ${param}`);
+    const op = c.operator ?? '=';
+    conds.push(`${alias}.${c.path} ${renderOperatorRhs(op, param)}`);
   }
 
   if (conds.length === 0) return [];

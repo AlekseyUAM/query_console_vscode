@@ -506,6 +506,18 @@ describe('generate — условия (ГДЕ)', () => {
     expect(generate(model)).toContain('ГДЕ\n\tВалюты.Код В (&Список)');
   });
 
+  it('оператор В без пробела перед списком значений (как конструктор 1С)', () => {
+    const model = base();
+    model.conditions = [{ custom: false, tableId: 't1', path: 'Код', operator: 'В', param: '(&Список)' }];
+    expect(generate(model)).toContain('ГДЕ\n\tВалюты.Код В(&Список)');
+  });
+
+  it('оператор В ИЕРАРХИИ без пробела перед скобкой', () => {
+    const model = base();
+    model.conditions = [{ custom: false, tableId: 't1', path: 'Код', operator: 'В', param: 'ИЕРАРХИИ (&Род)' }];
+    expect(generate(model)).toContain('ГДЕ\n\tВалюты.Код В ИЕРАРХИИ(&Род)');
+  });
+
   it('пустое произвольное условие и условие без path пропускаются', () => {
     const model = base();
     model.conditions = [
