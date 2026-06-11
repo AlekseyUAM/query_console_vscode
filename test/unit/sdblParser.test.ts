@@ -638,6 +638,20 @@ describe('parseQuery 6.2.C — УПОРЯДОЧИТЬ ПО (round-trip)', () => 
       order: { fields: [{ tableId: 't1', path: 'Владелец.Код', direction: 'asc' }], auto: false },
     });
   });
+
+  it('квалифицированное поле таблицы сохраняется как Псевдоним.Поле', () => {
+    const model: QueryModel = {
+      tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
+      fields: [{ tableId: 't1', path: 'Ссылка', alias: 'Ссылка' }],
+      order: { fields: [{ tableId: 't1', path: 'РеквизитДопУпорядочивания', direction: 'asc', qualified: true }], auto: false },
+    };
+    const text = generate(model);
+    expect(text).toContain('УПОРЯДОЧИТЬ ПО\n\tВалюты.РеквизитДопУпорядочивания');
+    // парсинг квалифицированной ссылки восстанавливает qualified-поле
+    const reparsed = parseQuery(text);
+    expect(reparsed.order?.fields[0]).toMatchObject({ path: 'РеквизитДопУпорядочивания', qualified: true });
+    expect(generate(reparsed)).toBe(text);
+  });
 });
 
 describe('parseQuery 6.2.C — ИТОГИ (round-trip)', () => {

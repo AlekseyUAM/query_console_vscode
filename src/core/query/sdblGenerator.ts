@@ -388,12 +388,17 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
   if (!order) return [];
   const lines: string[] = [];
   if (order.fields.length > 0) {
+    // Квалифицированные поля адресуются как `<псевдонимТаблицы>.<path>` (ссылка на поле
+    // таблицы, как у конструктора 1С); прочие — по псевдониму выборки.
+    const tableAliases = resolveAliases(model.tables);
     lines.push('УПОРЯДОЧИТЬ ПО');
     order.fields.forEach((f, i) => {
-      const alias = selectAliasFor(model, f.tableId, f.path);
+      const ref = f.qualified
+        ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
+        : selectAliasFor(model, f.tableId, f.path);
       const suffix = f.direction === 'desc' ? ' УБЫВ' : '';
       const comma = i < order.fields.length - 1 ? ',' : '';
-      lines.push(`\t${alias}${suffix}${comma}`);
+      lines.push(`\t${ref}${suffix}${comma}`);
     });
   }
   if (order.auto) lines.push('АВТОУПОРЯДОЧИВАНИЕ');

@@ -297,7 +297,7 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   const selectAliasMap = buildSelectAliasMap(model);
 
   if (cur.isKeyword('УПОРЯДОЧИТЬ') || cur.isKeyword('АВТОУПОРЯДОЧИВАНИЕ')) {
-    model.order = parseOrder(cur, selectAliasMap);
+    model.order = parseOrder(cur, selectAliasMap, aliasToId);
   }
   if (cur.isKeyword('ИТОГИ')) {
     model.totals = parseTotals(cur, selectAliasMap);
@@ -1197,21 +1197,50 @@ function parseGroupFieldRef(cur: Cursor, aliasToId: Map<string, string>): FieldR
  *  - `УПОРЯДОЧИТЬ ПО <псевдоним>[ УБЫВ], …` → order.fields (резолв псевдонима выборки).
  *  - последняя строка `АВТОУПОРЯДОЧИВАНИЕ` (с полями или без) → order.auto=true.
  */
-function parseOrder(cur: Cursor, aliasMap: Map<string, FieldRef>): Order {
+function parseOrder(
+  cur: Cursor,
+  aliasMap: Map<string, FieldRef>,
+  aliasToId: Map<string, string>
+): Order {
   const fields: OrderField[] = [];
   let auto = false;
 
   if (cur.matchKeyword('УПОРЯДОЧИТЬ')) {
     cur.expectKeyword('ПО');
     for (;;) {
-      const aliasTok = cur.peek();
-      if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
-        throw cur.error('ожидался псевдоним поля упорядочивания', aliasTok);
+      const headTok = cur.peek();
+      if (headTok.type !== 'ident' && headTok.type !== 'keyword') {
+        throw cur.error('ожидался псевдоним поля упорядочивания', headTok);
       }
       cur.next();
-      const ref = resolveSelectAlias(aliasTok.text, aliasMap);
+      // Точечно-разделённый путь: `<голова>(.<сегмент>)*`.
+      const segs = [headTok.text];
+      while (cur.isPunct('.')) {
+        cur.next();
+        const seg = cur.peek();
+        if (seg.type !== 'ident' && seg.type !== 'keyword') {
+          throw cur.error('ожидался сегмент имени после «.»', seg);
+        }
+        segs.push(cur.next().text);
+      }
       const direction = cur.matchKeyword('УБЫВ') ? 'desc' : 'asc';
-      fields.push({ tableId: ref.tableId, path: ref.path, direction });
+
+      if (segs.length > 1 && aliasToId.has(segs[0])) {
+        // Квалифицированная ссылка `<псевдонимТаблицы>.<path>` — сохраняем как есть.
+        fields.push({
+          tableId: aliasToId.get(segs[0])!,
+          path: segs.slice(1).join('.'),
+          direction,
+          qualified: true,
+        });
+      } else {
+        // Бара́я ссылка — псевдоним выборки (или нерезолвимое имя). Квалификацию бара́го
+        // поля по таблице конструктор делает по схеме метаданных — здесь недоступно
+        // (см. ROADMAP 6.8, R3, многотабличный остаток).
+        const ref = resolveSelectAlias(segs.join('.'), aliasMap);
+        fields.push({ tableId: ref.tableId, path: ref.path, direction });
+      }
+
       if (cur.matchPunct(',')) continue;
       break;
     }
