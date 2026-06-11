@@ -955,7 +955,7 @@ describe('generate — связи (joins)', () => {
     await assertValidSdbl(generate(model));
   });
 
-  it('произвольное условие связи оборачивается в скобки', async () => {
+  it('одиночное произвольное условие связи оборачивается в скобки (как конструктор 1С)', async () => {
     const model: QueryModel = {
       ...twoTables(),
       joins: [{
@@ -971,6 +971,20 @@ describe('generate — связи (joins)', () => {
       '\t\tПО (Валюты.Ссылка = &Труляля)'
     );
     await assertValidSdbl(generate(model));
+  });
+
+  it('составное произвольное условие связи — без внешних скобок (верхнеуровневый И)', async () => {
+    const model: QueryModel = {
+      ...twoTables(),
+      joins: [{
+        leftTableId: 't1', rightTableId: 't2',
+        leftAll: false, rightAll: false, custom: true,
+        expression: '(Валюты.Ссылка = &Влад) И (ВариантыОтветовАнкет.ПометкаУдаления = ЛОЖЬ)',
+      }],
+    };
+    expect(generate(model)).toContain(
+      '\t\tПО (Валюты.Ссылка = &Влад) И (ВариантыОтветовАнкет.ПометкаУдаления = ЛОЖЬ)'
+    );
   });
 
   it('таблица без связи дописывается после цепочки через запятую', async () => {

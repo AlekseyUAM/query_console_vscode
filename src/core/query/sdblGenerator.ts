@@ -111,14 +111,47 @@ function joinKeyword(leftAll: boolean, rightAll: boolean): string {
 }
 
 /**
+ * Есть ли в выражении верхнеуровневый (вне скобок и строк) булев оператор И/ИЛИ.
+ * Используется, чтобы отличить одиночное условие соединения от составного.
+ */
+function hasTopLevelBooleanOp(expr: string): boolean {
+  const n = expr.length;
+  const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < n; i++) {
+    const c = expr[i];
+    if (inStr) {
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '(') { depth++; continue; }
+    if (c === ')') { depth--; continue; }
+    if (depth !== 0) continue;
+    // Граница слова на глубине 0: проверяем И и ИЛИ (регистронезависимо).
+    if (!isWordChar(expr[i - 1])) {
+      const up = expr.slice(i, i + 3).toUpperCase();
+      if (up.startsWith('ИЛИ') && !isWordChar(expr[i + 3])) return true;
+      if (expr[i].toUpperCase() === 'И' && !isWordChar(expr[i + 1])) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Текст условия `ПО`. Простое: `<alias>.<path> <op> <alias>.<path>`; произвольное
  * оборачивается в скобки. Условие построено по псевдонимам и от порядка таблиц
  * (перестановки при правом соединении) не зависит. Возвращает '' если условия нет.
  */
 function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
   if (join.custom) {
+    // Конструктор 1С оборачивает в скобки одиночное условие соединения (`ПО (a = b)`),
+    // но НЕ добавляет внешние скобки вокруг составного с верхнеуровневым И/ИЛИ
+    // (`ПО (a) И (b)`). Многострочный реиндент составных условий — фаза 6.10.
     const expr = (join.expression ?? '').trim();
-    return expr ? `(${expr})` : '';
+    if (!expr) return '';
+    return hasTopLevelBooleanOp(expr) ? expr : `(${expr})`;
   }
   const leftAlias = aliases.get(join.leftTableId) ?? join.leftTableId;
   const rightAlias = aliases.get(join.rightTableId) ?? join.rightTableId;
