@@ -415,7 +415,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     const subLines = tsf.fields.map((f, i) =>
       `\t\t${f} КАК ${f}${i < tsf.fields.length - 1 ? ',' : ''}`
     );
-    allLines.push(`\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.tsName}`);
+    allLines.push(`\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.alias ?? tsf.tsName}`);
   }
 
   // Поля, которые должны появляться после табличных частей (Предопределенный, ИмяПредопределенныхДанных).

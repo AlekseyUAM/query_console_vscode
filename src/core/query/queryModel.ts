@@ -39,6 +39,8 @@ export interface SelectedTabSectionField {
   tsName: string;
   tsFullName: string;
   fields: string[];
+  /** Явный псевдоним всей табличной части (`… КАК <alias>`); по умолчанию = tsName. */
+  alias?: string;
 }
 
 export type AggregateFunction =

@@ -152,6 +152,8 @@ interface RawTabSection {
   tableAlias: string;
   tsName: string;
   fields: string[];
+  /** Явный псевдоним `… КАК <alias>` (если задан), иначе undefined. */
+  alias?: string;
 }
 
 /** Один элемент списка выборки: обычное поле или табличная часть. */
@@ -443,9 +445,19 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
   // которым конструктор сам подставляет псевдоним = имя поля.
   const fields: string[] = [];
   for (;;) {
-    const f = cur.peek();
+    let f = cur.peek();
     if (f.type !== 'ident' && f.type !== 'keyword') throw cur.error('ожидалось поле табличной части', f);
     cur.next();
+    // Поле может быть квалифицировано псевдонимом табличной части
+    // (`Группы.Группа` внутри `…Группы.(`). Конструктор печатает поле БЕЗ этого
+    // ведущего квалификатора (`Группа`), поэтому берём последний сегмент пути.
+    while (cur.isPunct('.')) {
+      cur.next(); // '.'
+      const seg = cur.peek();
+      if (seg.type !== 'ident' && seg.type !== 'keyword') throw cur.error('ожидалось поле табличной части', seg);
+      cur.next();
+      f = seg;
+    }
     if (cur.matchKeyword('КАК')) {
       cur.next(); // псевдоним поля (= имя поля)
     }
@@ -455,11 +467,17 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
     break;
   }
   cur.expectPunct(')');
-  // `КАК <псевдоним табличной части>` также необязателен.
+  // `КАК <псевдоним табличной части>` также необязателен. Если задан явно —
+  // конструктор печатает именно его (а не имя табличной части).
+  let alias: string | undefined;
   if (cur.matchKeyword('КАК')) {
-    cur.next(); // псевдоним табличной части (= tsName)
+    const a = cur.peek();
+    if (a.type === 'ident' || a.type === 'keyword') {
+      alias = a.text;
+      cur.next();
+    }
   }
-  return { tableAlias, tsName, fields };
+  return { tableAlias, tsName, fields, alias };
 }
 
 function parseOneField(cur: Cursor): RawField {
@@ -508,7 +526,7 @@ function resolveTabSection(
   const table = tables.find(t => t.id === tableId);
   // tsFullName косметический (генератор использует только tsName и fields).
   const tsFullName = table ? `${table.fullName}.${ts.tsName}` : ts.tsName;
-  return { tableId, tsName: ts.tsName, tsFullName, fields: ts.fields };
+  return { tableId, tsName: ts.tsName, tsFullName, fields: ts.fields, alias: ts.alias };
 }
 
 /** Сырой срез исходника по диапазону токенов тела. */
