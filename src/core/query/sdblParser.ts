@@ -437,22 +437,27 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
   cur.expectPunct('.');
   cur.expectPunct('(');
 
-  // Внутри: список `<f> КАК <f>` через запятую.
+  // Внутри: список полей через запятую. `КАК <псевдоним>` после имени поля
+  // необязателен — 1С допускает голые имена `Идентификатор, ВариантЗапуска`,
+  // которым конструктор сам подставляет псевдоним = имя поля.
   const fields: string[] = [];
   for (;;) {
     const f = cur.peek();
     if (f.type !== 'ident' && f.type !== 'keyword') throw cur.error('ожидалось поле табличной части', f);
     cur.next();
-    cur.expectKeyword('КАК');
-    cur.next(); // псевдоним поля (= имя поля)
+    if (cur.matchKeyword('КАК')) {
+      cur.next(); // псевдоним поля (= имя поля)
+    }
     // Исходный текст имени поля (для keyword-токенов value в верхнем регистре).
     fields.push(f.text);
     if (cur.matchPunct(',')) continue;
     break;
   }
   cur.expectPunct(')');
-  cur.expectKeyword('КАК');
-  cur.next(); // псевдоним табличной части (= tsName)
+  // `КАК <псевдоним табличной части>` также необязателен.
+  if (cur.matchKeyword('КАК')) {
+    cur.next(); // псевдоним табличной части (= tsName)
+  }
   return { tableAlias, tsName, fields };
 }
 

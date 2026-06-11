@@ -427,7 +427,14 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
       continue;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
-    const expr = f.alias ? `${tableAlias}.${f.path} КАК ${f.alias}` : `${tableAlias}.${f.path}`;
+    const func = aggregateFunc(f.tableId, f.path);
+    const lhs = func
+      ? wrapAggregate(func, `${tableAlias}.${f.path}`)
+      : `${tableAlias}.${f.path}`;
+    // Тот же авто-псевдоним по последнему сегменту пути, что и для обычных полей.
+    const autoAlias = !func && !suppressAutoAlias ? (f.path.split('.').pop() ?? f.path) : undefined;
+    const effAlias = f.alias ?? autoAlias;
+    const expr = effAlias ? `${lhs} КАК ${effAlias}` : lhs;
     allLines.push(`\t${expr}`);
   }
 
