@@ -1177,6 +1177,9 @@ function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
   // оператора ВЫБОР не является разделителем условий ГДЕ/ИМЕЮЩИЕ (всё выражение
   // ВЫБОР — одно условие). Без этого `ТОГДА a И b` разрывал бы оператор ВЫБОР.
   let caseDepth = 0;
+  // Сколько `И` из конструкции `МЕЖДУ a И b` ожидаем «съесть» на верхнем уровне:
+  // такой `И` принадлежит диапазону МЕЖДУ, а не является разделителем условий.
+  let betweenPending = 0;
   const isIdentWord = (t: Token, w: string): boolean =>
     (t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === w;
   const flush = (): void => {
@@ -1189,10 +1192,16 @@ function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
     if (depth === 0 && caseDepth === 0) {
       if (t.type === 'keyword' && stop.has(t.value)) break;
       if (t.type === 'keyword' && t.value === 'И') {
-        cur.next();
-        flush();
-        continue;
+        if (betweenPending > 0) {
+          // `И` из диапазона `МЕЖДУ a И b` — часть текущего условия, не разделитель.
+          betweenPending--;
+        } else {
+          cur.next();
+          flush();
+          continue;
+        }
       }
+      if (isIdentWord(t, 'МЕЖДУ')) betweenPending++;
     }
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
