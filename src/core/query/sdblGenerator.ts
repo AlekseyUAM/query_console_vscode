@@ -3,6 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
+import { needsFormatting, formatExpression } from './exprFormatter';
 
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
@@ -151,7 +152,11 @@ function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
     // (`ПО (a) И (b)`). Многострочный реиндент составных условий — фаза 6.10.
     const expr = (join.expression ?? '').trim();
     if (!expr) return '';
-    return hasTopLevelBooleanOp(expr) ? expr : `(${expr})`;
+    // Составное условие (верхнеуровневый И/ИЛИ) или структура (ИЛИ/ВЫБОР) —
+    // переотрисовываем форматером (фаза 6.10). Простое одиночное — как раньше: `(a = b)`.
+    if (hasTopLevelBooleanOp(expr)) return formatExpression(expr, 'join');
+    if (needsFormatting(expr)) return formatExpression(expr, 'join');
+    return `(${expr})`;
   }
   const leftAlias = aliases.get(join.leftTableId) ?? join.leftTableId;
   const rightAlias = aliases.get(join.rightTableId) ?? join.rightTableId;
@@ -313,7 +318,10 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
   for (const f of model.fields) {
     if (f.expression) {
       const alias = f.alias ?? `Поле${++exprCounter}`;
-      allLines.push(`\t${f.expression} КАК ${alias}`);
+      const expr = needsFormatting(f.expression)
+        ? formatExpression(f.expression.trim(), 'select')
+        : f.expression;
+      allLines.push(`\t${expr} КАК ${alias}`);
       continue;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
@@ -342,7 +350,10 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
   for (const f of model.trailingFields ?? []) {
     if (f.expression) {
       const alias = f.alias ?? `Поле${++exprCounter}`;
-      allLines.push(`\t${f.expression} КАК ${alias}`);
+      const expr = needsFormatting(f.expression)
+        ? formatExpression(f.expression.trim(), 'select')
+        : f.expression;
+      allLines.push(`\t${expr} КАК ${alias}`);
       continue;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
@@ -638,14 +649,15 @@ function renderOperatorRhs(op: string, param: string): string {
 /** Строки отдельных условий (без ключевого слова секции и префиксов `И`). */
 function buildConditionStrings(
   conditions: Condition[] | undefined,
-  aliases: Map<string, string>
+  aliases: Map<string, string>,
+  slot: 'where' | 'having' = 'where'
 ): string[] {
   if (!conditions || conditions.length === 0) return [];
   const conds: string[] = [];
   for (const c of conditions) {
     if (c.custom) {
       const expr = (c.expression ?? '').trim();
-      if (expr) conds.push(expr);
+      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : expr);
       continue;
     }
     if (!c.path) continue;
@@ -674,7 +686,7 @@ function renderHaving(
   having: Condition[] | undefined,
   aliases: Map<string, string>
 ): string[] {
-  const conds = buildConditionStrings(having, aliases);
+  const conds = buildConditionStrings(having, aliases, 'having');
   if (conds.length === 0) return [];
   return ['', 'ИМЕЮЩИЕ', ...conds.map((c, i) => (i === 0 ? `\t${c}` : `\tИ ${c}`))];
 }
