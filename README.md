@@ -85,6 +85,23 @@ parseConfiguration.ts  оркестратор: обход cf/, диспетч п
 
 ## Сборка и запуск
 
+Быстрый старт — скрипт [`install.sh`](install.sh) (проверка Node, системные пакеты
+для node-gyp, `npm install` и сборка одной командой):
+
+```bash
+./install.sh           # окружение + npm install + build
+./install.sh --e2e     # + браузеры Playwright для e2e-тестов
+./install.sh --docker  # + Docker Engine и devcontainers CLI (для DevContainer)
+./install.sh --help     # все опции (--wasm, --no-system)
+```
+
+Для разработки в контейнере (`.devcontainer/`) нужен Docker на хосте: `./install.sh
+--docker` ставит Docker Engine (buildx/compose), добавляет пользователя в группу
+`docker` и `@devcontainers/cli`. Дальше — «Dev Containers: Reopen in Container» в VS
+Code или `devcontainer up --workspace-folder .` из терминала.
+
+Требуется **Node.js ≥ 20** (рекомендуется 22) и npm. Вручную то же самое:
+
 ```bash
 npm install
 npm run build          # сборка extension + webview в out/

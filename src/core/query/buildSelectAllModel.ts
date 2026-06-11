@@ -99,6 +99,13 @@ export function buildSelectAllModel(t: MetaTable, periodicity?: string): QueryMo
   if (t.virtual) {
     const params: Record<string, unknown> = {};
     if (passPeriodicity) params.periodicity = periodicity;
+    // Необоротные ВТ: первый параметр-период по умолчанию &Период (как в конструкторе 1С),
+    // чтобы текст «выбрать все» был полным. Для ДвиженияССубконто период — это НачалоПериода.
+    if (slice === 'Остатки' || slice === 'СрезПервых' || slice === 'СрезПоследних') {
+      params.period = '&Период';
+    } else if (slice === 'ДвиженияССубконто') {
+      params.startPeriod = '&Период';
+    }
     // Для РегистраБухгалтерии прокидываем correspondence — генератор использует его
     // для выбора арности источника (Обороты corr vs non-corr).
     if (isAccountingVt && t.virtual.correspondence !== undefined) {

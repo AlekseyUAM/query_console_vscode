@@ -81,12 +81,12 @@ function renderSource(t: SelectedTable): string {
     return `${t.fullName}(${positions.join(', ')})`;
   }
 
-  // Остатки/срезы регистра сведений: хвостовые пустые позиции отбрасываются.
+  // Остатки/срезы регистра сведений и накопления: фиксированная арность (Период, Условие),
+  // как у регистра бухгалтерии и по эталону конструктора 1С — хвостовые пустые позиции
+  // сохраняются. Скобки — только если задан хоть один параметр.
   const positions = [v.period ?? '', v.condition ?? ''];
-  let last = positions.length - 1;
-  while (last >= 0 && positions[last] === '') last--;
-  if (last < 0) return t.fullName;
-  return `${t.fullName}(${positions.slice(0, last + 1).join(', ')})`;
+  if (!positions.some(p => p !== '')) return t.fullName;
+  return `${t.fullName}(${positions.join(', ')})`;
 }
 
 /** Модификаторы выборки записей: РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N. */
@@ -99,10 +99,14 @@ function selectionModifiers(selection: QueryModel['selection']): string {
   return m;
 }
 
-/** Ключевое слово соединения по галочкам «Все» (без нормализации перестановки). */
+/**
+ * Ключевое слово соединения по галочкам «Все». Конструктор 1С сохраняет ПРАВОЕ
+ * соединение как есть (не нормализует перестановкой в ЛЕВОЕ).
+ */
 function joinKeyword(leftAll: boolean, rightAll: boolean): string {
   if (leftAll && rightAll) return 'ПОЛНОЕ';
-  if (leftAll || rightAll) return 'ЛЕВОЕ';
+  if (leftAll && !rightAll) return 'ЛЕВОЕ';
+  if (!leftAll && rightAll) return 'ПРАВОЕ';
   return 'ВНУТРЕННЕЕ';
 }
 
@@ -147,10 +151,10 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
   const lines: string[] = [];
 
   joins.forEach((join, idx) => {
-    // Нормализация правого соединения: перестановка таблиц, вид → ЛЕВОЕ.
-    const swap = !join.leftAll && join.rightAll;
-    const seedId = swap ? join.rightTableId : join.leftTableId;
-    const joinedId = swap ? join.leftTableId : join.rightTableId;
+    // Источники соединения в порядке записи: затравка — левая таблица, присоединяемая —
+    // правая. ПРАВОЕ соединение конструктор сохраняет без перестановки.
+    const seedId = join.leftTableId;
+    const joinedId = join.rightTableId;
     const keyword = joinKeyword(join.leftAll, join.rightAll);
     const seed = byId.get(seedId);
     const joined = byId.get(joinedId);
@@ -279,7 +283,12 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     const lhs = func
       ? wrapAggregate(func, `${tableAlias}.${f.path}`)
       : `${tableAlias}.${f.path}`;
-    const expr = f.alias ? `${lhs} КАК ${f.alias}` : lhs;
+    // Конструктор 1С всегда даёт простому полю псевдоним = последний сегмент пути,
+    // если явный не задан (Таблица.Ссылка → Таблица.Ссылка КАК Ссылка). Агрегаты
+    // без явного псевдонима оставляем как есть.
+    const autoAlias = !func ? (f.path.split('.').pop() ?? f.path) : undefined;
+    const effAlias = f.alias ?? autoAlias;
+    const expr = effAlias ? `${lhs} КАК ${effAlias}` : lhs;
     allLines.push(`\t${expr}`);
   }
 
