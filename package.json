@@ -66,6 +66,7 @@
     "build:oracle": "esbuild src/cli/harvestOracle.ts --bundle --outfile=out/cli/harvestOracle.js --platform=node --format=cjs && esbuild src/cli/oracleAcceptCli.ts --bundle --outfile=out/cli/oracleAcceptCli.js --platform=node --format=cjs",
     "harvest": "npm run build:oracle && node out/cli/harvestOracle.js",
     "accept:oracle": "npm run build:oracle && node out/cli/oracleAcceptCli.js",
+    "oracle:diff": "esbuild src/cli/oracleDiff.ts --bundle --outfile=out/cli/oracleDiff.js --platform=node --format=cjs && node out/cli/oracleDiff.js",
     "build:webview": "esbuild src/webview/main.tsx --bundle --outfile=out/webview/main.js --platform=browser --format=iife --loader:.tsx=tsx --loader:.ts=ts",
     "watch:extension": "tsc -p tsconfig.json --watch",
     "watch:webview": "npm run build:webview -- --watch",
