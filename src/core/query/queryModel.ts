@@ -261,5 +261,8 @@ export function defaultTableAlias(t: SelectedTable): string {
   // Виртуальная таблица (Тип.Имя.ВТ): псевдоним по умолчанию в 1С — склейка имени
   // таблицы и имени ВТ без разделителя, напр. АрхивСообщенийОбменовСрезПоследних.
   if (parts.length > 2) return parts[1] + parts.slice(2).join('');
-  return parts[1] ?? t.fullName;
+  // `#`-подстановка временной таблицы (`ИЗ #ИмяТаблицы`): конструктор синтезирует
+  // авто-псевдоним без ведущего `#` (`#ИмяТаблицы КАК ИмяТаблицы`).
+  const name = parts[1] ?? t.fullName;
+  return name.startsWith('#') ? name.slice(1) : name;
 }

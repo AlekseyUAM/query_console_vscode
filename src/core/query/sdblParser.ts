@@ -937,7 +937,7 @@ function interpretField(
   }
 
   // 1) Попытка агрегата.
-  const agg = tryAggregate(rf.bodyTokens, aliasToId);
+  const agg = tryAggregate(rf.bodyTokens, aliasToId, soleSource);
   if (agg) {
     const field: SelectedField = { tableId: agg.tableId, path: agg.path };
     if (rf.alias !== undefined) field.alias = rf.alias;
@@ -970,7 +970,11 @@ interface AggHit {
 }
 
 /** Разбор `<ФУНК>( [РАЗЛИЧНЫЕ] <alias>.<path> )`. */
-function tryAggregate(body: Token[], aliasToId: Map<string, string>): AggHit | undefined {
+function tryAggregate(
+  body: Token[],
+  aliasToId: Map<string, string>,
+  soleSource?: SoleSource
+): AggHit | undefined {
   if (body.length < 4) return undefined;
   const head = body[0];
   if (head.type !== 'keyword') return undefined;
@@ -993,8 +997,15 @@ function tryAggregate(body: Token[], aliasToId: Map<string, string>): AggHit | u
   if (!func) return undefined;
 
   const ref = parseFieldRef(inner, aliasToId);
-  if (!ref) return undefined;
-  return { tableId: ref.tableId, path: ref.path, func };
+  if (ref) return { tableId: ref.tableId, path: ref.path, func };
+  // Голое поле внутри агрегата при единственном источнике (`МИНИМУМ(ДатаЗаписи)` →
+  // `МИНИМУМ(Т.ДатаЗаписи)`): аргумент — чистый точечный путь без квалификации.
+  // Конструктор 1С квалифицирует его псевдонимом единственного источника.
+  if (soleSource) {
+    const bare = tryBareField(inner, aliasToId, soleSource.alias);
+    if (bare) return { tableId: soleSource.id, path: bare.path, func };
+  }
+  return undefined;
 }
 
 /** Разбор простого поля `<alias>.<path>` (всё тело — одна ссылка). */
@@ -1196,6 +1207,27 @@ function interpretCondition(
     if (bare) {
       return { custom: true, expression: `${soleSource.alias}.${bare.path}` };
     }
+    // Отрицание голого поля при единственном источнике (`ГДЕ НЕ ПометкаУдаления` →
+    // `ГДЕ НЕ Т.ПометкаУдаления`): первый токен — `НЕ`, остаток — чистый точечный
+    // путь без квалификации. Конструктор 1С квалифицирует поле под `НЕ`.
+    if (tokens.length > 1 && isNotToken(tokens[0])) {
+      const negBare = tryBareField(tokens.slice(1), aliasToId, soleSource.alias);
+      if (negBare) {
+        return { custom: true, expression: `НЕ ${soleSource.alias}.${negBare.path}` };
+      }
+    }
+  }
+  // Скобки вокруг условия-параметра целиком (`И (&ТекстУсловия)` → `И &ТекстУсловия`):
+  // конструктор 1С снимает скобки, когда всё условие ГДЕ — единственный голый
+  // параметр в скобках. (В условии соединения `ПО` конструктор, наоборот, скобки
+  // добавляет — но это другой код-путь, не interpretCondition.)
+  if (
+    tokens.length === 3 &&
+    tokens[0].type === 'punct' && tokens[0].value === '(' &&
+    tokens[1].type === 'param' &&
+    tokens[2].type === 'punct' && tokens[2].value === ')'
+  ) {
+    return { custom: true, expression: tokens[1].text };
   }
   const simple = trySimpleCondition(tokens, source, aliasToId, soleSource);
   if (simple) return simple;
@@ -1253,6 +1285,11 @@ function trySimpleCondition(
   }
 
   return { custom: false, tableId: ref.tableId, path: ref.path, operator: op, param };
+}
+
+/** Токен логического отрицания `НЕ` (лексер выдаёт его как ident, не keyword). */
+function isNotToken(t: Token): boolean {
+  return (t.type === 'ident' || t.type === 'keyword') && t.text.toUpperCase() === 'НЕ';
 }
 
 function isCondOperatorToken(t: Token): boolean {
