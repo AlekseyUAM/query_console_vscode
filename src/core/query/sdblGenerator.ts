@@ -5,6 +5,15 @@ import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
 import { needsFormatting, formatExpression, normalizeLeafCase, stripNegatedFieldParens } from './exprFormatter';
 
+/**
+ * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
+ * (`В (ВЫБРАТЬ …)`). Конструктор 1С не синтезирует `КАК <последний-сегмент>` для
+ * полей подзапроса без явного псевдонима (в отличие от запроса верхнего уровня).
+ * Флаг выставляется только на время `renderConditionSubquery`; сохраняется/
+ * восстанавливается для корректной работы при вложенности.
+ */
+let suppressAutoAlias = false;
+
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
   switch (func) {
@@ -52,6 +61,28 @@ function accountingPositions(slice: string, v: SelectedTable['virtual'] & {}): s
     default:
       return [];
   }
+}
+
+/**
+ * Подзапрос правого операнда `В` (`В (ВЫБРАТЬ …)`), разнесённый по строкам как
+ * конструктор 1С. Рендерит внутренний запрос канонически (`generateDocument`),
+ * сдвигает все строки на `baseTabs` табов, оборачивает первую строку открывающей
+ * скобкой (`(ВЫБРАТЬ`), а к последней строке приклеивает закрывающую `)`. Тело
+ * запроса в результате получает отступ `baseTabs + 1` (канонический +1 таб тела).
+ */
+function renderConditionSubquery(subquery: QueryDocument, baseTabs: number): string {
+  const pad = '\t'.repeat(baseTabs);
+  const prev = suppressAutoAlias;
+  suppressAutoAlias = true;
+  let inner: string[];
+  try {
+    inner = generateDocument(subquery).split('\n');
+  } finally {
+    suppressAutoAlias = prev;
+  }
+  return inner
+    .map((l, k) => (k === 0 ? `${pad}(${l}` : `${pad}${l}`))
+    .join('\n') + ')';
 }
 
 function renderSource(t: SelectedTable): string {
@@ -369,7 +400,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     // Конструктор 1С всегда даёт простому полю псевдоним = последний сегмент пути,
     // если явный не задан (Таблица.Ссылка → Таблица.Ссылка КАК Ссылка). Агрегаты
     // без явного псевдонима оставляем как есть.
-    const autoAlias = !func ? (f.path.split('.').pop() ?? f.path) : undefined;
+    const autoAlias = !func && !suppressAutoAlias ? (f.path.split('.').pop() ?? f.path) : undefined;
     const effAlias = f.alias ?? autoAlias;
     const expr = effAlias ? `${lhs} КАК ${effAlias}` : lhs;
     allLines.push(`\t${expr}`);
@@ -753,8 +784,17 @@ function buildConditionStrings(
     }
     if (!c.path) continue;
     const alias = aliases.get(c.tableId ?? '') ?? c.tableId;
-    const param = normalizeLeafCase(c.param ?? `&${c.path.split('.').pop()}`);
     const op = c.operator ?? '=';
+    // Подзапрос в правом операнде `В` (`В (ВЫБРАТЬ …)`): конструктор переносит на
+    // новую строку. Оператор `В` остаётся в конце строки условия; подзапрос
+    // начинается со следующей строки как `(ВЫБРАТЬ …` с отступом base+2 табы
+    // (условие ГДЕ на отступе 1 → `(ВЫБРАТЬ` на 3 табах; тело +1 → 4 таба).
+    // `renderConditions` добавит ведущий `\t` к первой строке (отступ 1 условия).
+    if (c.subquery) {
+      conds.push(`${alias}.${c.path} ${op}\n${renderConditionSubquery(c.subquery, 3)}`);
+      continue;
+    }
+    const param = normalizeLeafCase(c.param ?? `&${c.path.split('.').pop()}`);
     conds.push(`${alias}.${c.path} ${renderOperatorRhs(op, param)}`);
   }
   return conds;

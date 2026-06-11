@@ -359,24 +359,36 @@ function resolveSelectAlias(alias: string, map: Map<string, FieldRef>): FieldRef
   return { tableId: '', path: alias };
 }
 
-/** Модификаторы выборки в порядке РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N. */
+/**
+ * Модификаторы выборки сразу после `ВЫБРАТЬ`. Конструктор пишет их в порядке
+ * РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N, но разработчик может указать в любом
+ * порядке (`ПЕРВЫЕ 1 РАЗРЕШЕННЫЕ`, `РАЗЛИЧНЫЕ РАЗРЕШЕННЫЕ` и т. п.). Парсим в
+ * любом порядке, каждый модификатор не более одного раза; генератор сам выдаёт
+ * их в каноническом порядке.
+ */
 function parseSelectionModifiers(cur: Cursor): Selection | undefined {
   const selection: Selection = {};
   let any = false;
-  if (cur.matchKeyword('РАЗРЕШЕННЫЕ')) {
-    selection.allowed = true;
-    any = true;
-  }
-  if (cur.matchKeyword('РАЗЛИЧНЫЕ')) {
-    selection.distinct = true;
-    any = true;
-  }
-  if (cur.matchKeyword('ПЕРВЫЕ')) {
-    const t = cur.peek();
-    if (t.type !== 'number') throw cur.error('ожидалось число после ПЕРВЫЕ', t);
-    cur.next();
-    selection.top = Number(t.value);
-    any = true;
+  for (;;) {
+    if (selection.allowed === undefined && cur.matchKeyword('РАЗРЕШЕННЫЕ')) {
+      selection.allowed = true;
+      any = true;
+      continue;
+    }
+    if (selection.distinct === undefined && cur.matchKeyword('РАЗЛИЧНЫЕ')) {
+      selection.distinct = true;
+      any = true;
+      continue;
+    }
+    if (selection.top === undefined && cur.matchKeyword('ПЕРВЫЕ')) {
+      const t = cur.peek();
+      if (t.type !== 'number') throw cur.error('ожидалось число после ПЕРВЫЕ', t);
+      cur.next();
+      selection.top = Number(t.value);
+      any = true;
+      continue;
+    }
+    break;
   }
   return any ? selection : undefined;
 }
@@ -1230,6 +1242,16 @@ function trySimpleCondition(
   if (paramTokens.length === 0) return undefined;
   const param = sliceSource(source, paramTokens);
 
+  // Правый операнд `В` — подзапрос `(ВЫБРАТЬ …)`: ровно одна сбалансированная
+  // внешняя пара скобок, начинающаяся с ВЫБРАТЬ, без хвостовых токенов. Разбираем
+  // внутренний запрос в модель — генератор разнесёт его по строкам, как конструктор.
+  if (op === 'В') {
+    const sub = trySubqueryParam(paramTokens, source);
+    if (sub) {
+      return { custom: false, tableId: ref.tableId, path: ref.path, operator: op, param, subquery: sub };
+    }
+  }
+
   return { custom: false, tableId: ref.tableId, path: ref.path, operator: op, param };
 }
 
@@ -1237,6 +1259,42 @@ function isCondOperatorToken(t: Token): boolean {
   if (t.type === 'punct') return COND_OPERATORS.has(t.value);
   if (t.type === 'keyword') return COND_OPERATORS.has(t.value);
   return false;
+}
+
+/**
+ * Правый операнд `В` как подзапрос: токены должны быть ровно одной сбалансированной
+ * внешней парой `( … )`, содержимое которой начинается ключевым словом `ВЫБРАТЬ`, без
+ * хвостовых токенов после закрывающей скобки. Тогда возвращает разобранную модель
+ * внутреннего запроса (поддержка ОБЪЕДИНИТЬ через parseDocument). Иначе — undefined
+ * (список значений `(&Список)` / `(a, b)` остаётся как простой param).
+ */
+function trySubqueryParam(paramTokens: Token[], source: string): QueryDocument | undefined {
+  const first = paramTokens[0];
+  if (!first || first.type !== 'punct' || first.value !== '(') return undefined;
+  // Найти парную закрывающую скобку для внешней пары.
+  let depth = 0;
+  let closeIdx = -1;
+  for (let k = 0; k < paramTokens.length; k++) {
+    const t = paramTokens[k];
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') {
+      depth--;
+      if (depth === 0) { closeIdx = k; break; }
+    }
+  }
+  // Внешняя пара должна закрываться последним токеном (без хвоста после `)`).
+  if (closeIdx !== paramTokens.length - 1) return undefined;
+  // Содержимое начинается с ВЫБРАТЬ — это подзапрос, а не список значений.
+  const inner = paramTokens[1];
+  if (!inner || !(inner.type === 'keyword' && inner.value === 'ВЫБРАТЬ')) return undefined;
+  const open = paramTokens[0];
+  const close = paramTokens[closeIdx];
+  const innerText = source.slice(open.pos + 1, close.pos);
+  try {
+    return parseDocument(innerText);
+  } catch {
+    return undefined;
+  }
 }
 
 // ───────────────────────── соединения (JOINs) ──────────────────────────
