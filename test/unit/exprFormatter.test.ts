@@ -239,3 +239,69 @@ describe('formatExpression — verbatim tail preservation', () => {
     );
   });
 });
+
+// --- Нормализация регистра ключевых слов в листьях (фаза 6.12) ---------------
+import { normalizeLeafCase } from '../../src/core/query/exprFormatter';
+
+describe('normalizeLeafCase — uppercases recognized keywords only', () => {
+  it('uppercases a function name in call position (WORD(...))', () => {
+    expect(normalizeLeafCase('Представление(Таблица.Поле)')).toBe('ПРЕДСТАВЛЕНИЕ(Таблица.Поле)');
+    expect(normalizeLeafCase('ЕстьNull(t.X, "")')).toBe('ЕСТЬNULL(t.X, "")');
+    expect(normalizeLeafCase('ДатаВремя(1, 1, 1)')).toBe('ДАТАВРЕМЯ(1, 1, 1)');
+    expect(normalizeLeafCase('Значение(Перечисление.Типы.А)')).toBe('ЗНАЧЕНИЕ(Перечисление.Типы.А)');
+  });
+
+  it('uppercases literal keywords standalone', () => {
+    expect(normalizeLeafCase('t.X = Неопределено')).toBe('t.X = НЕОПРЕДЕЛЕНО');
+    expect(normalizeLeafCase('t.X = Ложь')).toBe('t.X = ЛОЖЬ');
+    expect(normalizeLeafCase('t.X = Истина')).toBe('t.X = ИСТИНА');
+    expect(normalizeLeafCase('t.X ЕСТЬ null')).toBe('t.X ЕСТЬ NULL');
+  });
+
+  it('uppercases primitive type after КАК inside ВЫРАЗИТЬ', () => {
+    expect(normalizeLeafCase('ВЫРАЗИТЬ(t.X КАК Строка(1024))')).toBe('ВЫРАЗИТЬ(t.X КАК СТРОКА(1024))');
+    expect(normalizeLeafCase('ВЫРАЗИТЬ(t.X КАК Число(15, 2))')).toBe('ВЫРАЗИТЬ(t.X КАК ЧИСЛО(15, 2))');
+    expect(normalizeLeafCase('ВЫРАЗИТЬ(t.X КАК Дата)')).toBe('ВЫРАЗИТЬ(t.X КАК ДАТА)');
+    expect(normalizeLeafCase('ВЫРАЗИТЬ(t.X КАК Булево)')).toBe('ВЫРАЗИТЬ(t.X КАК БУЛЕВО)');
+  });
+
+  it('uppercases primitive type as first token inside ТИП(...)', () => {
+    expect(normalizeLeafCase('ТИП(число)')).toBe('ТИП(ЧИСЛО)');
+  });
+
+  it('keeps metadata type refs verbatim inside ТИП(...)', () => {
+    expect(normalizeLeafCase('ТИП(Справочник.группыПользователей)')).toBe('ТИП(Справочник.группыПользователей)');
+  });
+
+  it('does NOT uppercase identifiers: fields, aliases, params, path segments', () => {
+    // alias position (not followed by `(`)
+    expect(normalizeLeafCase('t.Ссылка КАК Представление')).toBe('t.Ссылка КАК Представление');
+    expect(normalizeLeafCase('Календарь.Год КАК Год')).toBe('Календарь.Год КАК Год');
+    // field path segment after dot
+    expect(normalizeLeafCase('Контакты.Строка')).toBe('Контакты.Строка');
+    // parameter keeps its case
+    expect(normalizeLeafCase('t.X = &КонецПериода')).toBe('t.X = &КонецПериода');
+    // a table alias spelled like a word stays as-is
+    expect(normalizeLeafCase('Таб.Ссылка <> &Ссылка')).toBe('Таб.Ссылка <> &Ссылка');
+  });
+
+  it('leaves strings untouched', () => {
+    expect(normalizeLeafCase('t.X = "представление"')).toBe('t.X = "представление"');
+  });
+
+  it('is a no-op when there is nothing to normalize', () => {
+    expect(normalizeLeafCase('t.X = t.Y')).toBe('t.X = t.Y');
+  });
+});
+
+describe('formatExpression — leaf case normalization inside structure', () => {
+  it('uppercases literal and function inside an OR chain', () => {
+    const raw =
+      't.X = Значение(Перечисление.А.Б)\n' +
+      'ИЛИ t.Y = Неопределено';
+    expect(formatExpression(raw, 'where')).toBe(
+      '(t.X = ЗНАЧЕНИЕ(Перечисление.А.Б)\n' +
+        '\t\t\tИЛИ t.Y = НЕОПРЕДЕЛЕНО)'
+    );
+  });
+});

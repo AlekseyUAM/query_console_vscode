@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, formatExpression } from './exprFormatter';
+import { needsFormatting, formatExpression, normalizeLeafCase } from './exprFormatter';
 
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
@@ -160,7 +160,7 @@ function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
     // переотрисовываем форматером (фаза 6.10). Простое одиночное — как раньше: `(a = b)`.
     if (hasTopLevelBooleanOp(expr)) return formatExpression(expr, 'join');
     if (needsFormatting(expr)) return formatExpression(expr, 'join');
-    return `(${expr})`;
+    return `(${normalizeLeafCase(expr)})`;
   }
   const leftAlias = aliases.get(join.leftTableId) ?? join.leftTableId;
   const rightAlias = aliases.get(join.rightTableId) ?? join.rightTableId;
@@ -324,7 +324,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
       const alias = f.alias ?? `Поле${++exprCounter}`;
       const expr = needsFormatting(f.expression)
         ? formatExpression(f.expression.trim(), 'select')
-        : f.expression;
+        : normalizeLeafCase(f.expression);
       allLines.push(`\t${expr} КАК ${alias}`);
       continue;
     }
@@ -356,7 +356,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
       const alias = f.alias ?? `Поле${++exprCounter}`;
       const expr = needsFormatting(f.expression)
         ? formatExpression(f.expression.trim(), 'select')
-        : f.expression;
+        : normalizeLeafCase(f.expression);
       allLines.push(`\t${expr} КАК ${alias}`);
       continue;
     }
@@ -376,7 +376,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
  * Используется генератором объединений для формирования ячеек колонок.
  */
 export function fieldExpr(model: QueryModel, field: SelectedField): string {
-  if (field.expression) return field.expression;
+  if (field.expression) return normalizeLeafCase(field.expression);
   const aliases = resolveAliases(model.tables);
   const tableAlias = aliases.get(field.tableId) ?? field.tableId;
   const func = (model.grouping?.aggregates ?? []).find(
@@ -459,7 +459,7 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   }
 
   const aggList = totals.totalFields.map(f =>
-    f.expression ?? `СУММА(${selectAliasFor(model, f.tableId, f.path)})`
+    f.expression ? normalizeLeafCase(f.expression) : `СУММА(${selectAliasFor(model, f.tableId, f.path)})`
   );
 
   const withCommas = (items: string[]): string[] =>
@@ -661,12 +661,12 @@ function buildConditionStrings(
   for (const c of conditions) {
     if (c.custom) {
       const expr = (c.expression ?? '').trim();
-      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : expr);
+      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : normalizeLeafCase(expr));
       continue;
     }
     if (!c.path) continue;
     const alias = aliases.get(c.tableId ?? '') ?? c.tableId;
-    const param = c.param ?? `&${c.path.split('.').pop()}`;
+    const param = normalizeLeafCase(c.param ?? `&${c.path.split('.').pop()}`);
     const op = c.operator ?? '=';
     conds.push(`${alias}.${c.path} ${renderOperatorRhs(op, param)}`);
   }

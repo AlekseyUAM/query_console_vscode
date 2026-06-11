@@ -13,10 +13,109 @@
  * по `.value.toUpperCase()`.
  */
 import { tokenize, type Token } from './sdblLexer';
+import { FUNCTION_CATALOG, type FunctionGroup, type FunctionLeaf } from './functionCatalog';
 
 export type ExprSlot = 'where' | 'having' | 'join' | 'select';
 
 const TAB = '\t';
+
+// --- Нормализация регистра ключевых слов в листьях (фаза 6.12) ---------------
+//
+// Конструктор 1С приводит к ВЕРХНЕМУ регистру РАСПОЗНАННЫЕ имена функций,
+// операторов, литералы и имена примитивных типов внутри произвольных выражений,
+// сохраняя при этом регистр идентификаторов (поля, псевдонимы, параметры &X,
+// сегменты пути после точки, ссылки на типы метаданных вида Справочник.Имя).
+
+/** Слова-имена функций/операторов из каталога (только буквенные ярлыки). */
+const FUNCTION_WORDS: Set<string> = (() => {
+  const acc: string[] = [];
+  const walk = (n: FunctionGroup | FunctionLeaf): void => {
+    if ('children' in n) n.children.forEach(walk);
+    else acc.push(n.label);
+  };
+  walk(FUNCTION_CATALOG);
+  const wordRe = /^[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё0-9]*$/u;
+  return new Set(acc.filter((l) => wordRe.test(l)).map((l) => l.toUpperCase()));
+})();
+
+/** Литералы-ключевые слова: всегда верхний регистр (вне пути/параметра). */
+const LITERAL_WORDS = new Set(['НЕОПРЕДЕЛЕНО', 'ИСТИНА', 'ЛОЖЬ', 'NULL']);
+
+/** Примитивные типы: верхний регистр в позиции типа (ВЫРАЗИТЬ … КАК <Тип>, ТИП(<Тип>)). */
+const PRIMITIVE_TYPE_WORDS = new Set(['СТРОКА', 'ЧИСЛО', 'ДАТА', 'БУЛЕВО']);
+
+function tokUpper(t: Token): string {
+  return (t.text ?? t.value).toUpperCase();
+}
+
+/**
+ * Приводит к верхнему регистру РАСПОЗНАННЫЕ ключевые слова в листе выражения,
+ * сохраняя всё остальное (идентификаторы, строки, параметры, пробелы) дословно.
+ * Применяется к каждому листовому срезу перед выводом.
+ */
+export function normalizeLeafCase(raw: string): string {
+  if (!raw) return raw;
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return raw;
+  }
+  // Индексы значимых (не-eof) токенов для просмотра соседей.
+  const sig = toks.filter((t) => t.type !== 'eof');
+  // Карта: позиция токена -> его индекс в sig.
+  const spans: Array<{ pos: number; len: number; up: string }> = [];
+
+  const prevSig = (idx: number): Token | undefined => sig[idx - 1];
+  const nextSig = (idx: number): Token | undefined => sig[idx + 1];
+  const isWordTok = (t: Token | undefined): boolean =>
+    !!t && (t.type === 'ident' || t.type === 'keyword');
+
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (!isWordTok(t)) continue;
+    const prev = prevSig(i);
+    // Сегмент пути после точки — идентификатор, не трогаем.
+    if (prev && prev.type === 'punct' && prev.value === '.') continue;
+    const up = tokUpper(t);
+    const text = t.text ?? t.value;
+    if (text === up) continue; // уже в верхнем регистре
+
+    const next = nextSig(i);
+    const followedByParen = !!next && next.type === 'punct' && next.value === '(';
+
+    let shouldUpper = false;
+
+    // 1) Имя функции в позиции вызова: WORD(
+    if (FUNCTION_WORDS.has(up) && followedByParen) shouldUpper = true;
+
+    // 2) Литерал-ключевое слово (вне пути; параметры &X — отдельный тип токена).
+    if (!shouldUpper && LITERAL_WORDS.has(up)) shouldUpper = true;
+
+    // 3) Примитивный тип в позиции типа: после КАК, либо первый токен внутри ТИП(.
+    if (!shouldUpper && PRIMITIVE_TYPE_WORDS.has(up)) {
+      const afterKak = !!prev && prev.type === 'keyword' && prev.value === 'КАК';
+      // ТИП( <тип> : prev = '(', prev-prev = ТИП
+      let insideTip = false;
+      if (prev && prev.type === 'punct' && prev.value === '(') {
+        const pp = prevSig(i - 1);
+        if (pp && isWordTok(pp) && tokUpper(pp) === 'ТИП') insideTip = true;
+      }
+      if (afterKak || insideTip) shouldUpper = true;
+    }
+
+    if (shouldUpper) spans.push({ pos: t.pos, len: text.length, up });
+  }
+
+  if (!spans.length) return raw;
+  // Применяем замены справа налево, чтобы позиции не смещались.
+  spans.sort((a, b) => b.pos - a.pos);
+  let out = raw;
+  for (const s of spans) {
+    out = out.slice(0, s.pos) + s.up + out.slice(s.pos + s.len);
+  }
+  return out;
+}
 
 // --- AST --------------------------------------------------------------------
 
@@ -265,7 +364,7 @@ class Parser {
       to = t.pos + t.value.length;
       this.i++;
     }
-    return { kind: 'leaf', text: this.raw.slice(from, to).replace(/\s+$/u, '') };
+    return { kind: 'leaf', text: normalizeLeafCase(this.raw.slice(from, to).replace(/\s+$/u, '')) };
   }
 
   private parseCase(): Node {
@@ -328,7 +427,7 @@ class Parser {
       to = t.pos + t.value.length;
       this.i++;
     }
-    return { kind: 'leaf', text: this.raw.slice(from, to).replace(/\s+$/u, '') };
+    return { kind: 'leaf', text: normalizeLeafCase(this.raw.slice(from, to).replace(/\s+$/u, '')) };
   }
 }
 
