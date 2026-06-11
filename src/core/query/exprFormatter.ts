@@ -48,6 +48,79 @@ function tokUpper(t: Token): string {
   return (t.text ?? t.value).toUpperCase();
 }
 
+// --- Нормализация пробелов в листьях (фаза 6.12, класс C-misc) ----------------
+//
+// Конструктор 1С нормализует пробелы между токенами произвольного выражения,
+// сохраняя при этом содержимое строковых ("…") и датовых ('…') литералов дословно.
+// Доказанные на корпусе оракула правила (нулевая регрессия на принятых файлах):
+//   1) одиночный пробел вокруг бинарных операторов сравнения  = <> < > <= >=
+//      (`a =b` → `a = b`, `X.Поле=Y` → `X.Поле = Y`);
+//   2) одиночный пробел после запятой (`f(a,  b)` → `f(a, b)`, `(1,1,1)` → `(1, 1, 1)`);
+//   3) схлопывание серий из 2+ пробелов в один (`ЕСТЬNULL(X,  "")` → `…, "")`).
+// Нормализация применяется ТОЛЬКО к пробельным промежуткам между токенами и
+// ТОЛЬКО если промежуток не содержит перевода строки (многострочные выражения
+// сохраняют свою структуру). Литералы не затрагиваются: их внутренние пробелы —
+// часть текста токена, а лексер выдаёт литерал одним токеном.
+
+/** Операторы сравнения (пунктуация), вокруг которых конструктор ставит ровно один пробел. */
+const COMPARISON_PUNCT = new Set(['=', '<>', '<', '>', '<=', '>=']);
+
+export function normalizeLeafWhitespace(raw: string): string {
+  if (!raw) return raw;
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return raw;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length < 2) return raw;
+
+  const isCmp = (t: Token): boolean => t.type === 'punct' && COMPARISON_PUNCT.has(t.value);
+
+  // Правки промежутков (gap) между соседними токенами, применяем справа налево.
+  const edits: Array<{ from: number; to: number; text: string }> = [];
+  for (let i = 0; i < sig.length - 1; i++) {
+    const a = sig[i];
+    const b = sig[i + 1];
+    const gapFrom = a.pos + (a.text ?? a.value).length;
+    const gapTo = b.pos;
+    if (gapTo <= gapFrom) {
+      // Нет пробела между токенами. Пробел нужен, если один из них — оператор
+      // сравнения, либо предыдущий токен — запятая (`(1,1)` → `(1, 1)`). Запятую
+      // перед `)` не разделяем (висячих запятых в выражениях нет, но на всякий случай).
+      const needSpace =
+        isCmp(a) || isCmp(b) || (a.type === 'punct' && a.value === ',' && !(b.type === 'punct' && b.value === ')'));
+      if (needSpace) edits.push({ from: gapFrom, to: gapTo, text: ' ' });
+      continue;
+    }
+    const gap = raw.slice(gapFrom, gapTo);
+    if (gap.includes('\n')) continue; // многострочный промежуток — не трогаем
+    if (isCmp(a) || isCmp(b)) {
+      if (gap !== ' ') edits.push({ from: gapFrom, to: gapTo, text: ' ' });
+      continue;
+    }
+    if (a.type === 'punct' && a.value === ',') {
+      if (gap !== ' ') edits.push({ from: gapFrom, to: gapTo, text: ' ' });
+      continue;
+    }
+    // Схлопывание серий из 2+ пробелов в один. Табы в однострочном промежутке
+    // не трогаем (могут быть значимым отступом форматирования разработчика).
+    if (/ {2,}/.test(gap) && !gap.includes('\t')) {
+      const collapsed = gap.replace(/ {2,}/g, ' ');
+      if (collapsed !== gap) edits.push({ from: gapFrom, to: gapTo, text: collapsed });
+    }
+  }
+
+  if (!edits.length) return raw;
+  edits.sort((x, y) => y.from - x.from);
+  let out = raw;
+  for (const e of edits) {
+    out = out.slice(0, e.from) + e.text + out.slice(e.to);
+  }
+  return out;
+}
+
 /**
  * Приводит к верхнему регистру РАСПОЗНАННЫЕ ключевые слова в листе выражения,
  * сохраняя всё остальное (идентификаторы, строки, параметры, пробелы) дословно.
@@ -107,14 +180,17 @@ export function normalizeLeafCase(raw: string): string {
     if (shouldUpper) spans.push({ pos: t.pos, len: text.length, up });
   }
 
-  if (!spans.length) return raw;
-  // Применяем замены справа налево, чтобы позиции не смещались.
-  spans.sort((a, b) => b.pos - a.pos);
+  // Применяем замены регистра справа налево (длина не меняется), затем нормализуем
+  // пробелы (класс C-misc). Регистровые замены сохраняют позиции, поэтому порядок
+  // безопасен.
   let out = raw;
-  for (const s of spans) {
-    out = out.slice(0, s.pos) + s.up + out.slice(s.pos + s.len);
+  if (spans.length) {
+    spans.sort((a, b) => b.pos - a.pos);
+    for (const s of spans) {
+      out = out.slice(0, s.pos) + s.up + out.slice(s.pos + s.len);
+    }
   }
-  return out;
+  return normalizeLeafWhitespace(out);
 }
 
 // --- AST --------------------------------------------------------------------

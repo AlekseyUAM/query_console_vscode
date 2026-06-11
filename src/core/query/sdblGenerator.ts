@@ -673,10 +673,32 @@ function renderGrouping(
  */
 function renderOperatorRhs(op: string, param: string): string {
   if (op === 'В') {
-    if (param.startsWith('(')) return `В${param}`;
+    if (param.startsWith('(')) {
+      // Список из 2+ элементов конструктор отделяет пробелом: `В (a, b)`; список из
+      // одного элемента — без пробела: `В(a)` (доказано на корпусе оракула:
+      // multi 18 пробел / 0 без; single 14 пробел / 249 без — single оставляем как есть).
+      return `В${valueListIsMulti(param) ? ' ' : ''}${param}`;
+    }
     if (param.startsWith('ИЕРАРХИИ (')) return 'В ИЕРАРХИИ' + param.slice('ИЕРАРХИИ'.length).replace(/^ \(/, '(');
   }
   return `${op} ${param}`;
+}
+
+/**
+ * Список значений `(…)` оператора `В` содержит 2+ элемента верхнего уровня?
+ * Считает запятые вне вложенных скобок (ЗНАЧЕНИЕ(…) и т.п. — один элемент).
+ * Подзапрос (`(ВЫБРАТЬ …)`) — не список значений, трактуется как один элемент.
+ */
+function valueListIsMulti(param: string): boolean {
+  const inner = param.slice(1, param.lastIndexOf(')'));
+  if (/(^|[^\p{L}\p{N}_])ВЫБРАТЬ([^\p{L}\p{N}_]|$)/u.test(inner)) return false;
+  let depth = 0;
+  for (const ch of inner) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 0) return true;
+  }
+  return false;
 }
 
 /**
