@@ -334,6 +334,27 @@ function isEnd(t: Token): boolean {
   return isWord(t, 'КОНЕЦ');
 }
 
+/**
+ * Добавляет операнд в список операндов ИЛИ, разворачивая левую ассоциативность:
+ * ВЕДУЩАЯ скобочная группа, обёртывающая ИЛИ (`(a ИЛИ b) ИЛИ c`), — избыточные
+ * скобки, которые конструктор 1С снимает (печатает `a ИЛИ b ИЛИ c`). Применяется
+ * только к ПЕРВОМУ операнду (operands пуст): хвостовая группа `x ИЛИ (a ИЛИ b)`
+ * сохраняет скобки. Голый ИЛИ-операнд (после такой же раскрутки ниже) тоже вливаем.
+ */
+function pushOrOperand(operands: Node[], op: Node): void {
+  if (operands.length === 0) {
+    if (op.kind === 'or') {
+      operands.push(...op.operands);
+      return;
+    }
+    if (op.kind === 'group' && op.child.kind === 'or') {
+      operands.push(...op.child.operands);
+      return;
+    }
+  }
+  operands.push(op);
+}
+
 // --- Parser -----------------------------------------------------------------
 
 class Parser {
@@ -408,12 +429,13 @@ class Parser {
   // ИЛИ — низший приоритет
   private parseOr(): Node {
     const first = this.parseAnd();
-    const operands = [first];
+    const operands: Node[] = [];
+    pushOrOperand(operands, first);
     while (!this.atEof() && isOr(this.peek())) {
       this.i++; // съесть ИЛИ
-      operands.push(this.parseAnd());
+      pushOrOperand(operands, this.parseAnd());
     }
-    return operands.length === 1 ? first : { kind: 'or', operands };
+    return operands.length === 1 ? operands[0] : { kind: 'or', operands };
   }
 
   private parseAnd(): Node {
