@@ -279,7 +279,12 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     const lhs = func
       ? wrapAggregate(func, `${tableAlias}.${f.path}`)
       : `${tableAlias}.${f.path}`;
-    const expr = f.alias ? `${lhs} КАК ${f.alias}` : lhs;
+    // Конструктор 1С всегда даёт простому полю псевдоним = последний сегмент пути,
+    // если явный не задан (Таблица.Ссылка → Таблица.Ссылка КАК Ссылка). Агрегаты
+    // без явного псевдонима оставляем как есть.
+    const autoAlias = !func ? (f.path.split('.').pop() ?? f.path) : undefined;
+    const effAlias = f.alias ?? autoAlias;
+    const expr = effAlias ? `${lhs} КАК ${effAlias}` : lhs;
     allLines.push(`\t${expr}`);
   }
 
