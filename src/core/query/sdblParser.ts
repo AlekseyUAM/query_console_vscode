@@ -1891,12 +1891,17 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
 
   // Поконъюнктная классификация (фаза 6.13): условие `ПО` бьётся по верхнеуровневым
   // `И`, каждый конъюнкт — стандартный (`seed.поле cmp joined.поле`, без скобок) или
-  // произвольный (в скобках). Генератор рендерит из этого списка. Внешние скобки
-  // вокруг ВСЕГО условия (`ПО (a = b)`) при единственном конъюнкте — это пометка
-  // «Произвольное» разработчиком: классифицируем такой конъюнкт как произвольный.
+  // произвольный (в скобках). Генератор рендерит из этого списка. Скобки исходника
+  // вокруг ВСЕГО условия раскрываются ДО деления (фаза 6.15.5): `ПО (a И b)`
+  // конструктор распределяет по конъюнктам и классифицирует каждый заново.
   /* v8 ignore next -- chainSeedAlias всегда резолвится (он же источник в aliasToId) */
   const chainSeedId = aliasToId.get(raw.chainSeedAlias.toUpperCase()) ?? raw.chainSeedAlias;
-  const conjunctTokens = splitJoinConjuncts(raw.condTokens);
+  let condInner = raw.condTokens;
+  while (hasBalancedOuterParens(condInner)) condInner = condInner.slice(1, -1);
+  // Верхнеуровневое `ИЛИ` (вне скобок/ВЫБОР) — делить по `И` нельзя (И связывает
+  // сильнее): всё условие — ОДИН произвольный конъюнкт, который конструктор
+  // оборачивает в скобки (то же правило, что у ГДЕ в 6.14).
+  const conjunctTokens = hasTopLevelOr(condInner) ? [condInner] : splitJoinConjuncts(condInner);
   const conditions: JoinCondition[] = conjunctTokens.map(seg =>
     classifyJoinConjunct(seg, source, aliasToId, chainSeedId, joinedId)
   );

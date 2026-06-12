@@ -1356,6 +1356,35 @@ function renderJoin(tree: Node, ctx: RenderCtx): string {
 }
 
 /**
+ * Печатает ОДИН конъюнкт условия `ПО` (фаза 6.15.5: поконъюнктный рендер сложных
+ * конъюнктов вместо отката на legacy-путь всего условия). Геометрия идентична
+ * `renderJoin`: первый конъюнкт — ind=2/orLvl=0 (его ИЛИ на отступе 4), последующий
+ * И-конъюнкт — ind=3/orLvl=1 (ИЛИ на 4). Первая строка без ведущего отступа (как у
+ * `formatExpression`); префикс `И ` добавляет вызывающий.
+ */
+export function formatJoinConjunct(raw: string, first: boolean): string {
+  // flattenLeaves: многострочные листья внутри конъюнкта (`В (\n a,\n b)` в
+  // ИЛИ-операнде) конструктор сплющивает в одну строку (корпус: ВариантыОтчетов
+  // bsl_27/28); листья с подзапросом/булевыми операторами не трогаются.
+  const parser = new Parser(raw.trim(), true);
+  const tree = parser.parse();
+  const tail = parser.tail();
+  const ctx: RenderCtx = { cont: 2, caseBoolean: true };
+  const ind = first ? 2 : 3;
+  const orLvl = first ? 0 : 1;
+  // Произвольный ВЫБОР-конъюнкт конструктор печатает в скобках (корпус: 6/6 в
+  // скобках, голых нет) — скобки исходника сняты классификатором, восстанавливаем
+  // раскладкой скобочной группы (`renderCaseE` + внешние скобки).
+  if (tree.kind === 'case') {
+    const sub = renderCaseE(tree, ind, ctx);
+    sub[0] = '(' + sub[0];
+    sub[sub.length - 1] += ')';
+    return sub.join('\n') + tail;
+  }
+  return renderJoinConjunct(tree, ind, ctx, orLvl).join('\n') + tail;
+}
+
+/**
  * Один конъюнкт условия ПО. Лист — дословно (скобки как в исходнике). Структурная
  * скобочная группа с OR — раскрывается с сохранением внешних скобок и отступом
  * ИЛИ = ind+1. CASE — раскладка булева слота.

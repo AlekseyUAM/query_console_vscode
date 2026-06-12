@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -209,36 +209,44 @@ function isPlainFieldComparison(expr: string): boolean {
  * подзапрос) сюда не попадают — для них `renderJoinCondition` выбирает legacy-путь.
  */
 function renderArbitraryConjunct(expr: string): string {
-  return `(${normalizeLeafCase(expr.trim())})`;
+  // Многострочный лист (`В (\n a,\n b)` и т.п.) конструктор сплющивает в одну
+  // строку (правило 6.15.3, для ПО — фаза 6.15.5); стоп-условия (ВЫБРАТЬ/ВЫБОР/
+  // И/ИЛИ/`{`) оставляют текст как есть.
+  return `(${normalizeLeafCase(flattenMultilineLeaf(expr.trim()))})`;
 }
 
 /**
  * Рендерит условие `ПО` поконъюнктно из `join.conditions` (фаза 6.13). Первый
  * конъюнкт — на той же строке после `ПО`, последующие — отдельными строками
  * `\t\t\tИ <ci>`. Каждый конъюнкт: стандартный (`seed.поле cmp joined.поле`) без
- * скобок, произвольный — в скобках.
+ * скобок, произвольный простой — в скобках, произвольный сложный (ИЛИ/ВЫБОР/
+ * многострочный) — структурной переотрисовкой форматера с той же геометрией, что
+ * у legacy-пути (фаза 6.15.5: ворота «сложный конъюнкт → legacy» сняты).
  */
 function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>): string {
-  const renderOne = (c: NonNullable<Join['conditions']>[number]): string => {
+  const lines: string[] = [];
+  conditions.forEach((c, k) => {
+    let sub: string[];
     if (!c.custom) {
       const la = aliases.get(c.leftTableId ?? '') ?? c.leftTableId ?? '';
       const ra = aliases.get(c.rightTableId ?? '') ?? c.rightTableId ?? '';
       const op = c.operator ?? '=';
-      return `${la}.${c.leftPath ?? ''} ${op} ${ra}.${c.rightPath ?? ''}`;
+      sub = [`${la}.${c.leftPath ?? ''} ${op} ${ra}.${c.rightPath ?? ''}`];
+    } else if (conjunctNeedsComplexFormat(c)) {
+      sub = formatJoinConjunct((c.expression ?? '').trim(), k === 0).split('\n');
+    } else {
+      sub = [renderArbitraryConjunct(c.expression ?? '')];
     }
-    return renderArbitraryConjunct(c.expression ?? '');
-  };
-  const parts = conditions.map(renderOne);
-  if (parts.length === 0) return '';
-  return parts.map((p, i) => (i === 0 ? p : `\t\t\tИ ${p}`)).join('\n');
+    if (k > 0) sub[0] = `\t\t\tИ ${sub[0]}`;
+    lines.push(...sub);
+  });
+  return lines.join('\n');
 }
 
 /**
  * Нуждается ли произвольный конъюнкт в МНОГОСТРОЧНОМ форматировании (ИЛИ/ВЫБОР/
- * вложенный подзапрос). Такие конъюнкты в составном условии конструктор раскладывает
- * с базовой отступной геометрией ВСЕГО условия `ПО`, которую поконъюнктный рендер
- * (фаза 6.13) воспроизвести не может, — поэтому при их наличии откатываемся к
- * legacy-пути (рендер всего выражения форматером), уже принятому ранее.
+ * вложенный подзапрос) — такие рендерятся `formatJoinConjunct` (структурная
+ * переотрисовка), простые — однострочным `renderArbitraryConjunct`.
  */
 function conjunctNeedsComplexFormat(c: NonNullable<Join['conditions']>[number]): boolean {
   if (!c.custom) return false;
@@ -248,14 +256,10 @@ function conjunctNeedsComplexFormat(c: NonNullable<Join['conditions']>[number]):
 
 function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
   // Поконъюнктная модель (фаза 6.13): при наличии conditions[] рендерим из неё —
-  // скобки решаются пер-конъюнкт по флагу custom. Исключение — составные условия
-  // со СЛОЖНЫМ конъюнктом (ИЛИ/ВЫБОР/подзапрос): их отступную геометрию задаёт
-  // форматер по ВСЕМУ выражению, поэтому для них сохраняем legacy-путь ниже.
-  if (
-    join.conditions &&
-    join.conditions.length > 0 &&
-    !join.conditions.some(conjunctNeedsComplexFormat)
-  ) {
+  // скобки решаются пер-конъюнкт по флагу custom, сложные конъюнкты — форматером
+  // по месту (фаза 6.15.5). Legacy-путь ниже остаётся для моделей без conditions[]
+  // (построенных вебвью/сторой).
+  if (join.conditions && join.conditions.length > 0) {
     return renderJoinConjuncts(join.conditions, aliases);
   }
   if (join.custom) {
