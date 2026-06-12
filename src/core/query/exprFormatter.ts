@@ -183,8 +183,14 @@ export function flattenLeafText(raw: string): string {
  * переносит на новую строку — это вне модели простых условий (фаза 6.11), здесь не трогаем.
  * Общая точка генератора и парсера (фаза 6.14.4): парсер строит этим же рендером
  * текст произвольного условия с не-параметром справа — байт-в-байт со старым выводом.
+ *
+ * `leafSpacing` (фаза 6.15.1, MCP-пробы): условие целиком лежит ВНУТРИ подзапроса
+ * правого операнда `В` (`В (ВЫБРАТЬ … ГДЕ …)`) — конструктор печатает такой текст
+ * по правилам произвольного выражения, С пробелом перед скобкой: `В (&П)`,
+ * `В ИЕРАРХИИ (&П)`. Подзапрос-источник (`ИЗ (ВЫБРАТЬ …)`) рендерится БЕЗ пробела
+ * (структурный путь) — там флаг не взводится.
  */
-export function renderOperatorRhs(op: string, param: string): string {
+export function renderOperatorRhs(op: string, param: string, leafSpacing = false): string {
   if (op === 'В') {
     if (param.startsWith('(')) {
       // Список значений `В (a, b, …)` конструктор печатает ИНЛАЙН на одной строке,
@@ -200,9 +206,11 @@ export function renderOperatorRhs(op: string, param: string): string {
       // Список из 2+ элементов конструктор отделяет пробелом: `В (a, b)`; список из
       // одного элемента — без пробела: `В(a)` (доказано на корпусе оракула:
       // multi 18 пробел / 0 без; single 14 пробел / 249 без — single оставляем как есть).
-      return `В${valueListIsMulti(list) ? ' ' : ''}${list}`;
+      return `В${leafSpacing || valueListIsMulti(list) ? ' ' : ''}${list}`;
     }
-    if (param.startsWith('ИЕРАРХИИ (')) return 'В ИЕРАРХИИ' + param.slice('ИЕРАРХИИ'.length).replace(/^ \(/, '(');
+    if (/^ИЕРАРХИИ ?\(/.test(param)) {
+      return 'В ИЕРАРХИИ' + (leafSpacing ? ' ' : '') + param.slice('ИЕРАРХИИ'.length).replace(/^ ?\(/, '(');
+    }
   }
   return `${op} ${param}`;
 }

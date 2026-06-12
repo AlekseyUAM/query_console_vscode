@@ -14,6 +14,16 @@ import { needsFormatting, isRootNotGroup, formatExpression, normalizeLeafCase, s
  */
 let suppressAutoAlias = false;
 
+/**
+ * Рендер внутри подзапроса правого операнда `В` (`В (ВЫБРАТЬ … ГДЕ …)`).
+ * Конструктор 1С печатает условия такого подзапроса по правилам произвольного
+ * выражения: `В (&П)` / `В ИЕРАРХИИ (&П)` — С пробелом перед скобкой (MCP-пробы,
+ * фаза 6.15.1). Подзапрос-источник (`ИЗ (ВЫБРАТЬ …)`) идёт структурным путём
+ * без пробела — там флаг не взводится. Семантика сохранения/восстановления —
+ * как у suppressAutoAlias.
+ */
+let inConditionSubquery = false;
+
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
   switch (func) {
@@ -73,12 +83,15 @@ function accountingPositions(slice: string, v: SelectedTable['virtual'] & {}): s
 function renderConditionSubquery(subquery: QueryDocument, baseTabs: number): string {
   const pad = '\t'.repeat(baseTabs);
   const prev = suppressAutoAlias;
+  const prevInSubquery = inConditionSubquery;
   suppressAutoAlias = true;
+  inConditionSubquery = true;
   let inner: string[];
   try {
     inner = generateDocument(subquery).split('\n');
   } finally {
     suppressAutoAlias = prev;
+    inConditionSubquery = prevInSubquery;
   }
   return inner
     .map((l, k) => (k === 0 ? `${pad}(${l}` : `${pad}${l}`))
@@ -853,7 +866,7 @@ function buildConditionStrings(
       continue;
     }
     const param = normalizeLeafCase(c.param ?? `&${c.path.split('.').pop()}`);
-    conds.push(`${alias}.${c.path} ${renderOperatorRhs(op, param)}`);
+    conds.push(`${alias}.${c.path} ${renderOperatorRhs(op, param, inConditionSubquery)}`);
   }
   return conds;
 }
