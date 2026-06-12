@@ -190,7 +190,61 @@ function isPlainFieldComparison(expr: string): boolean {
  * оборачивается в скобки. Условие построено по псевдонимам и от порядка таблиц
  * (перестановки при правом соединении) не зависит. Возвращает '' если условия нет.
  */
+/**
+ * Рендерит ОДИН произвольный ЛИСТОВОЙ конъюнкт условия `ПО` в скобках (фаза 6.13):
+ * `(a = &П)`, `(joined.x = seed.y)`, `(функция(...))`. Сложные конъюнкты (ИЛИ/ВЫБОР/
+ * подзапрос) сюда не попадают — для них `renderJoinCondition` выбирает legacy-путь.
+ */
+function renderArbitraryConjunct(expr: string): string {
+  return `(${normalizeLeafCase(expr.trim())})`;
+}
+
+/**
+ * Рендерит условие `ПО` поконъюнктно из `join.conditions` (фаза 6.13). Первый
+ * конъюнкт — на той же строке после `ПО`, последующие — отдельными строками
+ * `\t\t\tИ <ci>`. Каждый конъюнкт: стандартный (`seed.поле cmp joined.поле`) без
+ * скобок, произвольный — в скобках.
+ */
+function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>): string {
+  const renderOne = (c: NonNullable<Join['conditions']>[number]): string => {
+    if (!c.custom) {
+      const la = aliases.get(c.leftTableId ?? '') ?? c.leftTableId ?? '';
+      const ra = aliases.get(c.rightTableId ?? '') ?? c.rightTableId ?? '';
+      const op = c.operator ?? '=';
+      return `${la}.${c.leftPath ?? ''} ${op} ${ra}.${c.rightPath ?? ''}`;
+    }
+    return renderArbitraryConjunct(c.expression ?? '');
+  };
+  const parts = conditions.map(renderOne);
+  if (parts.length === 0) return '';
+  return parts.map((p, i) => (i === 0 ? p : `\t\t\tИ ${p}`)).join('\n');
+}
+
+/**
+ * Нуждается ли произвольный конъюнкт в МНОГОСТРОЧНОМ форматировании (ИЛИ/ВЫБОР/
+ * вложенный подзапрос). Такие конъюнкты в составном условии конструктор раскладывает
+ * с базовой отступной геометрией ВСЕГО условия `ПО`, которую поконъюнктный рендер
+ * (фаза 6.13) воспроизвести не может, — поэтому при их наличии откатываемся к
+ * legacy-пути (рендер всего выражения форматером), уже принятому ранее.
+ */
+function conjunctNeedsComplexFormat(c: NonNullable<Join['conditions']>[number]): boolean {
+  if (!c.custom) return false;
+  const e = (c.expression ?? '').trim();
+  return hasTopLevelBooleanOp(e) || needsFormatting(e);
+}
+
 function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
+  // Поконъюнктная модель (фаза 6.13): при наличии conditions[] рендерим из неё —
+  // скобки решаются пер-конъюнкт по флагу custom. Исключение — составные условия
+  // со СЛОЖНЫМ конъюнктом (ИЛИ/ВЫБОР/подзапрос): их отступную геометрию задаёт
+  // форматер по ВСЕМУ выражению, поэтому для них сохраняем legacy-путь ниже.
+  if (
+    join.conditions &&
+    join.conditions.length > 0 &&
+    !join.conditions.some(conjunctNeedsComplexFormat)
+  ) {
+    return renderJoinConjuncts(join.conditions, aliases);
+  }
   if (join.custom) {
     // Составное условие (верхнеуровневый И/ИЛИ) или структура (ИЛИ/ВЫБОР) —
     // переотрисовываем форматером (фаза 6.10); внешние скобки тут НЕ ставятся,

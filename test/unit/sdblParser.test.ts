@@ -454,6 +454,16 @@ describe('parseQuery 6.2.B — соединения (round-trip)', () => {
         leftAll: false, rightAll: false, custom: false,
         leftPath: 'Ссылка', operator: '=', rightPath: 'ИмяПредопределенныхДанных',
         seedTableId: 't0', joinedTableId: 't1',
+        // Поконъюнктное условие (фаза 6.13): один стандартный конъюнкт
+        // `seed.Ссылка = joined.ИмяПредопределенныхДанных` — без скобок.
+        conditions: [
+          {
+            custom: false,
+            leftTableId: 't0', leftPath: 'Ссылка',
+            operator: '=',
+            rightTableId: 't1', rightPath: 'ИмяПредопределенныхДанных',
+          },
+        ],
       },
     ]);
     expect(model.tables.map(t => t.id)).toEqual(['t0', 't1']);

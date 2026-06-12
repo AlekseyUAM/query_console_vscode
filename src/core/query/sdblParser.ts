@@ -31,6 +31,7 @@ import type {
   Condition,
   ConditionOperator,
   Join,
+  JoinCondition,
   FieldRef,
   VirtualParams,
   Order,
@@ -249,7 +250,7 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   }
 
   // Соединения: достроить ссылки на таблицы по псевдонимам.
-  const resolvedJoins = joins.map(j => resolveJoin(j, aliasToId));
+  const resolvedJoins = joins.map(j => resolveJoin(j, aliasToId, cur.source));
 
   // Секции после ИЗ — в каноническом порядке генератора:
   //   ГДЕ → {ГДЕ} → СГРУППИРОВАТЬ ПО → {УПОРЯДОЧИТЬ ПО} → {ИТОГИ ПО}
@@ -544,6 +545,8 @@ interface RawJoin {
   seedAlias: string;
   /** Псевдоним присоединяемой (правой по тексту) таблицы. */
   joinedAlias: string;
+  /** Псевдоним КОРНЯ цепочки соединений (для классификации стандарт/произвольное). */
+  chainSeedAlias: string;
   /** Сырые токены условия после `ПО` (до следующего соединения/запятой/секции). */
   condTokens: Token[];
   condText: string;
@@ -614,6 +617,11 @@ function parseFrom(cur: Cursor): FromResult {
         kind,
         seedAlias: lastAlias,
         joinedAlias: joinedHead,
+        // КОРЕНЬ цепочки (первая по тексту таблица): конструктор 1С при левоассоциа-
+        // тивной цепочке считает СТАНДАРТНЫМ условие `<корень>.поле cmp <присоединяемая>.поле`,
+        // а не `<предыдущая>.поле …`. Для классификации `ПО` (фаза 6.13) нужен корень,
+        // тогда как порядок СЦЕПЛЕНИЯ (seedAlias) — предыдущая таблица.
+        chainSeedAlias: seedAlias,
         condTokens: tokens,
         condText: text,
       });
@@ -1403,12 +1411,113 @@ function joinFlags(kind: RawJoin['kind']): { leftAll: boolean; rightAll: boolean
 }
 
 /**
+ * Бинарные операторы СРАВНЕНИЯ, при которых конъюнкт `ПО` может быть стандартным
+ * (галочка «Произвольное» снята). `В`/`МЕЖДУ`/`ПОДОБНО` сюда НЕ входят — такие
+ * конъюнкты всегда произвольные (фаза 6.13).
+ */
+const STD_JOIN_OPERATORS = new Set<string>(['=', '<>', '>', '>=', '<', '<=']);
+
+/**
+ * Разбивает токены условия `ПО` по ВЕРХНЕУРОВНЕВЫМ `И` (вне скобок и вне `ВЫБОР …
+ * КОНЕЦ`; `И` диапазона `МЕЖДУ a И b` не разделитель). Возвращает список сегментов-
+ * конъюнктов. Аналог `splitConditionSegments`, но работает над готовым массивом
+ * токенов условия соединения (фаза 6.13).
+ */
+function splitJoinConjuncts(tokens: Token[]): Token[][] {
+  const segments: Token[][] = [];
+  let current: Token[] = [];
+  let depth = 0;
+  let caseDepth = 0;
+  let betweenPending = 0;
+  const isIdentWord = (t: Token, w: string): boolean =>
+    (t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === w;
+  const flush = (): void => {
+    if (current.length > 0) segments.push(current);
+    current = [];
+  };
+  for (const t of tokens) {
+    if (depth === 0 && caseDepth === 0) {
+      if (t.type === 'keyword' && t.value === 'И') {
+        if (betweenPending > 0) {
+          betweenPending--;
+        } else {
+          flush();
+          continue;
+        }
+      }
+      if (isIdentWord(t, 'МЕЖДУ')) betweenPending++;
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    else if (isIdentWord(t, 'ВЫБОР')) caseDepth++;
+    else if (isIdentWord(t, 'КОНЕЦ') && caseDepth > 0) caseDepth--;
+    current.push(t);
+  }
+  flush();
+  return segments;
+}
+
+/**
+ * Классифицирует один конъюнкт условия `ПО` как СТАНДАРТНЫЙ или ПРОИЗВОЛЬНЫЙ
+ * (фаза 6.13). Стандартный (`custom=false`, без скобок) — бинарное сравнение
+ * `<seed>.<путь> <cmp> <joined>.<путь>`, где оба операнда — чистые точечные поля,
+ * левый принадлежит затравке (`seedId`), правый присоединяемой (`joinedId`),
+ * `cmp ∈ {=,<>,<,>,<=,>=}`. Всё прочее — произвольный конъюнкт (`custom=true`),
+ * хранится дословным текстом (со снятой одной внешней парой скобок).
+ */
+function classifyJoinConjunct(
+  tokens: Token[],
+  source: string,
+  aliasToId: Map<string, string>,
+  seedId: string,
+  joinedId: string
+): JoinCondition {
+  const arbitrary = (): JoinCondition => {
+    const text = stripOuterParens(sliceSource(source, tokens));
+    return { custom: true, expression: text };
+  };
+  // Внешние скобки вокруг конъюнкта → разработчик пометил «Произвольное».
+  if (tokens.length > 0 && tokens[0].type === 'punct' && tokens[0].value === '(') {
+    return arbitrary();
+  }
+  // Найти верхнеуровневый оператор сравнения.
+  let opIdx = -1;
+  let depth = 0;
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    else if (depth === 0 && isCondOperatorToken(t)) { opIdx = k; break; }
+  }
+  if (opIdx <= 0 || opIdx >= tokens.length - 1) return arbitrary();
+  const op = tokens[opIdx].value;
+  if (!STD_JOIN_OPERATORS.has(op)) return arbitrary();
+  const left = parseFieldRef(tokens.slice(0, opIdx), aliasToId);
+  const right = parseFieldRef(tokens.slice(opIdx + 1), aliasToId);
+  if (!left || !right) return arbitrary();
+  // Стандартное: ЛЕВЫЙ операнд — поле КОРНЯ цепочки (затравки), ПРАВЫЙ — поле
+  // присоединяемой таблицы. Конструктор 1С НЕ нормализует порядок операндов:
+  // перестановка (`joined.x = seed.y`) переводит условие в произвольное (в скобках),
+  // как и операнд из третьей (предыдущей в цепочке) таблицы. Это правило совпадает
+  // с эталоном конструктора в 95.6% конъюнктов корпуса (фаза 6.13).
+  if (left.tableId !== seedId || right.tableId !== joinedId) return arbitrary();
+  return {
+    custom: false,
+    leftTableId: left.tableId,
+    leftPath: left.path,
+    operator: op as ConditionOperator,
+    rightTableId: right.tableId,
+    rightPath: right.path,
+  };
+}
+
+/**
  * Достраивает соединение из сырого вида: резолвит псевдонимы затравки/присоединяемой
  * в tableId и разбирает условие `ПО`. Простое: `<aliasL>.<pathL> <op> <aliasR>.<pathR>`;
  * иначе — произвольное (`custom`), причём генератор оборачивает произвольное в
  * скобки, которые здесь снимаются.
  */
-function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
+function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: string): Join {
   const { leftAll, rightAll } = joinFlags(raw.kind);
   /* v8 ignore next 2 -- псевдонимы затравки/присоединяемой всегда в aliasToId (правая ветвь ?? недостижима) */
   const seedId = aliasToId.get(raw.seedAlias) ?? raw.seedAlias;
@@ -1418,6 +1527,18 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
   // (`ПО (a = b)`). Только это решение конструктор 1С сохраняет; скобки вокруг
   // подконъюнктов составного условия (`(a) И (b)`) сюда не относятся (фаза 6.12).
   const parenthesized = hasBalancedOuterParens(raw.condTokens);
+
+  // Поконъюнктная классификация (фаза 6.13): условие `ПО` бьётся по верхнеуровневым
+  // `И`, каждый конъюнкт — стандартный (`seed.поле cmp joined.поле`, без скобок) или
+  // произвольный (в скобках). Генератор рендерит из этого списка. Внешние скобки
+  // вокруг ВСЕГО условия (`ПО (a = b)`) при единственном конъюнкте — это пометка
+  // «Произвольное» разработчиком: классифицируем такой конъюнкт как произвольный.
+  /* v8 ignore next -- chainSeedAlias всегда резолвится (он же источник в aliasToId) */
+  const chainSeedId = aliasToId.get(raw.chainSeedAlias) ?? raw.chainSeedAlias;
+  const conjunctTokens = splitJoinConjuncts(raw.condTokens);
+  const conditions: JoinCondition[] = conjunctTokens.map(seg =>
+    classifyJoinConjunct(seg, source, aliasToId, chainSeedId, joinedId)
+  );
 
   // Простое условие (`a = b`) резолвим как раньше — обе таблицы из ссылок полей,
   // что задаёт порядок таблиц в цепочке ИЗ. Обёрнутую форму (`(a = b)`) НЕ
@@ -1441,6 +1562,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
       rightPath: simple.rightPath,
       seedTableId: seedId,
       joinedTableId: joinedId,
+      conditions,
     };
   }
 
@@ -1455,6 +1577,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>): Join {
     parenthesized,
     seedTableId: seedId,
     joinedTableId: joinedId,
+    conditions,
   };
 }
 
