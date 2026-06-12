@@ -243,6 +243,65 @@ function leafFlattenBlocked(raw: string): boolean {
 }
 
 /**
+ * Перебазировка подзапроса внутри листа (фаза 6.15.9, MCP-пробы): конструктор 1С
+ * переотрисовывает блок `(ВЫБРАТЬ …)` правого операнда `В`/`В ИЕРАРХИИ` как
+ * полноценный запрос с отступом строки `(ВЫБРАТЬ` по КОНТЕКСТУ слота, игнорируя
+ * отступы разработчика. Здесь — РАВНОМЕРНЫЙ сдвиг блока (внутренняя относительная
+ * геометрия сохраняется): полный ре-рендер парсером ломает коррелированные
+ * подзапросы (квалификация ссылок на внешние таблицы без знания их псевдонимов).
+ * `base` — целевой отступ строки `(ВЫБРАТЬ`; каждый ведущий `НЕ` головы листа
+ * добавляет +1. Хвостовой пробел строки перед подзапросом (`… В `) конструктор
+ * срезает.
+ *
+ * Консервативно: перебазируются ТОЛЬКО листья, у которых блок подзапроса
+ * начинается с собственной строки и закрывается на ПОСЛЕДНЕЙ строке листа
+ * (баланс скобок, кавычки учитываются). Листья сложнее (И/ИЛИ-цепочка значения
+ * с двумя подзапросами, хвост после скобки) сохраняют геометрию исходника.
+ */
+export function reindentLeafSubquery(text: string, base: number): string {
+  if (!text.includes('\n')) return text;
+  const lines = text.split('\n');
+  let start = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].replace(/^[\t ]+/u, '').startsWith('(ВЫБРАТЬ')) { start = i; break; }
+  }
+  if (start <= 0) return text;
+  // Баланс скобок блока (вне строковых литералов) должен закрыться в конце листа.
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < lines.length; i++) {
+    for (const ch of lines[i]) {
+      if (ch === '"') inStr = !inStr;
+      else if (!inStr && ch === '(') depth++;
+      else if (!inStr && ch === ')') depth--;
+    }
+    if (depth <= 0 && i < lines.length - 1) return text;
+  }
+  if (depth > 0) return text;
+  // Ведущие НЕ головы листа (включая после открывающих скобок): по +1 каждое.
+  const neMatch = /^[\s(]*((?:НЕ\s+)+)/u.exec(lines[0]);
+  const neCount = neMatch ? (neMatch[1].match(/НЕ/gu) ?? []).length : 0;
+  const target = base + neCount;
+  // Хвостовые пробелы строки перед подзапросом (`… В ` → `… В`).
+  lines[start - 1] = lines[start - 1].replace(/[ \t]+$/u, '');
+  const cur = (lines[start].match(/^\t*/u) ?? [''])[0].length;
+  const delta = target - cur;
+  if (delta !== 0) {
+    for (let i = start; i < lines.length; i++) {
+      if (lines[i].trim() === '') continue; // пустые/разделительные строки не трогаем
+      if (delta > 0) {
+        lines[i] = TAB.repeat(delta) + lines[i];
+      } else {
+        const have = (lines[i].match(/^\t*/u) ?? [''])[0].length;
+        if (have < -delta) return text; // нечего срезать — геометрия нестандартная, не трогаем
+        lines[i] = lines[i].slice(-delta);
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
  * Правая часть простого условия `<op> <param>`. Конструктор 1С не ставит пробел перед
  * скобкой списка значений у оператора `В` (и `В ИЕРАРХИИ`): `В (&Список)` → `В(&Список)`,
  * `В ИЕРАРХИИ (&Род)` → `В ИЕРАРХИИ(&Род)`. Перед подзапросом (`В (ВЫБРАТЬ …)`) конструктор
@@ -967,6 +1026,14 @@ interface RenderCtx {
   cont: number; // C — контентный отступ секции
   caseBoolean: boolean; // CASE в этой позиции — булев слот (E=C+1) или value (E=C)
   stripNotParens?: boolean; // ГДЕ/ИМЕЮЩИЕ: `(НЕ поле)` → `НЕ поле` (конструктор снимает скобки)
+  // Дельта отступа подзапроса `В (ВЫБРАТЬ …)` для листа на orLvl=0 (фаза 6.15.9):
+  // корневое ГДЕ — 2 (`(ВЫБРАТЬ` на ind+2), условия ВНУТРИ В-подзапроса — 1.
+  subDelta0?: number;
+}
+
+/** Дельта отступа подзапроса листа по глубине ИЛИ (см. orDelta в renderBool). */
+function subDelta(orLvl: number, ctx: RenderCtx): number {
+  return orLvl === 0 ? ctx.subDelta0 ?? 2 : 1;
 }
 
 function tabs(n: number): string {
@@ -999,7 +1066,8 @@ function renderBool(
   andCont: number,
   orLvl: number,
   ctx: RenderCtx,
-  caseE: number = ind + 1
+  caseE: number = ind + 1,
+  subInd?: number
 ): string[] {
   switch (node.kind) {
     case 'or': {
@@ -1010,12 +1078,13 @@ function renderBool(
       node.operands.forEach((op, k) => {
         if (k === 0) {
           // operand0 печатается на отступе ind; CASE-операнд → E=ind.
-          const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, ind);
+          // Подзапрос листа-операнда — на childAnd (выравнен с операндами ИЛИ).
+          const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, ind, childAnd);
           sub[0] = '(' + sub[0];
           lines.push(...sub);
         } else {
           // operandK на отступе iliInd; CASE-операнд → E=iliInd.
-          const sub = renderBool(op, iliInd, childAnd, orLvl + 1, ctx, iliInd);
+          const sub = renderBool(op, iliInd, childAnd, orLvl + 1, ctx, iliInd, childAnd);
           sub[0] = tabs(iliInd) + 'ИЛИ ' + sub[0];
           lines.push(...sub);
         }
@@ -1027,7 +1096,7 @@ function renderBool(
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderBool(op, ind, andCont, orLvl, ctx, caseE));
+          lines.push(...renderBool(op, ind, andCont, orLvl, ctx, caseE, subInd));
         } else {
           // operandK на отступе andCont; CASE-операнд → E=andCont+1.
           const sub = renderBool(op, andCont, andCont + 1, orLvl, ctx, andCont + 1);
@@ -1044,16 +1113,18 @@ function renderBool(
       if (ctx.stripNotParens && node.child.kind === 'group') {
         return renderNotGroup(node.child.child, ind, orLvl, ctx);
       }
-      const sub = renderBool(node.child, ind, andCont, orLvl, ctx, caseE);
+      // Структурное НЕ сдвигает подзапрос листа на +1 (как ведущее НЕ в листе).
+      const si = (subInd ?? ind + subDelta(orLvl, ctx)) + 1;
+      const sub = renderBool(node.child, ind, andCont, orLvl, ctx, caseE, si);
       sub[0] = 'НЕ ' + sub[0];
       return sub;
     }
     case 'group': {
       const child = node.child;
       if (child.kind === 'or') {
-        return renderBool(child, ind, andCont, orLvl, ctx, caseE);
+        return renderBool(child, ind, andCont, orLvl, ctx, caseE, subInd);
       }
-      const sub = renderBool(child, ind, andCont, orLvl, ctx, caseE);
+      const sub = renderBool(child, ind, andCont, orLvl, ctx, caseE, subInd);
       sub[0] = '(' + sub[0];
       sub[sub.length - 1] += ')';
       return sub;
@@ -1064,7 +1135,9 @@ function renderBool(
     }
     case 'leaf': {
       const t = ctx.stripNotParens ? stripNegatedFieldParens(node.text) : node.text;
-      return [appendIsNotNullTrailingSpace(t)];
+      // Подзапрос внутри листа — перебазировка на контекстный отступ (фаза 6.15.9).
+      const rebased = reindentLeafSubquery(t, subInd ?? ind + subDelta(orLvl, ctx));
+      return [appendIsNotNullTrailingSpace(rebased)];
     }
   }
 }
@@ -1086,9 +1159,10 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderBool(op, whenInd, contInd + 1, 1, ctx));
+          // Подзапрос операнда0 выравнивается с операндами ИЛИ: contInd+1 (MCP, 6.15.9).
+          lines.push(...renderBool(op, whenInd, contInd + 1, 1, ctx, whenInd + 1, contInd + 1));
         } else {
-          const sub = renderBool(op, contInd, contInd + 1, 1, ctx);
+          const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
           sub[0] = tabs(contInd) + 'ИЛИ ' + sub[0];
           lines.push(...sub);
         }
@@ -1100,9 +1174,9 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderBool(op, whenInd, contInd, 1, ctx));
+          lines.push(...renderBool(op, whenInd, contInd, 1, ctx, whenInd + 1, contInd + 1));
         } else {
-          const sub = renderBool(op, contInd, contInd + 1, 1, ctx);
+          const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
           sub[0] = tabs(contInd) + 'И ' + sub[0];
           lines.push(...sub);
         }
@@ -1110,7 +1184,8 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
       return lines;
     }
     default:
-      return renderBool(node, whenInd, contInd, 1, ctx);
+      // Одиночный лист условия КОГДА: подзапрос на whenInd+2 (MCP, 6.15.9).
+      return renderBool(node, whenInd, contInd, 1, ctx, whenInd + 1, whenInd + 2);
   }
 }
 
@@ -1149,7 +1224,8 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
       sub[0] = tabs(thenInd) + 'ТОГДА ' + sub[0];
       lines.push(...sub);
     } else {
-      lines.push(tabs(thenInd) + 'ТОГДА ' + valueText(cl.thenNode));
+      // Подзапрос значения ТОГДА — на thenInd+2 (MCP, 6.15.9).
+      lines.push(tabs(thenInd) + 'ТОГДА ' + reindentLeafSubquery(valueText(cl.thenNode), thenInd + 2));
     }
   }
   if (node.elseExpr) {
@@ -1159,7 +1235,8 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
       sub[0] = tabs(elseInd) + 'ИНАЧЕ ' + sub[0];
       lines.push(...sub);
     } else {
-      lines.push(tabs(elseInd) + 'ИНАЧЕ ' + valueText(node.elseExpr));
+      // Подзапрос значения ИНАЧЕ — на elseInd+2 (MCP, 6.15.9).
+      lines.push(tabs(elseInd) + 'ИНАЧЕ ' + reindentLeafSubquery(valueText(node.elseExpr), elseInd + 2));
     }
   }
   lines.push(tabs(E) + 'КОНЕЦ');
@@ -1173,7 +1250,7 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
  * Первая строка БЕЗ ведущего отступа (его добавляет вызывающий, прибавляя базовый
  * таб слота); продолжения — с абсолютными табами.
  */
-export function formatExpression(raw: string, slot: ExprSlot): string {
+export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: number): string {
   const trimmed = raw.trim();
   // Сплющивание многострочных листьев в одну строку — только для полей выборки
   // (слот select); в ГДЕ/ИМЕЮЩИЕ/ПО структура исходника сохраняется дословно
@@ -1189,7 +1266,7 @@ export function formatExpression(raw: string, slot: ExprSlot): string {
 
   let body: string;
   if (slot === 'where' || slot === 'having') {
-    const ctx: RenderCtx = { cont: 1, caseBoolean: true, stripNotParens: true };
+    const ctx: RenderCtx = { cont: 1, caseBoolean: true, stripNotParens: true, subDelta0: rootSubDelta };
     // ИМЕЮЩИЕ: верхний OR использует orDelta=1 (ИЛИ на отступе 2), в отличие от
     // ГДЕ (orDelta=2, ИЛИ на 3) — эмулируем стартовым orLvl=1.
     const startOrLvl = slot === 'having' ? 1 : 0;
@@ -1241,15 +1318,16 @@ function renderNotGroup(child: Node, ind: number, orLvl: number, ctx: RenderCtx)
     lines = [];
     child.operands.forEach((op, k) => {
       if (k === 0) {
-        lines.push(...renderBool(op, ind, cont, orLvl + 1, ctx));
+        // Подзапрос операнда НЕ(-блока — на cont+1 (выравнен по операндам, 6.15.9).
+        lines.push(...renderBool(op, ind, cont, orLvl + 1, ctx, ind + 1, cont + 1));
       } else {
-        const sub = renderBool(op, cont, cont + 1, orLvl + 1, ctx);
+        const sub = renderBool(op, cont, cont + 1, orLvl + 1, ctx, cont + 1, cont + 1);
         sub[0] = tabs(cont) + word + sub[0];
         lines.push(...sub);
       }
     });
   } else {
-    lines = renderBool(child, ind, cont, orLvl + 1, ctx);
+    lines = renderBool(child, ind, cont, orLvl + 1, ctx, ind + 1, cont + 1);
   }
   lines[0] = 'НЕ(' + lines[0];
   lines[lines.length - 1] += ')';
@@ -1279,7 +1357,7 @@ export function isRootNotGroup(raw: string): boolean {
  *   - orDelta = 1 (а не 2): operand0 @ ind, строки `ИЛИ x` @ ind+1.
  * Листья и НЕ — как обычно (НЕ инлайн).
  */
-function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: number, ctx: RenderCtx): string[] {
+function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: number, ctx: RenderCtx, subInd?: number): string[] {
   switch (node.kind) {
     case 'or': {
       const iliInd = ind + 1;
@@ -1287,9 +1365,10 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderSelectBool(op, ind, childAnd, orLvl + 1, ctx));
+          // Подзапрос операнда0 выравнен с операндами ИЛИ: childAnd (MCP, 6.15.9).
+          lines.push(...renderSelectBool(op, ind, childAnd, orLvl + 1, ctx, childAnd));
         } else {
-          const sub = renderSelectBool(op, iliInd, childAnd, orLvl + 1, ctx);
+          const sub = renderSelectBool(op, iliInd, childAnd, orLvl + 1, ctx, childAnd);
           sub[0] = tabs(iliInd) + 'ИЛИ ' + sub[0];
           lines.push(...sub);
         }
@@ -1300,7 +1379,7 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderSelectBool(op, ind, andCont, orLvl, ctx));
+          lines.push(...renderSelectBool(op, ind, andCont, orLvl, ctx, subInd));
         } else {
           const sub = renderSelectBool(op, andCont, andCont + 1, orLvl, ctx);
           sub[0] = tabs(andCont) + 'И ' + sub[0];
@@ -1310,12 +1389,12 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       return lines;
     }
     case 'not': {
-      const sub = renderSelectBool(node.child, ind, andCont, orLvl, ctx);
+      const sub = renderSelectBool(node.child, ind, andCont, orLvl, ctx, (subInd ?? ind + 1) + 1);
       sub[0] = 'НЕ ' + sub[0];
       return sub;
     }
     case 'group': {
-      const sub = renderSelectBool(node.child, ind, andCont, orLvl, ctx);
+      const sub = renderSelectBool(node.child, ind, andCont, orLvl, ctx, subInd);
       sub[0] = '(' + sub[0];
       sub[sub.length - 1] += ')';
       return sub;
@@ -1323,7 +1402,8 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
     case 'case':
       return renderCase(node, ind, ctx, false);
     case 'leaf':
-      return [node.text];
+      // Подзапрос поля выборки — на ind+1 (MCP, 6.15.9).
+      return [reindentLeafSubquery(node.text, subInd ?? ind + 1)];
   }
 }
 
@@ -1393,7 +1473,9 @@ export function formatJoinConjunct(raw: string, first: boolean, base = 2): strin
 function renderJoinConjunct(node: Node, ind: number, ctx: RenderCtx, orLvl: number): string[] {
   switch (node.kind) {
     case 'leaf':
-      return node.text.split('\n');
+      // Подзапрос конъюнкта ПО — на base+2 для любого конъюнкта: первый (ind=base,
+      // orLvl=0 → +2) и И-конъюнкт (ind=base+1, orLvl=1 → +1) дают один отступ (MCP).
+      return reindentLeafSubquery(node.text, ind + subDelta(orLvl, ctx)).split('\n');
     case 'case':
       return renderCase(node, ind, ctx, true);
     case 'not': {

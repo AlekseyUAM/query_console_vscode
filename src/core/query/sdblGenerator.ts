@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -214,11 +214,12 @@ function isPlainFieldComparison(expr: string): boolean {
  * `(a = &П)`, `(joined.x = seed.y)`, `(функция(...))`. Сложные конъюнкты (ИЛИ/ВЫБОР/
  * подзапрос) сюда не попадают — для них `renderJoinCondition` выбирает legacy-путь.
  */
-function renderArbitraryConjunct(expr: string): string {
+function renderArbitraryConjunct(expr: string, depth = 0): string {
   // Многострочный лист (`В (\n a,\n b)` и т.п.) конструктор сплющивает в одну
   // строку (правило 6.15.3, для ПО — фаза 6.15.5); стоп-условия (ВЫБРАТЬ/ВЫБОР/
-  // И/ИЛИ/`{`) оставляют текст как есть.
-  return `(${normalizeLeafCase(flattenMultilineLeaf(expr.trim()))})`;
+  // И/ИЛИ/`{`) оставляют текст как есть. Лист с подзапросом (`X В\n(ВЫБРАТЬ …)`)
+  // перебазируется на base+2 = 4+depth (фаза 6.15.9, MCP).
+  return `(${normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr.trim()), 4 + depth))})`;
 }
 
 /**
@@ -241,7 +242,7 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
     } else if (conjunctNeedsComplexFormat(c)) {
       sub = formatJoinConjunct((c.expression ?? '').trim(), k === 0, 2 + depth).split('\n');
     } else {
-      sub = [renderArbitraryConjunct(c.expression ?? '')];
+      sub = [renderArbitraryConjunct(c.expression ?? '', depth)];
     }
     if (k > 0) sub[0] = `${'\t'.repeat(3 + depth)}И ${sub[0]}`;
     lines.push(...sub);
@@ -554,7 +555,9 @@ export function formatSelectExpression(expression: string): string {
     // наличии `КАК <псевдоним>` это даёт двойной пробел `NULL  КАК` (как конструктор).
     // Многострочный лист (разбитый разработчиком вызов функции) конструктор
     // печатает одной строкой — сплющиваем до нормализации (фаза 6.15.3).
-    : appendIsNotNullTrailingSpace(normalizeLeafCase(flattenMultilineLeaf(expression)));
+    // Лист-подзапрос (`ИСТИНА В\n(ВЫБРАТЬ …)`) перебазируется на отступ 2 (= 1+1,
+    // фаза 6.15.9, MCP).
+    : appendIsNotNullTrailingSpace(normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expression), 2)));
 }
 
 /**
@@ -911,7 +914,11 @@ function buildConditionStrings(
       // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
       // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.
       // НЕ-блок (`НЕ (a И b)`) переотрисовывается даже без ИЛИ внутри (фаза 6.14).
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(flattenMultilineLeaf(expr)))));
+      // Подзапрос в листе (`X В\n(ВЫБРАТЬ …)`) перебазируется на контекстный отступ
+      // (фаза 6.15.9, MCP): корневое ГДЕ — 3 (= 1+2), условия внутри В-подзапроса
+      // и ИМЕЮЩИЕ — 2 (= 1+1); ведущие НЕ листа добавляют +1 (внутри хелпера).
+      const subBase = slot === 'where' && !inConditionSubquery ? 3 : 2;
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase)))));
       continue;
     }
     if (!c.path) continue;
