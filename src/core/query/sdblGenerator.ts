@@ -560,12 +560,18 @@ export function selectAliasFor(model: QueryModel, tableId: string, path: string)
  * поле, входящее в выборку, адресуется псевдонимом выборки (`selectAliasFor`);
  * поле НЕ из выборки конструктор 1С печатает квалифицированно
  * `<псевдонимТаблицы>.<path>` (MCP, фаза 6.15.4). Нерезолвимая таблица —
- * прежний фолбэк по последнему сегменту пути.
+ * прежний фолбэк по последнему сегменту пути. `tableAliases` — готовая карта
+ * `resolveAliases(model.tables)` вызывающей секции (не пересчитываем на поле).
  */
-function sectionFieldRefText(model: QueryModel, tableId: string, path: string): string {
+function sectionFieldRefText(
+  model: QueryModel,
+  tableAliases: Map<string, string>,
+  tableId: string,
+  path: string
+): string {
   const match = model.fields.find(f => f.tableId === tableId && f.path === path);
   if (match) return match.alias ?? (path.split('.').pop() ?? path);
-  const alias = resolveAliases(model.tables).get(tableId);
+  const alias = tableAliases.get(tableId);
   return alias !== undefined ? `${alias}.${path}` : (path.split('.').pop() ?? path);
 }
 
@@ -589,7 +595,7 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
         ? f.expression
         : f.qualified
         ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
-        : sectionFieldRefText(model, f.tableId, f.path);
+        : sectionFieldRefText(model, tableAliases, f.tableId, f.path);
       // `ИЕРАРХИЯ` после поля упорядочивания конструктор 1С выводит ТОЛЬКО когда
       // поле — иерархическая ссылка (по схеме метаданных, недоступной здесь): для
       // стандартного поля `Ссылка` сохраняет (оно всегда ссылочное в иерархических
@@ -642,7 +648,7 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   for (const g of totals.groupFields) {
     const alias = g.qualified
       ? `${tableAliases.get(g.tableId) ?? g.tableId}.${g.path}`
-      : sectionFieldRefText(model, g.tableId, g.path);
+      : sectionFieldRefText(model, tableAliases, g.tableId, g.path);
     const as = g.alias ? ` КАК ${g.alias}` : '';
     byList.push(`${alias}${totalKindSuffix(g.kind)}${as}`);
   }
@@ -681,7 +687,7 @@ export function renderIndex(indexing: Indexing | undefined, model: QueryModel): 
       ? f.expression
       : f.qualified
       ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
-      : sectionFieldRefText(model, f.tableId, f.path);
+      : sectionFieldRefText(model, tableAliases, f.tableId, f.path);
 
   if (indexes.length === 1) {
     const fields = indexes[0].fields;

@@ -1143,6 +1143,11 @@ function parseFieldRef(
   return { tableId, path };
 }
 
+/** Токен-имя: идентификатор или ключевое слово (сегмент пути / голова цепочки). */
+function isNameToken(t: Token | undefined): boolean {
+  return t !== undefined && (t.type === 'ident' || t.type === 'keyword');
+}
+
 /** Единственный источник запроса (для квалификации голых полей, фаза 6.12). */
 interface SoleSource {
   id: string;
@@ -1158,27 +1163,44 @@ type OwnerResolver = (head: string) => string | undefined;
 /**
  * Карта «поле (ВЕРХНИЙ регистр) → таблицы, у которых оно встречается в тексте
  * запроса квалифицированным» (`<псевдоним>.<поле>`). Голова цепочки — токен-имя,
- * НЕ являющийся продолжением пути (перед ним нет `.`); учитываются только
- * объявленные псевдонимы текущего запроса (вложенные подзапросы со своими
- * псевдонимами не попадают). Фаза 6.15.4 (MCP): по этой карте резолвится
- * таблица-владелец голого поля в многоисточниковом запросе.
+ * НЕ являющийся продолжением пути (перед ним нет `.`). Зоны подзапросов
+ * `(ВЫБРАТЬ …)` пропускаются: у них свой контекст псевдонимов, и внутренний
+ * псевдоним, совпадающий по имени с внешним, иначе ошибочно зачислял бы поле
+ * внешней таблице. Фаза 6.15.4 (MCP): по этой карте резолвится таблица-владелец
+ * голого поля в многоисточниковом запросе.
  */
 function buildFieldOwnerScan(
   tokens: readonly Token[],
   aliasToId: Map<string, string>
 ): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
-  const isName = (t: Token | undefined): boolean =>
-    t !== undefined && (t.type === 'ident' || t.type === 'keyword');
-  for (let i = 0; i + 2 < tokens.length; i++) {
-    const head = tokens[i];
-    if (!isName(head)) continue;
+  let depth = 0;
+  // Глубина, ниже которой заканчивается зона пропуска подзапроса `(ВЫБРАТЬ …)`.
+  let skipUntilDepth: number | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && t.value === '(') {
+      depth++;
+      if (skipUntilDepth === undefined &&
+          tokens[i + 1]?.type === 'keyword' && tokens[i + 1].value === 'ВЫБРАТЬ') {
+        skipUntilDepth = depth;
+      }
+      continue;
+    }
+    if (t.type === 'punct' && t.value === ')') {
+      depth--;
+      if (skipUntilDepth !== undefined && depth < skipUntilDepth) skipUntilDepth = undefined;
+      continue;
+    }
+    if (skipUntilDepth !== undefined) continue;
+    if (!isNameToken(t)) continue;
     const prev = tokens[i - 1];
     if (prev && prev.type === 'punct' && prev.value === '.') continue; // продолжение пути
     const dot = tokens[i + 1];
     const field = tokens[i + 2];
-    if (!(dot.type === 'punct' && dot.value === '.') || !isName(field)) continue;
-    const tableId = aliasToId.get(head.text.toUpperCase());
+    if (!dot || !field) continue;
+    if (!(dot.type === 'punct' && dot.value === '.') || !isNameToken(field)) continue;
+    const tableId = aliasToId.get(t.text.toUpperCase());
     if (tableId === undefined) continue;
     const key = field.text.toUpperCase();
     const set = map.get(key) ?? new Set<string>();
@@ -1273,19 +1295,19 @@ const EXPR_STOP_WORDS = new Set<string>([
  * единственном источнике (фаза 6.15.4, MCP): каждая точечная цепочка имён,
  * голова которой не псевдоним таблицы, получает префикс `<псевдоним>.`;
  * написание уже квалифицированных голов нормализуется к объявленному
- * (`Таб.Ссылка` → `ТАБ.Ссылка`). НЕ трогаются: продолжения путей, вызовы
- * функций (`ИМЯ(`), типы после `КАК`/`ССЫЛКА` (ВЫРАЗИТЬ/уточнение типа),
- * аргументы `ЗНАЧЕНИЕ(…)`/`ТИП(…)` (пути метаданных), стоп-слова и литералы.
+ * (`Таб.Ссылка` → `ТАБ.Ссылка`). При `soleAlias === undefined` (несколько
+ * источников) выполняется ТОЛЬКО нормализация написания псевдонимов.
+ * НЕ трогаются: продолжения путей, вызовы функций (`ИМЯ(`), типы после
+ * `КАК`/`ССЫЛКА` (ВЫРАЗИТЬ/уточнение типа), аргументы `ЗНАЧЕНИЕ(…)`/`ТИП(…)`
+ * (пути метаданных), стоп-слова и литералы.
  */
 function qualifyBareFieldsInExpression(
   tokens: Token[],
   source: string,
   aliasToId: Map<string, string>,
   aliasSpelling: Map<string, string>,
-  soleAlias: string
+  soleAlias: string | undefined
 ): string {
-  const isName = (t: Token | undefined): boolean =>
-    t !== undefined && (t.type === 'ident' || t.type === 'keyword');
   const edits: { pos: number; len: number; text: string }[] = [];
   let depth = 0;
   // Глубина, ниже которой заканчивается зона пропуска ЗНАЧЕНИЕ(…)/ТИП(…)/подзапроса.
@@ -1311,7 +1333,7 @@ function qualifyBareFieldsInExpression(
       continue;
     }
     if (skipUntilDepth !== undefined || braceDepth > 0) continue;
-    if (!isName(t)) continue;
+    if (!isNameToken(t)) continue;
     const up = t.text.toUpperCase();
     // ЗНАЧЕНИЕ(/ТИП( — внутри пути метаданных, не поля.
     if ((up === 'ЗНАЧЕНИЕ' || up === 'ТИП') &&
@@ -1330,7 +1352,7 @@ function qualifyBareFieldsInExpression(
     const skipChain = prevUp === 'КАК' || prevUp === 'ССЫЛКА' || EXPR_STOP_WORDS.has(up);
     // Конец точечной цепочки от текущего имени.
     let j = i;
-    while (tokens[j + 1]?.type === 'punct' && tokens[j + 1].value === '.' && isName(tokens[j + 2])) {
+    while (tokens[j + 1]?.type === 'punct' && tokens[j + 1].value === '.' && isNameToken(tokens[j + 2])) {
       j += 2;
     }
     const next = tokens[j + 1];
@@ -1340,7 +1362,7 @@ function qualifyBareFieldsInExpression(
       if (declared !== undefined) {
         // Уже квалифицировано — нормализуем написание псевдонима.
         if (t.text !== declared) edits.push({ pos: t.pos, len: t.text.length, text: declared });
-      } else {
+      } else if (soleAlias !== undefined) {
         edits.push({ pos: t.pos, len: 0, text: `${soleAlias}.` });
       }
     }
@@ -1551,7 +1573,7 @@ function interpretCondition(
   if (hasTopLevelOr(tokens)) {
     return { custom: true, expression: customText() };
   }
-  const simple = trySimpleCondition(tokens, source, aliasToId, soleSource);
+  const simple = trySimpleCondition(tokens, source, aliasToId, soleSource, aliasSpelling);
   if (simple) return simple;
   return { custom: true, expression: customText() };
 }
@@ -1570,7 +1592,8 @@ function trySimpleCondition(
   tokens: Token[],
   source: string,
   aliasToId: Map<string, string>,
-  soleSource?: SoleSource
+  soleSource?: SoleSource,
+  aliasSpelling?: Map<string, string>
 ): Condition | undefined {
   // Найти первый оператор сравнения верхнего уровня.
   let opIdx = -1;
@@ -1619,11 +1642,19 @@ function trySimpleCondition(
     return { custom: false, ...base };
   }
 
-  // Не-параметр справа → «Произвольное». Псевдоним LHS: объявленный (lhs[0] при
-  // прямом совпадении; псевдоним единственного источника при голом поле) — тот же,
-  // что отдал бы `aliases.get(tableId)` в генераторе.
-  const lhsAlias = direct ? lhs[0].text : soleSource!.alias;
-  const expr = `${lhsAlias}.${ref.path} ${renderOperatorRhs(op, normalizeLeafCase(param))}`;
+  // Не-параметр справа → «Произвольное». Псевдоним LHS: при прямом совпадении —
+  // ОБЪЯВЛЕННОЕ написание (`Таб` → `ТАБ`, идентификаторы регистронезависимы, как
+  // отдал бы `aliases.get(tableId)` в генераторе); при голом поле — псевдоним
+  // единственного источника. RHS проходит ту же обработку, что произвольное
+  // выражение: нормализация написания псевдонимов + квалификация голых полей
+  // при единственном источнике (`Вал.Код > Наименование` → `… > Вал.Наименование`).
+  const lhsAlias = direct
+    ? (aliasSpelling?.get(lhs[0].text.toUpperCase()) ?? lhs[0].text)
+    : soleSource!.alias;
+  const rhsText = aliasSpelling
+    ? qualifyBareFieldsInExpression(paramTokens, source, aliasToId, aliasSpelling, soleSource?.alias)
+    : param;
+  const expr = `${lhsAlias}.${ref.path} ${renderOperatorRhs(op, normalizeLeafCase(rhsText))}`;
   // Консервативный гейт: выражение, заводящее форматер (ВЫБОР/ИЛИ/НЕ-группа),
   // отрисовалось бы иначе, чем стандартный путь — такие оставляем стандартными,
   // чтобы текст гарантированно не изменился (только галочка UI, текст важнее).
