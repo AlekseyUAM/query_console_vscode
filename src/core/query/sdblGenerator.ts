@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, flattenLeafText, leafHasSubquery } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -815,71 +815,6 @@ function renderGrouping(
 }
 
 /**
- * Правая часть простого условия `<op> <param>`. Конструктор 1С не ставит пробел перед
- * скобкой списка значений у оператора `В` (и `В ИЕРАРХИИ`): `В (&Список)` → `В(&Список)`,
- * `В ИЕРАРХИИ (&Род)` → `В ИЕРАРХИИ(&Род)`. Перед подзапросом (`В (ВЫБРАТЬ …)`) конструктор
- * переносит на новую строку — это вне модели простых условий (фаза 6.11), здесь не трогаем.
- */
-function renderOperatorRhs(op: string, param: string): string {
-  if (op === 'В') {
-    if (param.startsWith('(')) {
-      // Список значений `В (a, b, …)` конструктор печатает ИНЛАЙН на одной строке,
-      // даже если разработчик разбил его по запятым на несколько строк. Сплющиваем
-      // многострочный список в одну строку. Сплющиваем ТОЛЬКО если param —
-      // сбалансированный список `( … )` БЕЗ хвоста (иногда парсер ошибочно
-      // захватывает в param хвостовые секции вида `\n\nУПОРЯДОЧИТЬ ПО …` — их
-      // сплющивать нельзя) и БЕЗ вложенного подзапроса `(ВЫБРАТЬ …)`.
-      const list =
-        param.includes('\n') && isPureBalancedList(param) && !leafHasSubquery(param)
-          ? flattenLeafText(param)
-          : param;
-      // Список из 2+ элементов конструктор отделяет пробелом: `В (a, b)`; список из
-      // одного элемента — без пробела: `В(a)` (доказано на корпусе оракула:
-      // multi 18 пробел / 0 без; single 14 пробел / 249 без — single оставляем как есть).
-      return `В${valueListIsMulti(list) ? ' ' : ''}${list}`;
-    }
-    if (param.startsWith('ИЕРАРХИИ (')) return 'В ИЕРАРХИИ' + param.slice('ИЕРАРХИИ'.length).replace(/^ \(/, '(');
-  }
-  return `${op} ${param}`;
-}
-
-/**
- * Список значений `(…)` оператора `В` содержит 2+ элемента верхнего уровня?
- * Считает запятые вне вложенных скобок (ЗНАЧЕНИЕ(…) и т.п. — один элемент).
- * Подзапрос (`(ВЫБРАТЬ …)`) — не список значений, трактуется как один элемент.
- */
-/**
- * `param` — сбалансированный список `( … )` без хвостовых символов после внешней
- * закрывающей скобки. Используется, чтобы НЕ сплющивать param, в который парсер
- * ошибочно затянул хвост запроса (`(&X)\n\nУПОРЯДОЧИТЬ ПО …`).
- */
-function isPureBalancedList(param: string): boolean {
-  if (param[0] !== '(') return false;
-  let depth = 0;
-  for (let i = 0; i < param.length; i++) {
-    const ch = param[i];
-    if (ch === '(') depth++;
-    else if (ch === ')') {
-      depth--;
-      if (depth === 0) return i === param.length - 1;
-    }
-  }
-  return false;
-}
-
-function valueListIsMulti(param: string): boolean {
-  const inner = param.slice(1, param.lastIndexOf(')'));
-  if (/(^|[^\p{L}\p{N}_])ВЫБРАТЬ([^\p{L}\p{N}_]|$)/u.test(inner)) return false;
-  let depth = 0;
-  for (const ch of inner) {
-    if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    else if (ch === ',' && depth === 0) return true;
-  }
-  return false;
-}
-
-/**
  * Секция ГДЕ (условия отбора). Возвращает [] если рендерящихся условий нет —
  * тогда вывод байт-в-байт как раньше. Первое условие на отдельной строке,
  * каждое последующее — с префиксом «И ».
@@ -893,7 +828,11 @@ function buildConditionStrings(
   if (!conditions || conditions.length === 0) return [];
   const conds: string[] = [];
   for (const c of conditions) {
-    if (c.custom) {
+    // Произвольное условие с текстом выражения. Условие-подзапрос (`В (ВЫБРАТЬ …)`)
+    // помечено custom (мышкой не задать, фаза 6.14.4), но БЕЗ expression — оно
+    // рендерится структурным путём ниже (многострочный перенос подзапроса);
+    // заданное пользователем expression имеет приоритет.
+    if (c.custom && ((c.expression ?? '').trim() || !c.subquery)) {
       const expr = (c.expression ?? '').trim();
       // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
       // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.

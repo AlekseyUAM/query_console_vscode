@@ -1927,3 +1927,54 @@ describe('источник-подзапрос (ИЗ (ВЫБРАТЬ …) КАК 
     ).toThrow();
   });
 });
+
+describe('классификация условий ГДЕ: параметр справа = стандартное, иначе «Произвольное» (6.14.4)', () => {
+  const Q = `ВЫБРАТЬ
+\tТ.Ссылка КАК Ссылка
+ИЗ
+\tСправочник.Валюты КАК Т
+ГДЕ
+\tТ.ПометкаУдаления = ЛОЖЬ
+\tИ Т.Код = &Код
+\tИ Т.Код МЕЖДУ &От И &До
+\tИ Т.Код МЕЖДУ "а" И "я"
+\tИ Т.Код В(&Список)
+\tИ Т.Код В ("а", "б")
+\tИ Т.Владелец = &Парам.Поле`;
+
+  it('флаги custom расставлены по правилу мышиного редактора', () => {
+    const m = parseQuery(Q);
+    const flags = (m.conditions ?? []).map(c => c.custom);
+    //            =ЛОЖЬ  =&Код  МЕЖДУ&& МЕЖДУ"" В(&)   В(сп)  =&П.Поле
+    expect(flags).toEqual([true, false, false, true, false, true, false]);
+  });
+
+  it('custom-условие с не-параметром хранит выражение, текст байт-в-байт со стандартным рендером', () => {
+    const m = parseQuery(Q);
+    const custom = (m.conditions ?? []).filter(c => c.custom);
+    expect(custom[0].expression).toBe('Т.ПометкаУдаления = ЛОЖЬ');
+    expect(custom[1].expression).toBe('Т.Код МЕЖДУ "а" И "я"');
+    expect(custom[2].expression).toBe('Т.Код В ("а", "б")');
+    const once = generate(m);
+    expect(generate(parseQuery(once))).toBe(once);
+  });
+
+  it('условие-подзапрос В (ВЫБРАТЬ …) помечено custom, рендер остаётся структурным', () => {
+    const sub = `ВЫБРАТЬ
+\tТ.Ссылка КАК Ссылка
+ИЗ
+\tСправочник.Валюты КАК Т
+ГДЕ
+\tТ.Ссылка В
+\t\t\t(ВЫБРАТЬ
+\t\t\t\tВ.Ссылка
+\t\t\tИЗ
+\t\t\t\tСправочник.Валюты КАК В)`;
+    const m = parseQuery(sub);
+    expect(m.conditions?.[0].custom).toBe(true);
+    expect(m.conditions?.[0].subquery).toBeDefined();
+    expect(m.conditions?.[0].expression).toBeUndefined();
+    const once = generate(m);
+    expect(generate(parseQuery(once))).toBe(once);
+  });
+});

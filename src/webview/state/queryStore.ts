@@ -855,8 +855,11 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     }
 
     case 'SET_CONDITION_EXPRESSION': {
+      // Правка текста выражения делает условие чисто произвольным: разобранный
+      // подзапрос (фаза 6.14.4) сбрасывается, иначе генератор отрисовал бы
+      // устаревшую структуру вместо нового текста.
       const conditions = state.conditions.map((c, i) =>
-        i === action.index ? { ...c, expression: action.expression } : c
+        i === action.index ? { ...c, expression: action.expression, subquery: undefined } : c
       );
       return { ...state, conditions };
     }

@@ -48,6 +48,7 @@ import type {
 } from './queryModel';
 
 import { defaultTableAlias } from './queryModel';
+import { renderOperatorRhs, needsFormatting, isRootNotGroup, normalizeLeafCase } from './exprFormatter';
 import { tokenize } from './sdblLexer';
 import type { Token } from './sdblLexer';
 import { fieldAlias } from './unionModel';
@@ -1341,8 +1342,13 @@ function interpretCondition(
 
 /**
  * Простое условие `<alias>.<path> <op> <param>`: ссылка на поле, оператор сравнения,
- * затем произвольный остаток (параметр). Возвращает undefined, если структура не
- * подходит (тогда сегмент трактуется как произвольное условие).
+ * затем остаток. СТАНДАРТНЫМ (галочка «Произвольное» снята) условие остаётся только
+ * когда справа ПАРАМЕТР — то, что задаётся мышкой в редакторе условия (фаза 6.14.4):
+ * `= &П` · `В(&П)` / `В ИЕРАРХИИ(&П)` · `МЕЖДУ &а И &б` · `ПОДОБНО &Ш`. Литерал,
+ * ЗНАЧЕНИЕ(…), список, поле или подзапрос справа мышкой не задать — условие помечается
+ * custom; его expression строится ТЕМ ЖЕ рендером, что у стандартного пути генератора
+ * (`renderOperatorRhs`), поэтому текст запроса не меняется ни на байт. Возвращает
+ * undefined, если структура не подходит (тогда сегмент — произвольное выражение).
  */
 function trySimpleCondition(
   tokens: Token[],
@@ -1367,7 +1373,8 @@ function trySimpleCondition(
   const lhs = tokens.slice(0, opIdx);
   // Голое поле слева (`Код = &Код` при единственном источнике) → квалифицируем
   // псевдонимом источника, как сделал бы конструктор 1С.
-  const ref = parseFieldRef(lhs, aliasToId)
+  const direct = parseFieldRef(lhs, aliasToId);
+  const ref = direct
     ?? (soleSource
       ? bareLhsRef(lhs, aliasToId, soleSource)
       : undefined);
@@ -1378,18 +1385,78 @@ function trySimpleCondition(
   /* v8 ignore next -- недостижимо: opIdx<tokens.length-1 (см. выше) ⇒ срез непуст */
   if (paramTokens.length === 0) return undefined;
   const param = sliceSource(source, paramTokens);
+  const base = { tableId: ref.tableId, path: ref.path, operator: op, param };
 
   // Правый операнд `В` — подзапрос `(ВЫБРАТЬ …)`: ровно одна сбалансированная
   // внешняя пара скобок, начинающаяся с ВЫБРАТЬ, без хвостовых токенов. Разбираем
   // внутренний запрос в модель — генератор разнесёт его по строкам, как конструктор.
+  // Мышкой подзапрос не задать ⇒ custom (галочка «Произвольное»); expression НЕ
+  // задаём — рендер остаётся структурным (многострочный перенос подзапроса).
   if (op === 'В') {
     const sub = trySubqueryParam(paramTokens, source);
     if (sub) {
-      return { custom: false, tableId: ref.tableId, path: ref.path, operator: op, param, subquery: sub };
+      return { custom: true, ...base, subquery: sub };
     }
   }
 
-  return { custom: false, tableId: ref.tableId, path: ref.path, operator: op, param };
+  if (isParamRhs(op, paramTokens)) {
+    return { custom: false, ...base };
+  }
+
+  // Не-параметр справа → «Произвольное». Псевдоним LHS: объявленный (lhs[0] при
+  // прямом совпадении; псевдоним единственного источника при голом поле) — тот же,
+  // что отдал бы `aliases.get(tableId)` в генераторе.
+  const lhsAlias = direct ? lhs[0].text : soleSource!.alias;
+  const expr = `${lhsAlias}.${ref.path} ${renderOperatorRhs(op, normalizeLeafCase(param))}`;
+  // Консервативный гейт: выражение, заводящее форматер (ВЫБОР/ИЛИ/НЕ-группа),
+  // отрисовалось бы иначе, чем стандартный путь — такие оставляем стандартными,
+  // чтобы текст гарантированно не изменился (только галочка UI, текст важнее).
+  if (needsFormatting(expr) || isRootNotGroup(expr)) {
+    return { custom: false, ...base };
+  }
+  return { custom: true, ...base, expression: expr };
+}
+
+/**
+ * Правый операнд — параметр(ы), т.е. условие можно задать мышкой (фаза 6.14.4):
+ * точечная цепочка от параметра (`&П`, `&П.Поле`), для `В` — также один параметр в
+ * скобках (`(&П)`) и форма `ИЕРАРХИИ (&П)`, для `МЕЖДУ` — `&а И &б`.
+ */
+function isParamRhs(op: string, paramTokens: Token[]): boolean {
+  if (op === 'МЕЖДУ') {
+    const iIdx = paramTokens.findIndex(
+      t => (t.type === 'ident' || t.type === 'keyword') && t.text.toUpperCase() === 'И'
+    );
+    if (iIdx <= 0) return false;
+    return isParamChain(paramTokens.slice(0, iIdx)) && isParamChain(paramTokens.slice(iIdx + 1));
+  }
+  let toks = paramTokens;
+  if (op === 'В') {
+    const head = toks[0];
+    if (head && (head.type === 'ident' || head.type === 'keyword') && head.text.toUpperCase() === 'ИЕРАРХИИ') {
+      toks = toks.slice(1);
+    }
+    const first = toks[0];
+    const last = toks[toks.length - 1];
+    if (first && first.type === 'punct' && first.value === '(') {
+      if (!(last && last.type === 'punct' && last.value === ')')) return false;
+      toks = toks.slice(1, -1);
+    }
+  }
+  return isParamChain(toks);
+}
+
+/** Точечная цепочка от параметра: `&П`, `&П.Поле`, `&П.А.Б`. */
+function isParamChain(toks: Token[]): boolean {
+  if (toks.length === 0 || toks[0].type !== 'param') return false;
+  for (let k = 1; k < toks.length; k++) {
+    if (k % 2 === 1) {
+      if (!(toks[k].type === 'punct' && toks[k].value === '.')) return false;
+    } else if (toks[k].type !== 'ident' && toks[k].type !== 'keyword') {
+      return false;
+    }
+  }
+  return toks.length % 2 === 1;
 }
 
 /** Токен логического отрицания `НЕ` (лексер выдаёт его как ident, не keyword). */

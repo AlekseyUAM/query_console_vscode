@@ -118,6 +118,17 @@ export function ConditionsTab(props: Props): React.ReactElement {
     return table ? `${defaultTableAlias(table)}.${c.path}` : (c.path ?? '');
   }
 
+  /**
+   * Текст произвольного условия для отображения и конструктора выражения.
+   * Условие-подзапрос (custom без expression, фаза 6.14.4) показываем из
+   * структурных полей: `<поле> <оп> <подзапрос-как-текст>`.
+   */
+  function customText(c: Condition): string {
+    if (c.expression) return c.expression;
+    if (c.path) return `${labelFor(c)} ${c.operator ?? '='} ${c.param ?? ''}`.trim();
+    return '';
+  }
+
   return (
     <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
       {/* Левый список: Поля */}
@@ -209,15 +220,15 @@ export function ConditionsTab(props: Props): React.ReactElement {
                   <span
                     style={{
                       flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      color: c.expression ? 'inherit' : 'var(--vscode-descriptionForeground, #888)',
+                      color: customText(c) ? 'inherit' : 'var(--vscode-descriptionForeground, #888)',
                     }}
                   >
-                    {c.expression || 'Произвольное условие…'}
+                    {customText(c) || 'Произвольное условие…'}
                   </span>
                   <button
                     style={ICON_BTN}
                     title="Открыть конструктор выражения"
-                    onClick={() => onOpenExpressionBuilder(i, c.expression ?? '')}
+                    onClick={() => onOpenExpressionBuilder(i, customText(c))}
                   >
                     …
                   </button>
