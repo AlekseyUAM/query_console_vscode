@@ -1207,52 +1207,87 @@ function parseHaving(cur: Cursor, aliasToId: Map<string, string>): Condition[] {
 }
 
 /**
- * Разбивает поток токенов условий на сегменты по `И` верхнего уровня (вне скобок),
- * до конца секции ГДЕ (СГРУППИРОВАТЬ / eof / соединение не встречается здесь, т.к.
- * ГДЕ идёт после ИЗ). Каждый сегмент — массив токенов одного условия.
+ * Разбивает поток токенов условий на сегменты-условия списка ГДЕ/ИМЕЮЩИЕ (фаза 6.14).
+ * Конструктор 1С моделирует секцию как СПИСОК условий, соединённых `И`:
+ *   - голое верхнеуровневое `ИЛИ` (вне скобок) объединяет ВСЮ секцию в одно условие
+ *     (`И` связывает сильнее `ИЛИ`, поэтому `a ИЛИ b И c` — одно ИЛИ-выражение);
+ *   - иначе поток бьётся по верхнеуровневым `И`, и каждая скобочная группа БЕЗ
+ *     внутреннего верхнеуровневого `ИЛИ` сплющивается в список рекурсивно
+ *     (скобки сохраняются только у блока, содержащего `ИЛИ`).
  */
 function splitConditionSegments(cur: Cursor, stop: Set<string>): Token[][] {
-  const segments: Token[][] = [];
-  let current: Token[] = [];
+  const tokens = collectConditionTokens(cur, stop);
+  return segmentConditionTokens(tokens);
+}
+
+/**
+ * Собирает все токены секции условий до стоп-слова верхнего уровня (вне скобок и
+ * вне `ВЫБОР … КОНЕЦ`) или конца текста. Разделители `И` остаются в потоке —
+ * сегментация выполняется отдельно (`segmentConditionTokens`).
+ */
+function collectConditionTokens(cur: Cursor, stop: Set<string>): Token[] {
+  const tokens: Token[] = [];
   let depth = 0;
-  // Глубина ВЫБОР … КОНЕЦ: верхнеуровневый `И` внутри значения ТОГДА/ИНАЧЕ
-  // оператора ВЫБОР не является разделителем условий ГДЕ/ИМЕЮЩИЕ (всё выражение
-  // ВЫБОР — одно условие). Без этого `ТОГДА a И b` разрывал бы оператор ВЫБОР.
+  // Глубина ВЫБОР … КОНЕЦ: стоп-слово внутри значения ТОГДА/ИНАЧЕ оператора ВЫБОР
+  // не завершает секцию (всё выражение ВЫБОР — часть условия).
   let caseDepth = 0;
-  // Сколько `И` из конструкции `МЕЖДУ a И b` ожидаем «съесть» на верхнем уровне:
-  // такой `И` принадлежит диапазону МЕЖДУ, а не является разделителем условий.
-  let betweenPending = 0;
   const isIdentWord = (t: Token, w: string): boolean =>
     (t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === w;
-  const flush = (): void => {
-    if (current.length > 0) segments.push(current);
-    current = [];
-  };
   for (;;) {
     const t = cur.peek();
     if (t.type === 'eof') break;
-    if (depth === 0 && caseDepth === 0) {
-      if (t.type === 'keyword' && stop.has(t.value)) break;
-      if (t.type === 'keyword' && t.value === 'И') {
-        if (betweenPending > 0) {
-          // `И` из диапазона `МЕЖДУ a И b` — часть текущего условия, не разделитель.
-          betweenPending--;
-        } else {
-          cur.next();
-          flush();
-          continue;
-        }
-      }
-      if (isIdentWord(t, 'МЕЖДУ')) betweenPending++;
-    }
+    if (depth === 0 && caseDepth === 0 && t.type === 'keyword' && stop.has(t.value)) break;
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
     else if (isIdentWord(t, 'ВЫБОР')) caseDepth++;
     else if (isIdentWord(t, 'КОНЕЦ') && caseDepth > 0) caseDepth--;
-    current.push(cur.next());
+    tokens.push(cur.next());
   }
-  flush();
-  return segments;
+  return tokens;
+}
+
+/** Есть ли в потоке верхнеуровневое `ИЛИ` (вне скобок и вне `ВЫБОР … КОНЕЦ`). */
+function hasTopLevelOr(tokens: Token[]): boolean {
+  let depth = 0;
+  let caseDepth = 0;
+  const isIdentWord = (t: Token, w: string): boolean =>
+    (t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === w;
+  for (const t of tokens) {
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    else if (isIdentWord(t, 'ВЫБОР')) caseDepth++;
+    else if (isIdentWord(t, 'КОНЕЦ') && caseDepth > 0) caseDepth--;
+    else if (depth === 0 && caseDepth === 0 && isIdentWord(t, 'ИЛИ')) return true;
+  }
+  return false;
+}
+
+/**
+ * Сегментация потока токенов условий по правилам конструктора (фаза 6.14, MCP):
+ *   1. голое верхнеуровневое `ИЛИ` → весь поток ОДНО условие (произвольный блок,
+ *      генератор обернёт его в скобки);
+ *   2. иначе деление по верхнеуровневым `И` (`splitJoinConjuncts`: учёт скобок,
+ *      `ВЫБОР … КОНЕЦ`, `МЕЖДУ a И b`);
+ *   3. сегмент — сбалансированная скобочная группа БЕЗ внутреннего верхнеуровневого
+ *      `ИЛИ` → скобки снимаются, содержимое сегментируется рекурсивно (И-сплющивание;
+ *      работает и для одиночного условия в скобках: `(a = &П)` → `a = &П`).
+ * Группа С внутренним `ИЛИ` сохраняется целиком (скобки — признак ИЛИ-блока).
+ * НЕ-блок (`НЕ (…)`) не начинается со скобки и потому не сплющивается.
+ */
+function segmentConditionTokens(tokens: Token[]): Token[][] {
+  if (hasTopLevelOr(tokens)) return tokens.length > 0 ? [tokens] : [];
+  const out: Token[][] = [];
+  for (const seg of splitJoinConjuncts(tokens)) {
+    if (hasBalancedOuterParens(seg)) {
+      const inner = seg.slice(1, -1);
+      if (inner.length > 0 && !hasTopLevelOr(inner)) {
+        out.push(...segmentConditionTokens(inner));
+        continue;
+      }
+    }
+    out.push(seg);
+  }
+  return out;
 }
 
 /** Интерпретирует один сегмент условия: простое или произвольное. */
@@ -1292,6 +1327,12 @@ function interpretCondition(
     tokens[2].type === 'punct' && tokens[2].value === ')'
   ) {
     return { custom: true, expression: tokens[1].text };
+  }
+  // Объединённый ИЛИ-блок (фаза 6.14): сегмент с верхнеуровневым `ИЛИ` — всегда
+  // произвольное условие целиком. Без этой проверки trySimpleCondition «съедал» бы
+  // хвост `… ИЛИ …` в param простого условия (`a = ЛОЖЬ ИЛИ &П` → param `ЛОЖЬ ИЛИ &П`).
+  if (hasTopLevelOr(tokens)) {
+    return { custom: true, expression: sliceSource(source, tokens) };
   }
   const simple = trySimpleCondition(tokens, source, aliasToId, soleSource);
   if (simple) return simple;
