@@ -733,6 +733,20 @@ STANDARD iff конъюнкт `ПО` — сравнение `<КореньЦеп
 
 - Спек: [`specs/2026-06-12-phase6.14-where-condition-list-design.md`](superpowers/specs/2026-06-12-phase6.14-where-condition-list-design.md)
 
+#### 🔄 6.15. Разбор и снижение остатка mismatch (202)
+
+Все 202 отказа приёмки — mismatch (parse-exception 0). Классификация по первому диффу
+(`tmp/mismatch-classes.json`): misc 78, indent-only 30, alias-prefix-lost 23, v-paren 21,
+po-extra-parens 16, missing-semicolon 14, po-missing-parens 5, paren-only 4,
+alias-prefix-diff 3, estnull-truncated 3, nested-fields 3, trailing-comma 1, v-ierarhii 1.
+
+Цель: исправить локально исправимые категории (правила подтверждаются живым MCP
+`validate_query`, фикстуры `test/fixtures/oracle/0106+`), метаданные-зависимые
+(развёртка `ВЫБРАТЬ *`, `.()` табличных частей) — задокументировать как остаток.
+
+- Спек: [`specs/2026-06-12-phase6.15-mismatch-remainder-design.md`](superpowers/specs/2026-06-12-phase6.15-mismatch-remainder-design.md)
+- План: [`plans/2026-06-12-phase6.15-mismatch-remainder.md`](superpowers/plans/2026-06-12-phase6.15-mismatch-remainder.md)
+
 ## Ключевые архитектурные решения
 
 - **Отдельное расширение, свой парсер метаданных** — независимость от
