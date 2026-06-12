@@ -2391,7 +2391,7 @@ function rewriteMemberAliases(model: QueryModel, columnAliases: string[]): void 
 
 /**
  * Разделитель пакета запросов 1С (инверсия `generateBatch` с допусками по
- * исходному тексту, фаза 6.15.1): строка из одного `;`, затем ЛЮБОЕ число пустых
+ * исходному тексту, фаза 6.15.2): строка из одного `;`, затем ЛЮБОЕ число пустых
  * строк, затем НЕОБЯЗАТЕЛЬНАЯ строка-комментарий из слэшей (4+) с пустыми
  * строками после неё. Канонический вид (`\n;\n\n` + 80 слэшей + `\n`) — частный
  * случай; в реальных исходниках встречаются `;\n////…` без пустой строки,
@@ -2401,6 +2401,68 @@ function rewriteMemberAliases(model: QueryModel, columnAliases: string[]): void 
  */
 const BATCH_SEPARATOR_RE =
   /\n[ \t]*;[ \t]*(?:\/{4,}[ \t]*)?\n(?:[ \t]*\n)*(?:\/{4,}[ \t]*(?:\n(?:[ \t]*\n)*|$))?/gu;
+
+/**
+ * Диапазоны строковых литералов `"…"` в сыром тексте: `[начало, конец)` с учётом
+ * экранирования `""`. Комментарии `//…` пропускаются, чтобы кавычка в комментарии
+ * не «открывала» строку. Нужны `parseBatch`: деление на разделителе выполняется
+ * ДО токенизации, а строковый литерал 1С может содержать переводы строк — строка
+ * из `;` ВНУТРИ литерала не является разделителем пакета.
+ */
+function stringLiteralRanges(text: string): Array<readonly [number, number]> {
+  const ranges: Array<readonly [number, number]> = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      const start = i;
+      i += 1;
+      while (i < text.length) {
+        if (text[i] === '"') {
+          if (text[i + 1] === '"') {
+            i += 2; // экранированная кавычка "" — строка продолжается
+            continue;
+          }
+          i += 1; // закрывающая кавычка
+          break;
+        }
+        i += 1;
+      }
+      ranges.push([start, i]);
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return ranges;
+}
+
+/**
+ * Деление сырого текста пакета по `BATCH_SEPARATOR_RE` с пропуском совпадений,
+ * попадающих внутрь строкового литерала (`"абв\n;\nгде"` — НЕ разделитель).
+ */
+function splitBatchText(text: string): string[] {
+  const ranges = stringLiteralRanges(text);
+  const insideString = (pos: number): boolean => ranges.some(([s, e]) => pos >= s && pos < e);
+  const chunks: string[] = [];
+  let last = 0;
+  BATCH_SEPARATOR_RE.lastIndex = 0;
+  for (let m = BATCH_SEPARATOR_RE.exec(text); m !== null; m = BATCH_SEPARATOR_RE.exec(text)) {
+    if (insideString(m.index)) {
+      // Ложный кандидат внутри литерала: продолжаем поиск со следующего символа
+      // (совпадение могло перекрыть настоящий разделитель сразу после литерала).
+      BATCH_SEPARATOR_RE.lastIndex = m.index + 1;
+      continue;
+    }
+    chunks.push(text.slice(last, m.index));
+    last = m.index + m[0].length;
+  }
+  chunks.push(text.slice(last));
+  return chunks;
+}
 
 /**
  * Разбор пакета запросов в `BatchDocument`. Лексер поглощает строку из 80 `/` как
@@ -2418,7 +2480,7 @@ export function parseBatch(text: string): BatchDocument {
   // Пустые фрагменты после деления (хвостовой разделитель `;\n////…` без
   // следующего запроса) конструктор отбрасывает — канон заканчивается последним
   // запросом без хвостового разделителя.
-  const chunks = normalized.split(BATCH_SEPARATOR_RE).filter((c) => c.trim() !== '');
+  const chunks = splitBatchText(normalized).filter((c) => c.trim() !== '');
   const members = chunks.map(parseDocument);
   return { members };
 }

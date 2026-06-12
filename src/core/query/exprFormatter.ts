@@ -210,11 +210,18 @@ export function flattenMultilineLeaf(raw: string): string {
 /**
  * Стоп-слова сплющивания листа: подзапрос (ВЫБРАТЬ), ВЫБОР, секции запроса,
  * которые парсер мог затянуть в хвост листа, и `{` построителя.
+ *
+ * Стоп-слово как СЕГМЕНТ ПУТИ (`Док.Итоги`, `ВТ.Поместить`) сплющивание НЕ
+ * блокирует: после точки это имя поля, а не секция запроса (подтверждено
+ * MCP-пробой: `ЕСТЬNULL(ВТВалюты.Итоги,\n "")` конструктор печатает одной
+ * строкой). Исключение — зарезервированные ВЫБРАТЬ/ВЫБОР: они блокируют
+ * безусловно (именем поля быть не могут).
  */
 const FLATTEN_STOP_WORDS = new Set([
   'ВЫБРАТЬ', 'ВЫБОР', 'УПОРЯДОЧИТЬ', 'СГРУППИРОВАТЬ', 'ИТОГИ', 'ОБЪЕДИНИТЬ',
   'ИНДЕКСИРОВАТЬ', 'ИМЕЮЩИЕ', 'ПОМЕСТИТЬ',
 ]);
+const FLATTEN_STOP_RESERVED = new Set(['ВЫБРАТЬ', 'ВЫБОР']);
 function leafFlattenBlocked(raw: string): boolean {
   let toks: Token[];
   try {
@@ -222,11 +229,17 @@ function leafFlattenBlocked(raw: string): boolean {
   } catch {
     return true;
   }
-  return toks.some(
-    (t) =>
-      (t.type === 'punct' && (t.value === '{' || t.value === '}')) ||
-      ((t.type === 'keyword' || t.type === 'ident') && FLATTEN_STOP_WORDS.has(t.value.toUpperCase()))
-  );
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k];
+    if (t.type === 'punct' && (t.value === '{' || t.value === '}')) return true;
+    if ((t.type === 'keyword' || t.type === 'ident') && FLATTEN_STOP_WORDS.has(t.value.toUpperCase())) {
+      if (FLATTEN_STOP_RESERVED.has(t.value.toUpperCase())) return true;
+      const prev = toks[k - 1];
+      const isPathSegment = prev !== undefined && prev.type === 'punct' && prev.value === '.';
+      if (!isPathSegment) return true;
+    }
+  }
+  return false;
 }
 
 /**
