@@ -77,6 +77,14 @@ class Cursor {
     return this.tokens[Math.min(j, this.tokens.length - 1)];
   }
 
+  /**
+   * Все токены среза (включая уже поглощённые). Используется для построения
+   * карты «поле → таблица-владелец» по квалифицированным вхождениям (фаза 6.15.4).
+   */
+  get allTokens(): readonly Token[] {
+    return this.tokens;
+  }
+
   next(): Token {
     const t = this.tokens[this.idx];
     if (this.idx < this.tokens.length - 1) this.idx++;
@@ -178,8 +186,18 @@ export function parseQuery(text: string): QueryModel {
  * отдельный помощник, чтобы `parseDocument` мог разбирать срезы токенов участников
  * без повторной токенизации (см. 6.2.D). Курсор должен стоять в начале блока
  * запроса; разбор останавливается на eof среза.
+ *
+ * `inheritedSectionCtx` — контекст резолвинга секций УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКС
+ * ПЕРВОГО участника объединения: конструктор 1С резолвит голые имена этих секций
+ * по колонкам и источникам участника 0 (MCP, фаза 6.15.4), хотя текстуально
+ * секции стоят после ПОСЛЕДНЕГО участника. `ctxOut.ctx` — собственный контекст
+ * разобранного участника (для передачи последующим участникам объединения).
  */
-function parseSingleQuery(cur: Cursor): QueryModel {
+function parseSingleQuery(
+  cur: Cursor,
+  inheritedSectionCtx?: SectionResolveContext,
+  ctxOut?: { ctx?: SectionResolveContext }
+): QueryModel {
   // УНИЧТОЖИТЬ <name> — самостоятельный запрос (без ВЫБРАТЬ).
   if (cur.isKeyword('УНИЧТОЖИТЬ')) {
     cur.next();
@@ -221,10 +239,16 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   const joins = from.joins;
 
   // Карта псевдоним → tableId (по правилам resolveAliases, но псевдонимы уже
-  // явно прочитаны из `КАК` каждой таблицы).
+  // явно прочитаны из `КАК` каждой таблицы). Идентификаторы 1С регистронезависимы,
+  // поэтому ключи хранятся в ВЕРХНЕМ регистре (фаза 6.15.4: `Таб` ↔ `ТАБ`);
+  // объявленное написание для рендера хранит aliasSpelling.
   const aliasToId = new Map<string, string>();
+  const aliasSpelling = new Map<string, string>();
   for (const t of tables) {
-    if (t.alias) aliasToId.set(t.alias, t.id);
+    if (t.alias) {
+      aliasToId.set(t.alias.toUpperCase(), t.id);
+      aliasSpelling.set(t.alias.toUpperCase(), t.alias);
+    }
   }
 
   // Интерпретация элементов выборки: обычные поля, табличные части и хвостовые
@@ -235,6 +259,30 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   const trailingFields: SelectedField[] = [];
   // Единственный источник → можно квалифицировать голые поля без метаинформации.
   const soleSource = soleSourceOf(tables, joins);
+  // Резолвер владельца голого поля (фаза 6.15.4, MCP): при единственном источнике —
+  // он; при нескольких — таблица, у которой это поле встречается в запросе
+  // квалифицированным (`<псевдоним>.<поле>`) РОВНО у одного псевдонима. Конструктор
+  // 1С резолвит по схеме метаданных (недоступна здесь); эвристика по вхождениям
+  // совпадает с эталоном на всём корпусе.
+  const fieldOwners = buildFieldOwnerScan(cur.allTokens, aliasToId);
+  const resolveOwner = (head: string): string | undefined => {
+    if (soleSource) return soleSource.id;
+    const owners = fieldOwners.get(head.toUpperCase());
+    if (owners && owners.size === 1) return owners.values().next().value;
+    return undefined;
+  };
+  // Явные псевдонимы выборки из ВВОДА (`… КАК <имя>`): голое имя в секциях
+  // УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКСИРОВАТЬ, совпадающее с таким псевдонимом, конструктор
+  // оставляет голым; не совпадающее — квалифицирует таблицей (MCP, фаза 6.15.4).
+  // Автопсевдонимы (КАК добавлен конструктором) НЕ защищают от квалификации.
+  const explicitAliases = new Set<string>();
+  for (const item of items) {
+    if (item.kind === 'field' && item.field.alias !== undefined) {
+      explicitAliases.add(item.field.alias.toUpperCase());
+    } else if (item.kind === 'tabSection' && item.ts.alias) {
+      explicitAliases.add(item.ts.alias.toUpperCase());
+    }
+  }
   let sawTabSection = false;
   for (const item of items) {
     if (item.kind === 'tabSection') {
@@ -244,9 +292,9 @@ function parseSingleQuery(cur: Cursor): QueryModel {
     }
     if (sawTabSection) {
       // Поле после табличной части → trailingFields (порядок генератора).
-      interpretField(item.field, aliasToId, trailingFields, aggregates, soleSource);
+      interpretField(item.field, aliasToId, trailingFields, aggregates, resolveOwner);
     } else {
-      interpretField(item.field, aliasToId, fields, aggregates, soleSource);
+      interpretField(item.field, aliasToId, fields, aggregates, resolveOwner);
     }
   }
 
@@ -258,7 +306,7 @@ function parseSingleQuery(cur: Cursor): QueryModel {
   //   → УПОРЯДОЧИТЬ ПО → ИТОГИ → ИНДЕКСИРОВАТЬ ПО → ДЛЯ ИЗМЕНЕНИЯ.
   let conditions: Condition[] | undefined;
   if (cur.isKeyword('ГДЕ')) {
-    conditions = parseWhere(cur, aliasToId, soleSource);
+    conditions = parseWhere(cur, aliasToId, soleSource, aliasSpelling);
   }
 
   if (cur.isBuilderBlock('ГДЕ')) {
@@ -267,7 +315,7 @@ function parseSingleQuery(cur: Cursor): QueryModel {
 
   let groupingFromClause: { multiple: boolean; groupFields: FieldRef[]; groupSets: FieldRef[][] } | undefined;
   if (cur.isKeyword('СГРУППИРОВАТЬ')) {
-    groupingFromClause = parseGroupBy(cur, aliasToId);
+    groupingFromClause = parseGroupBy(cur, aliasToId, resolveOwner);
   }
 
   // ИМЕЮЩИЕ — фильтр по агрегатам, сразу за СГРУППИРОВАТЬ ПО.
@@ -316,15 +364,25 @@ function parseSingleQuery(cur: Cursor): QueryModel {
 
   // Карта псевдоним выборки → (tableId, path) для секций УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКС.
   const selectAliasMap = buildSelectAliasMap(model);
+  const ownSectionCtx: SectionResolveContext = {
+    aliasMap: selectAliasMap,
+    aliasToId,
+    explicitAliases,
+    fields: model.fields,
+    resolveOwner,
+  };
+  if (ctxOut) ctxOut.ctx = ownSectionCtx;
+  // Секции объединённого запроса резолвятся по контексту ПЕРВОГО участника.
+  const sectionCtx = inheritedSectionCtx ?? ownSectionCtx;
 
   if (cur.isKeyword('УПОРЯДОЧИТЬ') || cur.isKeyword('АВТОУПОРЯДОЧИВАНИЕ')) {
-    model.order = parseOrder(cur, selectAliasMap, aliasToId);
+    model.order = parseOrder(cur, sectionCtx);
   }
   if (cur.isKeyword('ИТОГИ')) {
-    model.totals = parseTotals(cur, selectAliasMap, aliasToId);
+    model.totals = parseTotals(cur, sectionCtx);
   }
   if (cur.isKeyword('ИНДЕКСИРОВАТЬ')) {
-    model.indexing = parseIndex(cur, selectAliasMap, aliasToId);
+    model.indexing = parseIndex(cur, sectionCtx);
   }
 
   if (builder.fields.length || builder.conditions.length || builder.order.length || builder.totals.length) {
@@ -524,7 +582,7 @@ function resolveTabSection(
   aliasToId: Map<string, string>,
   tables: SelectedTable[]
 ): SelectedTabSectionField {
-  const tableId = aliasToId.get(ts.tableAlias) ?? '';
+  const tableId = aliasToId.get(ts.tableAlias.toUpperCase()) ?? '';
   const table = tables.find(t => t.id === tableId);
   // tsFullName косметический (генератор использует только tsName и fields).
   const tsFullName = table ? `${table.fullName}.${ts.tsName}` : ts.tsName;
@@ -935,20 +993,22 @@ function interpretField(
   aliasToId: Map<string, string>,
   fields: SelectedField[],
   aggregates: SummableField[],
-  soleSource?: SoleSource
+  resolveOwner: OwnerResolver
 ): void {
-  // Голое поле при единственном источнике (фаза 6.12): разработчик не
-  // квалифицировал поле псевдонимом таблицы (`ВЫБРАТЬ Ссылка ИЗ … КАК Т`).
-  // Конструктор 1С квалифицирует его псевдонимом единственного источника и
+  // Голое поле (фаза 6.12, расширено 6.15.4): разработчик не квалифицировал поле
+  // псевдонимом таблицы (`ВЫБРАТЬ Ссылка ИЗ … КАК Т`, `ВЫБРАТЬ Валюта.Код` при
+  // голове-НЕпсевдониме). Конструктор 1С квалифицирует его таблицей-владельцем
+  // (единственный источник либо таблица с квалифицированным вхождением поля) и
   // автоалиасит последним сегментом пути (`Т.Ссылка КАК Ссылка`). Делаем это
   // ДО короткого замыкания на `Поле{n}`, т.к. конструктор переалиасит даже
   // явно написанный разработчиком `КАК Поле1` (`Код КАК Поле1` → `Т.Код КАК Код`).
   // Безопасно: bare-проверка требует чистый точечный путь без скобок, поэтому
   // агрегато-образные выражения `СУММА(Алиас.Поле) КАК Поле1` сюда не попадают.
-  if (soleSource) {
-    const bare = tryBareField(rf.bodyTokens, aliasToId, soleSource.alias);
-    if (bare) {
-      const field: SelectedField = { tableId: soleSource.id, path: bare.path };
+  {
+    const bare = tryBareField(rf.bodyTokens, aliasToId);
+    const owner = bare ? resolveOwner(bare.head) : undefined;
+    if (bare && owner !== undefined) {
+      const field: SelectedField = { tableId: owner, path: bare.path };
       if (rf.alias !== undefined && !AUTO_ALIAS.test(rf.alias)) field.alias = rf.alias;
       fields.push(field);
       return;
@@ -970,7 +1030,7 @@ function interpretField(
   }
 
   // 1) Попытка агрегата.
-  const agg = tryAggregate(rf.bodyTokens, aliasToId, soleSource);
+  const agg = tryAggregate(rf.bodyTokens, aliasToId, resolveOwner);
   if (agg) {
     const field: SelectedField = { tableId: agg.tableId, path: agg.path };
     if (rf.alias !== undefined) field.alias = rf.alias;
@@ -1006,7 +1066,7 @@ interface AggHit {
 function tryAggregate(
   body: Token[],
   aliasToId: Map<string, string>,
-  soleSource?: SoleSource
+  resolveOwner: OwnerResolver
 ): AggHit | undefined {
   if (body.length < 4) return undefined;
   const head = body[0];
@@ -1031,12 +1091,14 @@ function tryAggregate(
 
   const ref = parseFieldRef(inner, aliasToId);
   if (ref) return { tableId: ref.tableId, path: ref.path, func };
-  // Голое поле внутри агрегата при единственном источнике (`МИНИМУМ(ДатаЗаписи)` →
-  // `МИНИМУМ(Т.ДатаЗаписи)`): аргумент — чистый точечный путь без квалификации.
-  // Конструктор 1С квалифицирует его псевдонимом единственного источника.
-  if (soleSource) {
-    const bare = tryBareField(inner, aliasToId, soleSource.alias);
-    if (bare) return { tableId: soleSource.id, path: bare.path, func };
+  // Голое поле внутри агрегата (`МИНИМУМ(ДатаЗаписи)` → `МИНИМУМ(Т.ДатаЗаписи)`,
+  // `МАКСИМУМ(Валюта.Наименование)` при голове-НЕпсевдониме): аргумент — чистый
+  // точечный путь без квалификации. Конструктор 1С квалифицирует его таблицей-
+  // владельцем (фаза 6.15.4).
+  const bare = tryBareField(inner, aliasToId);
+  if (bare) {
+    const owner = resolveOwner(bare.head);
+    if (owner !== undefined) return { tableId: owner, path: bare.path, func };
   }
   return undefined;
 }
@@ -1073,7 +1135,7 @@ function parseFieldRef(
   }
   if (tokens.length % 2 === 0) return undefined; // должно быть нечётное число токенов
   const aliasName = segs[0];
-  const tableId = aliasToId.get(aliasName);
+  const tableId = aliasToId.get(aliasName.toUpperCase());
   if (tableId === undefined) return undefined;
   const path = segs.slice(1).join('.');
   /* v8 ignore next -- недостижимо: tokens.length>=3 и нечётно ⇒ segs>=2 ⇒ path непуст */
@@ -1085,6 +1147,45 @@ function parseFieldRef(
 interface SoleSource {
   id: string;
   alias: string;
+}
+
+/**
+ * Резолвер владельца голого поля по его голове (первому сегменту пути):
+ * tableId таблицы-владельца либо undefined (квалифицировать нельзя).
+ */
+type OwnerResolver = (head: string) => string | undefined;
+
+/**
+ * Карта «поле (ВЕРХНИЙ регистр) → таблицы, у которых оно встречается в тексте
+ * запроса квалифицированным» (`<псевдоним>.<поле>`). Голова цепочки — токен-имя,
+ * НЕ являющийся продолжением пути (перед ним нет `.`); учитываются только
+ * объявленные псевдонимы текущего запроса (вложенные подзапросы со своими
+ * псевдонимами не попадают). Фаза 6.15.4 (MCP): по этой карте резолвится
+ * таблица-владелец голого поля в многоисточниковом запросе.
+ */
+function buildFieldOwnerScan(
+  tokens: readonly Token[],
+  aliasToId: Map<string, string>
+): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  const isName = (t: Token | undefined): boolean =>
+    t !== undefined && (t.type === 'ident' || t.type === 'keyword');
+  for (let i = 0; i + 2 < tokens.length; i++) {
+    const head = tokens[i];
+    if (!isName(head)) continue;
+    const prev = tokens[i - 1];
+    if (prev && prev.type === 'punct' && prev.value === '.') continue; // продолжение пути
+    const dot = tokens[i + 1];
+    const field = tokens[i + 2];
+    if (!(dot.type === 'punct' && dot.value === '.') || !isName(field)) continue;
+    const tableId = aliasToId.get(head.text.toUpperCase());
+    if (tableId === undefined) continue;
+    const key = field.text.toUpperCase();
+    const set = map.get(key) ?? new Set<string>();
+    set.add(tableId);
+    map.set(key, set);
+  }
+  return map;
 }
 
 /**
@@ -1107,16 +1208,15 @@ const LITERAL_VALUES = new Set(['НЕОПРЕДЕЛЕНО', 'ИСТИНА', 'Л�
 
 /**
  * Голое поле = чистый точечный путь идентификаторов (`Ссылка`, `Владелец.Код`),
- * который разработчик НЕ квалифицировал псевдонимом источника. Возвращает path,
- * если тело — такой путь, его голова не совпадает с псевдонимом источника и не
- * является известным псевдонимом таблицы, и это не литерал-значение. Иначе
+ * который разработчик НЕ квалифицировал псевдонимом источника. Возвращает path и
+ * голову (первый сегмент), если тело — такой путь, его голова не является известным
+ * псевдонимом таблицы (регистронезависимо) и это не литерал-значение. Иначе
  * undefined (тогда поле трактуется как раньше: простое/агрегат/выражение).
  */
 function tryBareField(
   tokens: Token[],
-  aliasToId: Map<string, string>,
-  soleAlias: string
-): { path: string } | undefined {
+  aliasToId: Map<string, string>
+): { path: string; head: string } | undefined {
   if (tokens.length === 0) return undefined;
   const segs: string[] = [];
   for (let k = 0; k < tokens.length; k++) {
@@ -1131,12 +1231,11 @@ function tryBareField(
   }
   if (tokens.length % 2 === 0) return undefined; // путь оканчивается сегментом
   const head = segs[0];
-  // Уже квалифицировано псевдонимом источника или известной таблицей — не голое.
-  if (head === soleAlias) return undefined;
-  if (aliasToId.has(head)) return undefined;
+  // Уже квалифицировано псевдонимом известной таблицы — не голое.
+  if (aliasToId.has(head.toUpperCase())) return undefined;
   // Литерал-значение из одного сегмента (НЕОПРЕДЕЛЕНО/ИСТИНА/ЛОЖЬ/NULL).
   if (segs.length === 1 && LITERAL_VALUES.has(head.toUpperCase())) return undefined;
-  return { path: segs.join('.') };
+  return { path: segs.join('.'), head };
 }
 
 /**
@@ -1149,12 +1248,115 @@ function bareLhsRef(
   aliasToId: Map<string, string>,
   soleSource: SoleSource
 ): { tableId: string; path: string } | undefined {
-  const bare = tryBareField(lhs, aliasToId, soleSource.alias);
+  const bare = tryBareField(lhs, aliasToId);
   if (!bare) return undefined;
   return { tableId: soleSource.id, path: bare.path };
 }
 
 // ───────────────────────────── ГДЕ (WHERE) ─────────────────────────────
+
+/**
+ * Слова, которые в выражении условия НЕ являются головой голого поля:
+ * операторы/структура (И/ИЛИ/НЕ/В/ВЫБОР…), литералы-значения, интервалы дат
+ * (аргументы РАЗНОСТЬДАТ/ДОБАВИТЬКДАТЕ/НАЧАЛОПЕРИОДА), модификаторы.
+ */
+const EXPR_STOP_WORDS = new Set<string>([
+  'И', 'ИЛИ', 'НЕ', 'В', 'МЕЖДУ', 'ПОДОБНО', 'ЕСТЬ', 'СПЕЦСИМВОЛ',
+  'NULL', 'ИСТИНА', 'ЛОЖЬ', 'НЕОПРЕДЕЛЕНО',
+  'ИЕРАРХИИ', 'ИЕРАРХИЯ', 'УБЫВ', 'ВОЗР', 'РАЗЛИЧНЫЕ', 'КАК', 'ССЫЛКА',
+  'ВЫБОР', 'КОГДА', 'ТОГДА', 'ИНАЧЕ', 'КОНЕЦ',
+  'ГОД', 'КВАРТАЛ', 'МЕСЯЦ', 'ДЕКАДА', 'НЕДЕЛЯ', 'ДЕНЬ', 'ЧАС', 'МИНУТА', 'СЕКУНДА',
+]);
+
+/**
+ * Квалификация голых полей внутри произвольного выражения условия при
+ * единственном источнике (фаза 6.15.4, MCP): каждая точечная цепочка имён,
+ * голова которой не псевдоним таблицы, получает префикс `<псевдоним>.`;
+ * написание уже квалифицированных голов нормализуется к объявленному
+ * (`Таб.Ссылка` → `ТАБ.Ссылка`). НЕ трогаются: продолжения путей, вызовы
+ * функций (`ИМЯ(`), типы после `КАК`/`ССЫЛКА` (ВЫРАЗИТЬ/уточнение типа),
+ * аргументы `ЗНАЧЕНИЕ(…)`/`ТИП(…)` (пути метаданных), стоп-слова и литералы.
+ */
+function qualifyBareFieldsInExpression(
+  tokens: Token[],
+  source: string,
+  aliasToId: Map<string, string>,
+  aliasSpelling: Map<string, string>,
+  soleAlias: string
+): string {
+  const isName = (t: Token | undefined): boolean =>
+    t !== undefined && (t.type === 'ident' || t.type === 'keyword');
+  const edits: { pos: number; len: number; text: string }[] = [];
+  let depth = 0;
+  // Глубина, ниже которой заканчивается зона пропуска ЗНАЧЕНИЕ(…)/ТИП(…)/подзапроса.
+  let skipUntilDepth: number | undefined;
+  // Глубина фигурных скобок блоков построителя `{…}` — внутри не квалифицируем.
+  let braceDepth = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && t.value === '{') { braceDepth++; continue; }
+    if (t.type === 'punct' && t.value === '}') { braceDepth--; continue; }
+    if (t.type === 'punct' && t.value === '(') {
+      depth++;
+      // Подзапрос `(ВЫБРАТЬ …)` — свой контекст псевдонимов, не трогаем.
+      if (skipUntilDepth === undefined &&
+          tokens[i + 1]?.type === 'keyword' && tokens[i + 1].value === 'ВЫБРАТЬ') {
+        skipUntilDepth = depth;
+      }
+      continue;
+    }
+    if (t.type === 'punct' && t.value === ')') {
+      depth--;
+      if (skipUntilDepth !== undefined && depth < skipUntilDepth) skipUntilDepth = undefined;
+      continue;
+    }
+    if (skipUntilDepth !== undefined || braceDepth > 0) continue;
+    if (!isName(t)) continue;
+    const up = t.text.toUpperCase();
+    // ЗНАЧЕНИЕ(/ТИП( — внутри пути метаданных, не поля.
+    if ((up === 'ЗНАЧЕНИЕ' || up === 'ТИП') &&
+        tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '(') {
+      skipUntilDepth = depth + 1;
+      continue;
+    }
+    // Кандидат — только ident: ключевые слова (ВЫБРАТЬ/ИЗ/ГДЕ/…) полями не бывают.
+    if (t.type !== 'ident') continue;
+    const prev = tokens[i - 1];
+    if (prev && prev.type === 'punct' && prev.value === '.') continue; // продолжение пути
+    // Тип после КАК (ВЫРАЗИТЬ … КАК Справочник.X) или ССЫЛКА — пропустить цепочку.
+    const prevUp = prev && (prev.type === 'ident' || prev.type === 'keyword')
+      ? prev.text.toUpperCase()
+      : undefined;
+    const skipChain = prevUp === 'КАК' || prevUp === 'ССЫЛКА' || EXPR_STOP_WORDS.has(up);
+    // Конец точечной цепочки от текущего имени.
+    let j = i;
+    while (tokens[j + 1]?.type === 'punct' && tokens[j + 1].value === '.' && isName(tokens[j + 2])) {
+      j += 2;
+    }
+    const next = tokens[j + 1];
+    const isCall = next !== undefined && next.type === 'punct' && next.value === '(';
+    if (!skipChain && !isCall) {
+      const declared = aliasSpelling.get(up);
+      if (declared !== undefined) {
+        // Уже квалифицировано — нормализуем написание псевдонима.
+        if (t.text !== declared) edits.push({ pos: t.pos, len: t.text.length, text: declared });
+      } else {
+        edits.push({ pos: t.pos, len: 0, text: `${soleAlias}.` });
+      }
+    }
+    i = j;
+  }
+  const start = tokens[0].pos;
+  const last = tokens[tokens.length - 1];
+  const end = last.pos + last.value.length;
+  let out = '';
+  let p = start;
+  for (const e of edits) {
+    out += source.slice(p, e.pos) + e.text;
+    p = e.pos + e.len;
+  }
+  return out + source.slice(p, end);
+}
 
 /** Множество токенов-операторов сравнения для условий. */
 const COND_OPERATORS = new Set<string>(['=', '<>', '>', '>=', '<', '<=', 'В', 'МЕЖДУ', 'ПОДОБНО']);
@@ -1164,11 +1366,16 @@ const COND_OPERATORS = new Set<string>(['=', '<>', '>', '>=', '<', '<=', 'В', '
  * последующее после `И` верхнего уровня. Каждый сегмент пытается распознаться как
  * простое условие `<alias>.<path> <op> <param>`; иначе — произвольное (`custom`).
  */
-function parseWhere(cur: Cursor, aliasToId: Map<string, string>, soleSource?: SoleSource): Condition[] {
+function parseWhere(
+  cur: Cursor,
+  aliasToId: Map<string, string>,
+  soleSource?: SoleSource,
+  aliasSpelling?: Map<string, string>
+): Condition[] {
   cur.expectKeyword('ГДЕ');
   const source = cur.source;
   const segments = splitConditionSegments(cur, WHERE_STOP);
-  return segments.map(seg => interpretCondition(seg, source, aliasToId, soleSource));
+  return segments.map(seg => interpretCondition(seg, source, aliasToId, soleSource, aliasSpelling));
 }
 
 /**
@@ -1296,14 +1503,15 @@ function interpretCondition(
   tokens: Token[],
   source: string,
   aliasToId: Map<string, string>,
-  soleSource?: SoleSource
+  soleSource?: SoleSource,
+  aliasSpelling?: Map<string, string>
 ): Condition {
   // Голое поле-условие при единственном источнике (`ГДЕ Предопределенный` →
   // `ГДЕ Т.Предопределенный`): весь сегмент — чистый точечный путь без оператора,
   // голова не псевдоним источника. Квалифицируем как произвольное выражение
   // `<псевдоним>.<path>` (генератор рендерит произвольные условия дословно).
   if (soleSource) {
-    const bare = tryBareField(tokens, aliasToId, soleSource.alias);
+    const bare = tryBareField(tokens, aliasToId);
     if (bare) {
       return { custom: true, expression: `${soleSource.alias}.${bare.path}` };
     }
@@ -1311,12 +1519,20 @@ function interpretCondition(
     // `ГДЕ НЕ Т.ПометкаУдаления`): первый токен — `НЕ`, остаток — чистый точечный
     // путь без квалификации. Конструктор 1С квалифицирует поле под `НЕ`.
     if (tokens.length > 1 && isNotToken(tokens[0])) {
-      const negBare = tryBareField(tokens.slice(1), aliasToId, soleSource.alias);
+      const negBare = tryBareField(tokens.slice(1), aliasToId);
       if (negBare) {
         return { custom: true, expression: `НЕ ${soleSource.alias}.${negBare.path}` };
       }
     }
   }
+  // Произвольный текст условия: при единственном источнике голые поля внутри
+  // выражения квалифицируются его псевдонимом (фаза 6.15.4, MCP: `(Код = &Код
+  // ИЛИ …)` → `(Т.Код = &Код ИЛИ …)`), написание псевдонимов нормализуется
+  // к объявленному. Без единственного источника — дословный срез, как раньше.
+  const customText = (): string =>
+    soleSource && aliasSpelling
+      ? qualifyBareFieldsInExpression(tokens, source, aliasToId, aliasSpelling, soleSource.alias)
+      : sliceSource(source, tokens);
   // Скобки вокруг условия-параметра целиком (`И (&ТекстУсловия)` → `И &ТекстУсловия`):
   // конструктор 1С снимает скобки, когда всё условие ГДЕ — единственный голый
   // параметр в скобках. (В условии соединения `ПО` конструктор, наоборот, скобки
@@ -1333,11 +1549,11 @@ function interpretCondition(
   // произвольное условие целиком. Без этой проверки trySimpleCondition «съедал» бы
   // хвост `… ИЛИ …` в param простого условия (`a = ЛОЖЬ ИЛИ &П` → param `ЛОЖЬ ИЛИ &П`).
   if (hasTopLevelOr(tokens)) {
-    return { custom: true, expression: sliceSource(source, tokens) };
+    return { custom: true, expression: customText() };
   }
   const simple = trySimpleCondition(tokens, source, aliasToId, soleSource);
   if (simple) return simple;
-  return { custom: true, expression: sliceSource(source, tokens) };
+  return { custom: true, expression: customText() };
 }
 
 /**
@@ -1628,8 +1844,8 @@ function classifyJoinConjunct(
 function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: string): Join {
   const { leftAll, rightAll } = joinFlags(raw.kind);
   /* v8 ignore next 2 -- псевдонимы затравки/присоединяемой всегда в aliasToId (правая ветвь ?? недостижима) */
-  const seedId = aliasToId.get(raw.seedAlias) ?? raw.seedAlias;
-  const joinedId = aliasToId.get(raw.joinedAlias) ?? raw.joinedAlias;
+  const seedId = aliasToId.get(raw.seedAlias.toUpperCase()) ?? raw.seedAlias;
+  const joinedId = aliasToId.get(raw.joinedAlias.toUpperCase()) ?? raw.joinedAlias;
 
   // Обернул ли разработчик всё условие в одну сбалансированную внешнюю пару скобок
   // (`ПО (a = b)`). Только это решение конструктор 1С сохраняет; скобки вокруг
@@ -1642,7 +1858,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
   // вокруг ВСЕГО условия (`ПО (a = b)`) при единственном конъюнкте — это пометка
   // «Произвольное» разработчиком: классифицируем такой конъюнкт как произвольный.
   /* v8 ignore next -- chainSeedAlias всегда резолвится (он же источник в aliasToId) */
-  const chainSeedId = aliasToId.get(raw.chainSeedAlias) ?? raw.chainSeedAlias;
+  const chainSeedId = aliasToId.get(raw.chainSeedAlias.toUpperCase()) ?? raw.chainSeedAlias;
   const conjunctTokens = splitJoinConjuncts(raw.condTokens);
   const conditions: JoinCondition[] = conjunctTokens.map(seg =>
     classifyJoinConjunct(seg, source, aliasToId, chainSeedId, joinedId)
@@ -1778,21 +1994,22 @@ function stripOuterParens(text: string): string {
  */
 function parseGroupBy(
   cur: Cursor,
-  aliasToId: Map<string, string>
+  aliasToId: Map<string, string>,
+  resolveOwner: OwnerResolver
 ): { multiple: boolean; groupFields: FieldRef[]; groupSets: FieldRef[][] } {
   cur.expectKeyword('СГРУППИРОВАТЬ');
   cur.expectKeyword('ПО');
 
   if (cur.matchKeyword('ГРУППИРУЮЩИМ')) {
     cur.expectKeyword('НАБОРАМ');
-    const groupSets = parseGroupingSets(cur, aliasToId);
+    const groupSets = parseGroupingSets(cur, aliasToId, resolveOwner);
     return { multiple: true, groupFields: [], groupSets };
   }
 
   // Одна группировка: список ссылок через запятую.
   const groupFields: FieldRef[] = [];
   for (;;) {
-    const ref = parseGroupFieldRef(cur, aliasToId);
+    const ref = parseGroupFieldRef(cur, aliasToId, resolveOwner);
     groupFields.push(ref);
     if (cur.matchPunct(',')) continue;
     break;
@@ -1801,14 +2018,18 @@ function parseGroupBy(
 }
 
 /** Наборы группировки: `( (a, b), (c) )`. */
-function parseGroupingSets(cur: Cursor, aliasToId: Map<string, string>): FieldRef[][] {
+function parseGroupingSets(
+  cur: Cursor,
+  aliasToId: Map<string, string>,
+  resolveOwner: OwnerResolver
+): FieldRef[][] {
   cur.expectPunct('(');
   const sets: FieldRef[][] = [];
   for (;;) {
     cur.expectPunct('(');
     const set: FieldRef[] = [];
     for (;;) {
-      set.push(parseGroupFieldRef(cur, aliasToId));
+      set.push(parseGroupFieldRef(cur, aliasToId, resolveOwner));
       if (cur.matchPunct(',')) continue;
       break;
     }
@@ -1829,7 +2050,11 @@ function parseGroupingSets(cur: Cursor, aliasToId: Map<string, string>): FieldRe
  * Если выражение — чистая точечная ссылка, возвращаем FieldRef; иначе сохраняем
  * сырой срез как `expression` (генератор переотрисует его как поле выборки).
  */
-function parseGroupFieldRef(cur: Cursor, aliasToId: Map<string, string>): FieldRef {
+function parseGroupFieldRef(
+  cur: Cursor,
+  aliasToId: Map<string, string>,
+  resolveOwner: OwnerResolver
+): FieldRef {
   const tokens: Token[] = [];
   let depth = 0;
   for (;;) {
@@ -1854,6 +2079,13 @@ function parseGroupFieldRef(cur: Cursor, aliasToId: Map<string, string>): FieldR
   // Простая точечная ссылка → FieldRef; произвольное выражение → expression.
   const ref = parseFieldRef(tokens, aliasToId);
   if (ref) return { tableId: ref.tableId, path: ref.path };
+  // Голый точечный путь с головой-НЕпсевдонимом (`Пользователь.Ссылка`):
+  // конструктор 1С квалифицирует его таблицей-владельцем (фаза 6.15.4, MCP).
+  const bare = tryBareField(tokens, aliasToId);
+  if (bare) {
+    const owner = resolveOwner(bare.head);
+    if (owner !== undefined) return { tableId: owner, path: bare.path };
+  }
   return { tableId: '', path: '', expression: sliceSource(cur.source, tokens) };
 }
 
@@ -1880,16 +2112,41 @@ function parseOrderModifiers(cur: Cursor): { direction: SortDirection; hierarchy
   return { direction, hierarchy };
 }
 
+/** Контекст резолвинга полей секций УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКСИРОВАТЬ (фаза 6.15.4). */
+interface SectionResolveContext {
+  /** Карта псевдоним выборки → (tableId, path). */
+  aliasMap: Map<string, FieldRef>;
+  /** Псевдоним таблицы (ВЕРХНИЙ регистр) → tableId. */
+  aliasToId: Map<string, string>;
+  /** Явные псевдонимы выборки из ввода (ВЕРХНИЙ регистр). */
+  explicitAliases: Set<string>;
+  /** Поля выборки (колонки) — для резолвинга ИТОГИ ПО по полю колонки. */
+  fields: SelectedField[];
+  /** Резолвер владельца голого поля. */
+  resolveOwner: OwnerResolver;
+}
+
+/**
+ * Владелец голого имени поля секции (фаза 6.15.4, MCP): конструктор 1С оставляет
+ * имя голым ТОЛЬКО когда оно совпадает с ЯВНЫМ псевдонимом выборки из ввода;
+ * иначе квалифицирует таблицей-владельцем. Возвращает tableId или undefined
+ * (совпало с явным псевдонимом / не резолвится — прежнее поведение).
+ */
+function sectionBareOwner(segs: string[], ctx: SectionResolveContext): string | undefined {
+  const headUp = segs[0].toUpperCase();
+  if (ctx.aliasToId.has(headUp)) return undefined; // голова — псевдоним таблицы
+  if (ctx.explicitAliases.has(headUp)) return undefined;
+  if (segs.length === 1 && LITERAL_VALUES.has(headUp)) return undefined;
+  return ctx.resolveOwner(segs[0]);
+}
+
 /**
  * Секция УПОРЯДОЧИТЬ ПО / АВТОУПОРЯДОЧИВАНИЕ. Инвертирует `renderOrder`:
  *  - `УПОРЯДОЧИТЬ ПО <псевдоним>[ УБЫВ][ ИЕРАРХИЯ], …` → order.fields (резолв псевдонима выборки).
  *  - последняя строка `АВТОУПОРЯДОЧИВАНИЕ` (с полями или без) → order.auto=true.
  */
-function parseOrder(
-  cur: Cursor,
-  aliasMap: Map<string, FieldRef>,
-  aliasToId: Map<string, string>
-): Order {
+function parseOrder(cur: Cursor, ctx: SectionResolveContext): Order {
+  const { aliasMap, aliasToId } = ctx;
   const fields: OrderField[] = [];
   let auto = false;
 
@@ -1920,22 +2177,27 @@ function parseOrder(
         }
         segs.push(cur.next().text);
       }
+      // Вызов функции (`ДОБАВИТЬКДАТЕ(…`) — не голое поле: квалификация не применяется.
+      const isCall = cur.isPunct('(');
       const { direction, hierarchy } = parseOrderModifiers(cur);
       const hier = hierarchy ? { hierarchy } : {};
 
-      if (segs.length > 1 && aliasToId.has(segs[0])) {
+      const bareOwner = isCall ? undefined : sectionBareOwner(segs, ctx);
+      if (segs.length > 1 && aliasToId.has(segs[0].toUpperCase())) {
         // Квалифицированная ссылка `<псевдонимТаблицы>.<path>` — сохраняем как есть.
         fields.push({
-          tableId: aliasToId.get(segs[0])!,
+          tableId: aliasToId.get(segs[0].toUpperCase())!,
           path: segs.slice(1).join('.'),
           direction,
           qualified: true,
           ...hier,
         });
+      } else if (bareOwner !== undefined) {
+        // Голое имя, НЕ совпадающее с явным псевдонимом выборки: конструктор 1С
+        // квалифицирует его таблицей-владельцем (фаза 6.15.4, MCP).
+        fields.push({ tableId: bareOwner, path: segs.join('.'), direction, qualified: true, ...hier });
       } else {
-        // Бара́я ссылка — псевдоним выборки (или нерезолвимое имя). Квалификацию бара́го
-        // поля по таблице конструктор делает по схеме метаданных — здесь недоступно
-        // (см. ROADMAP 6.8, R3, многотабличный остаток).
+        // Голая ссылка — псевдоним выборки (или нерезолвимое имя): остаётся как есть.
         const ref = resolveSelectAlias(segs.join('.'), aliasMap);
         fields.push({ tableId: ref.tableId, path: ref.path, direction, ...hier });
       }
@@ -1961,14 +2223,14 @@ function parseOrder(
  * expression = сырой текст. Группы: `ОБЩИЕ` (первый) → grand; остальные —
  * `<псевдоним>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`.
  */
-function parseTotals(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map<string, string>): Totals {
+function parseTotals(cur: Cursor, ctx: SectionResolveContext): Totals {
   cur.expectKeyword('ИТОГИ');
   const totalFields: TotalField[] = [];
 
   if (!cur.isKeyword('ПО')) {
     // Список агрегатов до ключевого слова ПО.
     for (;;) {
-      totalFields.push(parseTotalAggregate(cur, aliasMap));
+      totalFields.push(parseTotalAggregate(cur, ctx.aliasMap));
       if (cur.matchPunct(',')) continue;
       break;
     }
@@ -1982,7 +2244,7 @@ function parseTotals(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Ma
     if (cur.matchKeyword('ОБЩИЕ')) {
       grand = true;
     } else {
-      groupFields.push(parseTotalGroupField(cur, aliasMap, aliasToId));
+      groupFields.push(parseTotalGroupField(cur, ctx));
     }
     if (cur.matchPunct(',')) continue;
     break;
@@ -2029,16 +2291,42 @@ function matchSumAlias(tokens: Token[]): string | undefined {
   return tokens[2].text;
 }
 
+/**
+ * Резолвинг группировочного поля ИТОГИ ПО (фаза 6.15.4, MCP). В отличие от
+ * УПОРЯДОЧИТЬ/ИНДЕКСИРОВАТЬ, итоги адресуют КОЛОНКИ выборки: голое имя
+ * резолвится в колонку и по псевдониму (включая неявный), и по последнему
+ * сегменту пути её поля — даже если у колонки явный ДРУГОЙ псевдоним
+ * (конструктор перепишет имя в псевдоним колонки: `Валюта` → `Валюта2`).
+ * Только имя, не являющееся колонкой, квалифицируется таблицей-владельцем.
+ */
+function resolveTotalsFieldRef(segs: string[], ctx: SectionResolveContext): FieldRef {
+  if (segs.length > 1 && ctx.aliasToId.has(segs[0].toUpperCase())) {
+    return { tableId: ctx.aliasToId.get(segs[0].toUpperCase())!, path: segs.slice(1).join('.'), qualified: true };
+  }
+  const name = segs.join('.');
+  const hit = ctx.aliasMap.get(name);
+  if (hit) return { tableId: hit.tableId, path: hit.path };
+  // Колонка по последнему сегменту пути её поля (рендер вернёт псевдоним колонки).
+  if (segs.length === 1) {
+    const up = segs[0].toUpperCase();
+    const col = ctx.fields.find(
+      f => !f.expression && !!f.path && (f.path.split('.').pop() ?? '').toUpperCase() === up
+    );
+    if (col) return { tableId: col.tableId, path: col.path };
+  }
+  const owner = sectionBareOwner(segs, ctx);
+  if (owner !== undefined) {
+    return { tableId: owner, path: name, qualified: true };
+  }
+  return { tableId: '', path: name };
+}
+
 /** Одно группировочное поле итогов: `<поле>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`. */
-function parseTotalGroupField(
-  cur: Cursor,
-  aliasMap: Map<string, FieldRef>,
-  aliasToId: Map<string, string>
-): TotalGroupField {
+function parseTotalGroupField(cur: Cursor, ctx: SectionResolveContext): TotalGroupField {
   const aliasTok = cur.peek();
   const segs = readDottedPath(cur);
   if (!segs) throw cur.error('ожидался псевдоним группировочного поля итогов', aliasTok);
-  const ref = resolveSectionFieldRef(segs, aliasMap, aliasToId);
+  const ref = resolveTotalsFieldRef(segs, ctx);
 
   let kind: TotalKind = 'elements';
   if (cur.matchKeyword('ТОЛЬКО')) {
@@ -2067,7 +2355,7 @@ function parseTotalGroupField(
  *  - `ИНДЕКСИРОВАТЬ ПО НАБОРАМ ( (a, b)[ УНИКАЛЬНО], (c) )` → несколько индексов.
  * Поля адресуются по псевдониму выборки.
  */
-function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map<string, string>): Indexing {
+function parseIndex(cur: Cursor, ctx: SectionResolveContext): Indexing {
   cur.expectKeyword('ИНДЕКСИРОВАТЬ');
   cur.expectKeyword('ПО');
 
@@ -2078,7 +2366,7 @@ function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map
       cur.expectPunct('(');
       const fields: FieldRef[] = [];
       for (;;) {
-        fields.push(parseIndexField(cur, aliasMap, aliasToId));
+        fields.push(parseIndexField(cur, ctx));
         if (cur.matchPunct(',')) continue;
         break;
       }
@@ -2095,7 +2383,7 @@ function parseIndex(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map
   // Один индекс: список псевдонимов через запятую.
   const fields: FieldRef[] = [];
   for (;;) {
-    fields.push(parseIndexField(cur, aliasMap, aliasToId));
+    fields.push(parseIndexField(cur, ctx));
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -2121,24 +2409,25 @@ function readDottedPath(cur: Cursor): string[] | undefined {
 }
 
 /**
- * Поле, адресуемое в секциях ИНДЕКСИРОВАТЬ ПО / ИТОГИ ПО: либо квалифицированная
- * ссылка `<псевдонимТаблицы>.<path>` (qualified, выводится дословно), либо
- * псевдоним выборки. Конструктор 1С сохраняет ту форму, что задал пользователь.
+ * Поле, адресуемое в секциях ИНДЕКСИРОВАТЬ ПО / ИТОГИ ПО: квалифицированная
+ * ссылка `<псевдонимТаблицы>.<path>` (qualified, выводится дословно), псевдоним
+ * выборки (голым), либо голое поле, НЕ совпадающее с явным псевдонимом ввода —
+ * его конструктор 1С квалифицирует таблицей-владельцем (фаза 6.15.4, MCP).
  */
-function resolveSectionFieldRef(
-  segs: string[],
-  aliasMap: Map<string, FieldRef>,
-  aliasToId: Map<string, string>
-): FieldRef {
-  if (segs.length > 1 && aliasToId.has(segs[0])) {
-    return { tableId: aliasToId.get(segs[0])!, path: segs.slice(1).join('.'), qualified: true };
+function resolveSectionFieldRef(segs: string[], ctx: SectionResolveContext): FieldRef {
+  if (segs.length > 1 && ctx.aliasToId.has(segs[0].toUpperCase())) {
+    return { tableId: ctx.aliasToId.get(segs[0].toUpperCase())!, path: segs.slice(1).join('.'), qualified: true };
   }
-  const ref = resolveSelectAlias(segs.join('.'), aliasMap);
+  const owner = sectionBareOwner(segs, ctx);
+  if (owner !== undefined) {
+    return { tableId: owner, path: segs.join('.'), qualified: true };
+  }
+  const ref = resolveSelectAlias(segs.join('.'), ctx.aliasMap);
   return { tableId: ref.tableId, path: ref.path };
 }
 
 /** Одно поле индекса: квалиф. ссылка/псевдоним выборки → FieldRef, либо `&Параметр`. */
-function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId: Map<string, string>): FieldRef {
+function parseIndexField(cur: Cursor, ctx: SectionResolveContext): FieldRef {
   const t = cur.peek();
   // `ИНДЕКСИРОВАТЬ ПО &Параметр` — параметр запроса вместо псевдонима поля
   // (приём генерации динамических ВТ). Сохраняем дословно через expression.
@@ -2148,7 +2437,7 @@ function parseIndexField(cur: Cursor, aliasMap: Map<string, FieldRef>, aliasToId
   }
   const segs = readDottedPath(cur);
   if (!segs) throw cur.error('ожидался псевдоним поля индекса', t);
-  return resolveSectionFieldRef(segs, aliasMap, aliasToId);
+  return resolveSectionFieldRef(segs, ctx);
 }
 
 // ───────────────────── ДЛЯ ИЗМЕНЕНИЯ (FOR UPDATE) ──────────────────────
@@ -2311,7 +2600,15 @@ export function parseDocument(text: string): QueryDocument {
   const tokens = tokenize(text);
   const raw = splitUnionMembers(tokens, text);
 
-  const models = raw.map(r => parseSingleQuery(new Cursor(r.tokens, text)));
+  // Контекст секций (УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКС) первого участника: секции стоят
+  // после последнего участника, но конструктор 1С резолвит их по участнику 0.
+  let firstCtx: SectionResolveContext | undefined;
+  const models = raw.map((r, i) => {
+    const ctxOut: { ctx?: SectionResolveContext } = {};
+    const model = parseSingleQuery(new Cursor(r.tokens, text), i > 0 ? firstCtx : undefined, ctxOut);
+    if (i === 0) firstCtx = ctxOut.ctx;
+    return model;
+  });
 
   // Автопсевдоним произвольного поля без явного `КАК`: конструктор 1С присваивает
   // `Поле{n}` (n — порядковый номер среди произвольных полей участника), а НЕ текст

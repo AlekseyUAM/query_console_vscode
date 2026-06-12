@@ -556,6 +556,20 @@ export function selectAliasFor(model: QueryModel, tableId: string, path: string)
 }
 
 /**
+ * Текст ссылки поля секции (УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКС) БЕЗ флага qualified:
+ * поле, входящее в выборку, адресуется псевдонимом выборки (`selectAliasFor`);
+ * поле НЕ из выборки конструктор 1С печатает квалифицированно
+ * `<псевдонимТаблицы>.<path>` (MCP, фаза 6.15.4). Нерезолвимая таблица —
+ * прежний фолбэк по последнему сегменту пути.
+ */
+function sectionFieldRefText(model: QueryModel, tableId: string, path: string): string {
+  const match = model.fields.find(f => f.tableId === tableId && f.path === path);
+  if (match) return match.alias ?? (path.split('.').pop() ?? path);
+  const alias = resolveAliases(model.tables).get(tableId);
+  return alias !== undefined ? `${alias}.${path}` : (path.split('.').pop() ?? path);
+}
+
+/**
  * Секция УПОРЯДОЧИТЬ ПО (+ строка АВТОУПОРЯДОЧИВАНИЕ при `order.auto`). Без ведущей
  * пустой строки. Возвращает [] если порядок неактивен (нет полей и нет авто) —
  * тогда вывод байт-в-байт как раньше. Поле = `<псевдоним выборки>` + ` УБЫВ` при
@@ -575,15 +589,19 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
         ? f.expression
         : f.qualified
         ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
-        : selectAliasFor(model, f.tableId, f.path);
+        : sectionFieldRefText(model, f.tableId, f.path);
       // `ИЕРАРХИЯ` после поля упорядочивания конструктор 1С выводит ТОЛЬКО когда
       // поле — иерархическая ссылка (по схеме метаданных, недоступной здесь): для
       // стандартного поля `Ссылка` сохраняет (оно всегда ссылочное в иерархических
       // справочниках), для `Наименование`/`ЭтоГруппа`/`Элемент` — убирает. Прочие
       // имена (`Группа`↔`Элемент`) текстом не различимы, но в корпусе все KEEP-случаи
       // адресуются именно `…Ссылка`, поэтому ограничиваемся этим признаком. R3, 6.8.
+      // Для источника БЕЗ метаданных (таблица-параметр `&Имя`, временная таблица,
+      // подзапрос) конструктор отбрасывает ИЕРАРХИЯ даже у `…Ссылка` (MCP, 6.15.4).
       const lastSeg = f.path.split('.').pop();
-      const hierSuffix = f.hierarchy && lastSeg === 'Ссылка' ? ' ИЕРАРХИЯ' : '';
+      const ownerTable = model.tables.find(t => t.id === f.tableId);
+      const metadataTable = ownerTable !== undefined && !ownerTable.subquery && ownerTable.fullName.includes('.');
+      const hierSuffix = f.hierarchy && lastSeg === 'Ссылка' && metadataTable ? ' ИЕРАРХИЯ' : '';
       const suffix = (f.direction === 'desc' ? ' УБЫВ' : '') + hierSuffix;
       const comma = i < order.fields.length - 1 ? ',' : '';
       lines.push(`\t${ref}${suffix}${comma}`);
@@ -624,7 +642,7 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   for (const g of totals.groupFields) {
     const alias = g.qualified
       ? `${tableAliases.get(g.tableId) ?? g.tableId}.${g.path}`
-      : selectAliasFor(model, g.tableId, g.path);
+      : sectionFieldRefText(model, g.tableId, g.path);
     const as = g.alias ? ` КАК ${g.alias}` : '';
     byList.push(`${alias}${totalKindSuffix(g.kind)}${as}`);
   }
@@ -663,7 +681,7 @@ export function renderIndex(indexing: Indexing | undefined, model: QueryModel): 
       ? f.expression
       : f.qualified
       ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
-      : selectAliasFor(model, f.tableId, f.path);
+      : sectionFieldRefText(model, f.tableId, f.path);
 
   if (indexes.length === 1) {
     const fields = indexes[0].fields;
@@ -754,14 +772,17 @@ export function generateDocument(doc: QueryDocument): string {
   // объединению и записываются после последнего участника. ИНДЕКСИРОВАТЬ ПО валидно
   // лишь для `ПОМЕСТИТЬ`-объединения, чей маркер createTemp несёт первый участник, —
   // поэтому индекс рендерим в контексте createTemp-участника (фаза 6.12).
+  // Ссылки секций резолвятся парсером по ПЕРВОМУ участнику (его псевдонимы выборки
+  // и источники, фаза 6.15.4) — рендер использует его же поля/таблицы.
   const last = members[members.length - 1].model;
-  const orderLines = renderOrder(last.order, last);
+  const first = members[0].model;
+  const orderLines = renderOrder(last.order, first);
   if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
-  const totalsLines = renderTotals(last.totals, last);
+  const totalsLines = renderTotals(last.totals, first);
   if (totalsLines.length > 0) out += '\n' + totalsLines.join('\n');
   const tempCarrier = members.find(m => m.model.queryType === 'createTemp')?.model;
   if (last.indexing && tempCarrier) {
-    const indexLines = renderIndex(last.indexing, { ...tempCarrier, fields: last.fields, tables: last.tables });
+    const indexLines = renderIndex(last.indexing, { ...tempCarrier, fields: first.fields, tables: first.tables });
     if (indexLines.length > 0) out += '\n\n' + indexLines.join('\n');
   }
   return out;
