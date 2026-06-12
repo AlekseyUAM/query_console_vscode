@@ -359,8 +359,14 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
  */
 function builderBlock(keyword: string, fields: BuilderField[]): string[] {
   if (fields.length === 0) return [];
+  const isWhere = keyword === 'ГДЕ';
+  // Элемент-условие `{ГДЕ}` печатается в скобках (фаза 6.15.7); `.*` при наличии
+  // псевдонима конструктор отбрасывает (корпус: КонвертацияОбъектов bsl_5 дроп,
+  // СервисКриптографии bsl_3 без псевдонима — сохраняется).
   const render = (f: BuilderField): string =>
-    f.ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
+    f.condition
+      ? `(${f.ref})` + (f.alias ? ' КАК ' + f.alias : '')
+      : f.ref + (f.child && !(isWhere && f.alias) ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
   const lines = ['{' + keyword];
   fields.forEach((f, i) => {
     const last = i === fields.length - 1;

@@ -142,6 +142,19 @@ class Cursor {
     return this.isPunct('{') && this.isKeyword(keyword, 1);
   }
 
+  /**
+   * Дальше начинается РАСПОЗНАВАЕМЫЙ блок построителя (`{ГДЕ`/`{УПОРЯДОЧИТЬ`/
+   * `{ИТОГИ`/`{ВЫБРАТЬ`). Читалки условий (ПО/ГДЕ/ИМЕЮЩИЕ) останавливаются перед
+   * ним (фаза 6.15.7); прочие `{…}` (например `{ЛЕВОЕ СОЕДИНЕНИЕ …}`) пока
+   * заглатываются как раньше — их разбор не реализован.
+   */
+  isBuilderStart(): boolean {
+    return (
+      this.isBuilderBlock('ГДЕ') || this.isBuilderBlock('УПОРЯДОЧИТЬ') ||
+      this.isBuilderBlock('ИТОГИ') || this.isBuilderBlock('ВЫБРАТЬ')
+    );
+  }
+
   error(message: string, t: Token = this.peek()): Error {
     return new Error(`Ошибка разбора ${t.line}:${t.col} — ${message} (получено «${t.value || '<конец>'}»)`);
   }
@@ -311,6 +324,17 @@ function parseSingleQuery(
 
   if (cur.isBuilderBlock('ГДЕ')) {
     builder.conditions = parseBuilderBlock(cur, 'ГДЕ');
+    // Условие-выражение без явного КАК получает автопсевдоним `Поле<N>`;
+    // нумерация продолжает список условий запроса (1 статическое ГДЕ + первое
+    // условие построителя → Поле2 — канон конструктора, корпус ДвиженияДокумента
+    // bsl_1/2). Одиночный параметр (`&Отбор`) — вставка целого блока отбора,
+    // псевдонима не имеет (корпус Взаимодействия bsl_65).
+    let condNo = conditions?.length ?? 0;
+    for (const f of builder.conditions) {
+      if (!f.condition) continue;
+      condNo += 1;
+      if (!f.alias && !/^&[\p{L}\p{N}_]+$/u.test(f.ref)) f.alias = `Поле${condNo}`;
+    }
   }
 
   let groupingFromClause: { multiple: boolean; groupFields: FieldRef[]; groupSets: FieldRef[][] } | undefined;
@@ -806,6 +830,8 @@ function readJoinCondition(cur: Cursor): { tokens: Token[]; text: string } {
       if (t.type === 'punct' && t.value === ';') break;
       if (isJoinKeyword(cur)) break;
       if (t.type === 'keyword' && JOIN_COND_STOP.has(t.value)) break;
+      // Блок построителя (`{ГДЕ …}` сразу после условия ПО) — не часть условия.
+      if (cur.isBuilderStart()) break;
     }
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
@@ -1467,6 +1493,9 @@ function collectConditionTokens(cur: Cursor, stop: Set<string>): Token[] {
     const t = cur.peek();
     if (t.type === 'eof') break;
     if (depth === 0 && caseDepth === 0 && t.type === 'keyword' && stop.has(t.value)) break;
+    // Блок построителя (`{ГДЕ …}` после статического ГДЕ) — не часть условия
+    // (фаза 6.15.7; раньше заглатывался в текст последнего условия дословно).
+    if (depth === 0 && caseDepth === 0 && cur.isBuilderStart()) break;
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
     else if (isIdentWord(t, 'ВЫБОР')) caseDepth++;
@@ -2517,7 +2546,7 @@ function parseBuilderBlock(cur: Cursor, keyword: string): BuilderField[] {
 
   const fields: BuilderField[] = [];
   for (;;) {
-    fields.push(parseBuilderField(cur));
+    fields.push(parseBuilderField(cur, keyword === 'ГДЕ'));
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -2525,11 +2554,51 @@ function parseBuilderBlock(cur: Cursor, keyword: string): BuilderField[] {
   return fields;
 }
 
-/** Одно поле построителя: `<ref>[.*][ КАК <alias>]`. */
-function parseBuilderField(cur: Cursor): BuilderField {
+/**
+ * Элемент-условие блока `{ГДЕ}` (фаза 6.15.7): выражение, не являющееся ссылкой
+ * поля (`&Отбор`, `"&Имя" В (&Список)`, скобочная форма). Токены собираются до
+ * верхнеуровневой `,`, `}` или `КАК`; одна внешняя пара скобок снимается (канон
+ * генератора их восстанавливает).
+ */
+function parseBuilderCondition(cur: Cursor): BuilderField {
+  const tokens: Token[] = [];
+  let depth = 0;
+  for (;;) {
+    const t = cur.peek();
+    if (t.type === 'eof') break;
+    if (depth === 0) {
+      if (t.type === 'punct' && (t.value === ',' || t.value === '}')) break;
+      if (t.type === 'keyword' && t.value === 'КАК') break;
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    tokens.push(cur.next());
+  }
+  if (tokens.length === 0) throw cur.error('пустое условие построителя');
+  const field: BuilderField = {
+    ref: stripOuterParens(sliceSource(cur.source, tokens)),
+    child: false,
+    condition: true,
+  };
+  if (cur.matchKeyword('КАК')) {
+    const a = cur.peek();
+    if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
+    cur.next();
+    field.alias = a.text;
+  }
+  return field;
+}
+
+/** Одно поле построителя: `<ref>[.*][ КАК <alias>]`; в `{ГДЕ}` — также условие. */
+function parseBuilderField(cur: Cursor, allowCondition = false): BuilderField {
   // ref = точечное имя; `.*` → child. Собираем сегменты вручную, т.к. возможна
   // финальная `.*`.
   const first = cur.peek();
+  // Голова не похожа на ссылку поля (параметр/строка/скобка) → элемент-условие
+  // блока `{ГДЕ}` (фаза 6.15.7).
+  if (allowCondition && first.type !== 'ident' && first.type !== 'keyword') {
+    return parseBuilderCondition(cur);
+  }
   if (first.type !== 'ident' && first.type !== 'keyword') {
     throw cur.error('ожидалась ссылка поля построителя', first);
   }
