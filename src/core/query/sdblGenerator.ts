@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, flattenLeafText, leafHasSubquery } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, flattenLeafText, leafHasSubquery } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -897,7 +897,8 @@ function buildConditionStrings(
       const expr = (c.expression ?? '').trim();
       // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
       // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.
-      if (expr) conds.push(needsFormatting(expr) ? formatExpression(expr, slot) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(expr))));
+      // НЕ-блок (`НЕ (a И b)`) переотрисовывается даже без ИЛИ внутри (фаза 6.14).
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(expr))));
       continue;
     }
     if (!c.path) continue;

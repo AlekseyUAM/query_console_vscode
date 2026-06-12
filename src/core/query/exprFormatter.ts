@@ -897,6 +897,12 @@ function renderBool(
       return lines;
     }
     case 'not': {
+      // ГДЕ/ИМЕЮЩИЕ (stripNotParens): НЕ-блок над скобочной группой печатается
+      // `НЕ(` слитно, продолжения на ind + orDelta + 1 (фаза 6.14, MCP). В других
+      // слотах (ПО/КОГДА) — прежняя раскладка `НЕ <группа>`.
+      if (ctx.stripNotParens && node.child.kind === 'group') {
+        return renderNotGroup(node.child.child, ind, orLvl, ctx);
+      }
       const sub = renderBool(node.child, ind, andCont, orLvl, ctx, caseE);
       sub[0] = 'НЕ ' + sub[0];
       return sub;
@@ -1043,12 +1049,16 @@ export function formatExpression(raw: string, slot: ExprSlot): string {
   let body: string;
   if (slot === 'where' || slot === 'having') {
     const ctx: RenderCtx = { cont: 1, caseBoolean: true, stripNotParens: true };
+    // ИМЕЮЩИЕ: верхний OR использует orDelta=1 (ИЛИ на отступе 2), в отличие от
+    // ГДЕ (orDelta=2, ИЛИ на 3) — эмулируем стартовым orLvl=1.
+    const startOrLvl = slot === 'having' ? 1 : 0;
     if (tree.kind === 'case') {
       body = renderCase(tree, ctx.cont, ctx, true).join('\n');
+    } else if (tree.kind === 'not' && tree.child.kind === 'group') {
+      // НЕ-блок целиком (`НЕ (…)`): конструктор печатает `НЕ(` слитно и держит
+      // скобки независимо от наличия ИЛИ внутри (фаза 6.14, MCP).
+      body = renderNotGroup(tree.child.child, 1, startOrLvl, ctx).join('\n');
     } else {
-      // ИМЕЮЩИЕ: верхний OR использует orDelta=1 (ИЛИ на отступе 2), в отличие от
-      // ГДЕ (orDelta=2, ИЛИ на 3) — эмулируем стартовым orLvl=1.
-      const startOrLvl = slot === 'having' ? 1 : 0;
       body = renderBool(tree, 1, 1, startOrLvl, ctx).join('\n');
     }
   } else if (slot === 'select') {
@@ -1067,6 +1077,59 @@ export function formatExpression(raw: string, slot: ExprSlot): string {
   }
 
   return body + tail;
+}
+
+/**
+ * НЕ-блок в условии ГДЕ/ИМЕЮЩИЕ: `НЕ (…)` (фаза 6.14, MCP). Раскладка:
+ *   - первая строка `НЕ(` слитно с первым операндом;
+ *   - продолжения (`И x` / `ИЛИ x`) — на отступе cont = ind + orDelta + 1
+ *     (корень ГДЕ: 4 таба, корень ИМЕЮЩИЕ: 3, вложенный НЕ: ind + 2 — на один
+ *     глубже строк ИЛИ обычного ИЛИ-блока на той же глубине);
+ *   - вложенные скобочные ИЛИ-группы и НЕ-блоки внутри операндов — рекурсивно
+ *     (ИЛИ на cont+1);
+ *   - внешние скобки сохраняются всегда (НЕ синтаксически требует скобок),
+ *     даже когда внутри нет ИЛИ.
+ * `ind` — отступ строки, на которой начинается `НЕ(` (первая строка без отступа,
+ * его добавляет вызывающий).
+ */
+function renderNotGroup(child: Node, ind: number, orLvl: number, ctx: RenderCtx): string[] {
+  const cont = ind + (orLvl === 0 ? 2 : 1) + 1;
+  let lines: string[];
+  if (child.kind === 'or' || child.kind === 'and') {
+    const word = child.kind === 'or' ? 'ИЛИ ' : 'И ';
+    lines = [];
+    child.operands.forEach((op, k) => {
+      if (k === 0) {
+        lines.push(...renderBool(op, ind, cont, orLvl + 1, ctx));
+      } else {
+        const sub = renderBool(op, cont, cont + 1, orLvl + 1, ctx);
+        sub[0] = tabs(cont) + word + sub[0];
+        lines.push(...sub);
+      }
+    });
+  } else {
+    lines = renderBool(child, ind, cont, orLvl + 1, ctx);
+  }
+  lines[0] = 'НЕ(' + lines[0];
+  lines[lines.length - 1] += ')';
+  return lines;
+}
+
+/**
+ * Корень выражения — НЕ над скобочной группой (`НЕ (a И b)`)? Такое условие
+ * конструктор переотрисовывает (`НЕ(` слитно, продолжения на фикс. отступе),
+ * даже когда внутри нет ИЛИ/ВЫБОР и needsFormatting возвращает false (фаза 6.14).
+ */
+export function isRootNotGroup(raw: string): boolean {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return false;
+  let tree: Node;
+  try {
+    tree = new Parser(trimmed).parse();
+  } catch {
+    return false;
+  }
+  return tree.kind === 'not' && tree.child.kind === 'group';
 }
 
 /**
