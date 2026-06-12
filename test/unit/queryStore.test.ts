@@ -12,6 +12,8 @@ import {
   assembleBatch,
 } from '../../src/webview/state/queryStore';
 import { deriveUnionColumns } from '../../src/core/query/unionModel';
+import { parseBatch } from '../../src/core/query/sdblParser';
+import { generateBatch } from '../../src/core/query/sdblGenerator';
 import type { MetaTable } from '../../src/core/metadata/types';
 
 const mockTable: MetaTable = {
@@ -820,6 +822,78 @@ describe('queryStore — связи (joins)', () => {
     expect(restored.joins).toEqual(s.joins);
     const model = buildModelFromFlat(snap);
     expect(model.joins).toEqual(s.joins);
+  });
+
+  // --- поконъюнктное редактирование (фаза 6.13) ---
+
+  it('SET_JOIN_CUSTOM с condIndex правит нужный конъюнкт и зеркало conditions[0]', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    // материализуем второй конъюнкт
+    s = reducer(s, { type: 'ADD_JOIN_CONDITION', index: 0 });
+    expect(s.joins[0].conditions).toHaveLength(2);
+    // первый конъюнкт — произвольный, второй оставляем стандартным
+    s = reducer(s, { type: 'SET_JOIN_CUSTOM', index: 0, custom: true, condIndex: 0 });
+    expect(s.joins[0].conditions![0].custom).toBe(true);
+    expect(s.joins[0].conditions![1].custom).toBe(false);
+    // зеркало conditions[0] синхронизировано в верхнеуровневое поле
+    expect(s.joins[0].custom).toBe(true);
+    // правим второй конъюнкт — зеркало не трогается
+    s = reducer(s, { type: 'SET_JOIN_CUSTOM', index: 0, custom: true, condIndex: 1 });
+    expect(s.joins[0].conditions![1].custom).toBe(true);
+    expect(s.joins[0].custom).toBe(true);
+  });
+
+  it('SET_JOIN_FIELD/OPERATOR/EXPRESSION адресуют конъюнкт по condIndex', () => {
+    let { s, t1, t2 } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'ADD_JOIN_CONDITION', index: 0 });
+    s = reducer(s, { type: 'SET_JOIN_FIELD', index: 0, side: 'left', path: 'Код', condIndex: 1 });
+    s = reducer(s, { type: 'SET_JOIN_OPERATOR', index: 0, operator: '<>', condIndex: 1 });
+    expect(s.joins[0].conditions![1].leftPath).toBe('Код');
+    expect(s.joins[0].conditions![1].operator).toBe('<>');
+    // c0 не задет
+    expect(s.joins[0].conditions![0].leftPath).toBeUndefined();
+    // выражение на произвольном конъюнкте c0
+    s = reducer(s, { type: 'SET_JOIN_CUSTOM', index: 0, custom: true, condIndex: 0 });
+    s = reducer(s, { type: 'SET_JOIN_EXPRESSION', index: 0, expression: 'A.X = &P', condIndex: 0 });
+    expect(s.joins[0].conditions![0].expression).toBe('A.X = &P');
+    expect(s.joins[0].expression).toBe('A.X = &P');
+  });
+
+  it('REMOVE_JOIN_CONDITION удаляет конъюнкт, последний → удаляет соединение', () => {
+    let { s } = twoTablesState();
+    s = reducer(s, { type: 'ADD_JOIN' });
+    s = reducer(s, { type: 'ADD_JOIN_CONDITION', index: 0 });
+    expect(s.joins[0].conditions).toHaveLength(2);
+    s = reducer(s, { type: 'REMOVE_JOIN_CONDITION', index: 0, condIndex: 1 });
+    expect(s.joins[0].conditions).toHaveLength(1);
+    // удаление последнего конъюнкта убирает связь целиком
+    s = reducer(s, { type: 'REMOVE_JOIN_CONDITION', index: 0, condIndex: 0 });
+    expect(s.joins).toEqual([]);
+  });
+
+  it('LOAD_BATCH составной связи: флаги custom по конъюнктам и точный round-trip', () => {
+    const text = [
+      'ВЫБРАТЬ',
+      '\tЦены.Ссылка КАК Ссылка',
+      'ИЗ',
+      '\tСправочник.Цены КАК Цены',
+      '\t\tЛЕВОЕ СОЕДИНЕНИЕ Справочник.Валюты КАК Валюты',
+      '\t\tПО Цены.Валюта = Валюты.Ссылка',
+      '\t\t\tИ (Валюты.Код = &Код)',
+    ].join('\n');
+    const doc = parseBatch(text);
+    let s = reducer(initialState(), { type: 'LOAD_BATCH', doc });
+    const conds = s.joins[0].conditions!;
+    // строка на конъюнкт: стандартный (unchecked) + произвольный (checked)
+    expect(conds.map(c => c.custom)).toEqual([false, true]);
+    expect(conds[0].leftPath).toBe('Валюта');
+    expect(conds[0].rightPath).toBe('Ссылка');
+    expect(conds[1].expression).toBe('Валюты.Код = &Код');
+    // re-generate из live-состояния → дословно исходный канонический текст
+    const regen = generateBatch(assembleBatch(s));
+    expect(regen).toBe(text);
   });
 });
 

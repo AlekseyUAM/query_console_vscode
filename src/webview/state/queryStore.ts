@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, JoinCondition, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember, type QueryDocument } from '../../core/query/unionModel';
@@ -127,12 +127,14 @@ export type QueryAction =
   | { type: 'SET_CONDITION_EXPRESSION'; index: number; expression: string }
   | { type: 'ADD_JOIN' }
   | { type: 'REMOVE_JOIN'; index: number }
-  | { type: 'SET_JOIN_TABLE'; index: number; side: 'left' | 'right'; tableId: string }
+  | { type: 'ADD_JOIN_CONDITION'; index: number }
+  | { type: 'REMOVE_JOIN_CONDITION'; index: number; condIndex: number }
+  | { type: 'SET_JOIN_TABLE'; index: number; side: 'left' | 'right'; tableId: string; condIndex?: number }
   | { type: 'SET_JOIN_ALL'; index: number; side: 'left' | 'right'; value: boolean }
-  | { type: 'SET_JOIN_CUSTOM'; index: number; custom: boolean }
-  | { type: 'SET_JOIN_FIELD'; index: number; side: 'left' | 'right'; path: string }
-  | { type: 'SET_JOIN_OPERATOR'; index: number; operator: ConditionOperator }
-  | { type: 'SET_JOIN_EXPRESSION'; index: number; expression: string }
+  | { type: 'SET_JOIN_CUSTOM'; index: number; custom: boolean; condIndex?: number }
+  | { type: 'SET_JOIN_FIELD'; index: number; side: 'left' | 'right'; path: string; condIndex?: number }
+  | { type: 'SET_JOIN_OPERATOR'; index: number; operator: ConditionOperator; condIndex?: number }
+  | { type: 'SET_JOIN_EXPRESSION'; index: number; expression: string; condIndex?: number }
   | { type: 'SET_SELECTION_TOP'; top: number | undefined }
   | { type: 'SET_SELECTION_DISTINCT'; distinct: boolean }
   | { type: 'SET_SELECTION_ALLOWED'; allowed: boolean }
@@ -443,6 +445,75 @@ export function assembleBatch(state: QueryState): BatchDocument {
 /** Применить переименование псевдонима колонки к списку полей одного запроса. */
 function applyColumnAlias(fields: SelectedField[], alias: string, newAlias: string): SelectedField[] {
   return fields.map(f => (fieldAlias(f) === alias ? { ...f, alias: newAlias } : f));
+}
+
+// ============================================================================
+// Связи: адресация конъюнкта (фаза 6.13).
+//
+// Конструктор 1С показывает каждый конъюнкт условия `ПО` отдельной строкой. В
+// модели они хранятся в `Join.conditions[]`, а верхнеуровневые поля
+// `custom/leftPath/operator/rightPath/expression` — зеркало `conditions[0]`.
+// Соединения, созданные в UI (одиночное условие), не имеют `conditions[]` —
+// тогда работаем напрямую с верхнеуровневыми полями (генератор откатывается к
+// ним). Хелперы ниже обновляют нужный конъюнкт И поддерживают зеркало
+// `conditions[0]` ↔ верхнеуровневых полей, чтобы генератор рендерил одинаково.
+// ============================================================================
+
+/** Конъюнкт, эквивалентный верхнеуровневым полям соединения (зеркало conditions[0]). */
+function topLevelConjunct(j: Join): JoinCondition {
+  return {
+    custom: j.custom,
+    leftTableId: j.leftTableId,
+    leftPath: j.leftPath,
+    operator: j.operator,
+    rightTableId: j.rightTableId,
+    rightPath: j.rightPath,
+    expression: j.expression,
+  };
+}
+
+/** Скопировать поля конъюнкта conditions[0] в верхнеуровневые поля соединения. */
+function syncMirror(j: Join): Join {
+  const c0 = j.conditions?.[0];
+  if (!c0) return j;
+  return {
+    ...j,
+    custom: c0.custom,
+    leftPath: c0.leftPath,
+    operator: c0.operator,
+    rightPath: c0.rightPath,
+    expression: c0.expression,
+    ...(c0.leftTableId !== undefined ? { leftTableId: c0.leftTableId } : {}),
+    ...(c0.rightTableId !== undefined ? { rightTableId: c0.rightTableId } : {}),
+  };
+}
+
+/**
+ * Обновить один конъюнкт соединения `index`/`condIndex` и поддержать зеркало.
+ * Если у соединения нет `conditions[]` и `condIndex` равен 0/undefined — правим
+ * только верхнеуровневые поля (как раньше, без материализации conditions[]).
+ * Иначе материализуем `conditions[]` из верхнеуровневого конъюнкта и правим
+ * нужный элемент; conditions[0] синхронизируем обратно в зеркало.
+ */
+function updateJoinConjunct(
+  state: QueryState,
+  index: number,
+  condIndex: number | undefined,
+  patch: Partial<JoinCondition>
+): QueryState {
+  const joins = state.joins.map((j, i) => {
+    if (i !== index) return j;
+    const ci = condIndex ?? 0;
+    // Соединение без conditions[]: правим верхнеуровневые поля напрямую.
+    if (!j.conditions && ci === 0) {
+      return { ...j, ...patch };
+    }
+    const conds = j.conditions ?? [topLevelConjunct(j)];
+    if (ci < 0 || ci >= conds.length) return j;
+    const nextConds = conds.map((c, k) => (k === ci ? { ...c, ...patch } : c));
+    return syncMirror({ ...j, conditions: nextConds });
+  });
+  return { ...state, joins };
 }
 
 export function reducer(state: QueryState, action: QueryAction): QueryState {
@@ -807,12 +878,47 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     case 'REMOVE_JOIN':
       return { ...state, joins: state.joins.filter((_, i) => i !== action.index) };
 
+    case 'ADD_JOIN_CONDITION': {
+      // Добавить ещё один (стандартный) конъюнкт к существующему соединению.
+      const joins = state.joins.map((j, i) => {
+        if (i !== action.index) return j;
+        const conds = j.conditions ?? [topLevelConjunct(j)];
+        const fresh: JoinCondition = {
+          custom: false,
+          leftTableId: j.leftTableId,
+          rightTableId: j.rightTableId,
+          operator: '=',
+        };
+        return syncMirror({ ...j, conditions: [...conds, fresh] });
+      });
+      return { ...state, joins };
+    }
+
+    case 'REMOVE_JOIN_CONDITION': {
+      const joins = state.joins.flatMap((j, i) => {
+        if (i !== action.index) return [j];
+        const conds = j.conditions ?? [topLevelConjunct(j)];
+        const nextConds = conds.filter((_, k) => k !== action.condIndex);
+        // Удалили последний конъюнкт → удаляем всё соединение.
+        if (nextConds.length === 0) return [];
+        return [syncMirror({ ...j, conditions: nextConds })];
+      });
+      return { ...state, joins };
+    }
+
     case 'SET_JOIN_TABLE': {
-      const joins = state.joins.map((j, i) =>
-        i === action.index
-          ? { ...j, [action.side === 'left' ? 'leftTableId' : 'rightTableId']: action.tableId }
-          : j
-      );
+      // Сторона таблицы конъюнкта (leftTableId/rightTableId) хранится и в
+      // верхнеуровневых полях соединения (порядок рендера условия), и в конъюнкте.
+      const field = action.side === 'left' ? 'leftTableId' : 'rightTableId';
+      const joins = state.joins.map((j, i) => {
+        if (i !== action.index) return j;
+        const ci = action.condIndex ?? 0;
+        if (!j.conditions && ci === 0) return { ...j, [field]: action.tableId };
+        const conds = j.conditions ?? [topLevelConjunct(j)];
+        if (ci < 0 || ci >= conds.length) return j;
+        const nextConds = conds.map((c, k) => (k === ci ? { ...c, [field]: action.tableId } : c));
+        return syncMirror({ ...j, conditions: nextConds });
+      });
       return { ...state, joins };
     }
 
@@ -825,35 +931,19 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       return { ...state, joins };
     }
 
-    case 'SET_JOIN_CUSTOM': {
-      const joins = state.joins.map((j, i) =>
-        i === action.index ? { ...j, custom: action.custom } : j
-      );
-      return { ...state, joins };
-    }
+    case 'SET_JOIN_CUSTOM':
+      return updateJoinConjunct(state, action.index, action.condIndex, { custom: action.custom });
 
-    case 'SET_JOIN_FIELD': {
-      const joins = state.joins.map((j, i) =>
-        i === action.index
-          ? { ...j, [action.side === 'left' ? 'leftPath' : 'rightPath']: action.path }
-          : j
-      );
-      return { ...state, joins };
-    }
+    case 'SET_JOIN_FIELD':
+      return updateJoinConjunct(state, action.index, action.condIndex, {
+        [action.side === 'left' ? 'leftPath' : 'rightPath']: action.path,
+      });
 
-    case 'SET_JOIN_OPERATOR': {
-      const joins = state.joins.map((j, i) =>
-        i === action.index ? { ...j, operator: action.operator } : j
-      );
-      return { ...state, joins };
-    }
+    case 'SET_JOIN_OPERATOR':
+      return updateJoinConjunct(state, action.index, action.condIndex, { operator: action.operator });
 
-    case 'SET_JOIN_EXPRESSION': {
-      const joins = state.joins.map((j, i) =>
-        i === action.index ? { ...j, expression: action.expression } : j
-      );
-      return { ...state, joins };
-    }
+    case 'SET_JOIN_EXPRESSION':
+      return updateJoinConjunct(state, action.index, action.condIndex, { expression: action.expression });
 
     case 'SET_SELECTION_TOP': {
       const selection = { ...state.selection };

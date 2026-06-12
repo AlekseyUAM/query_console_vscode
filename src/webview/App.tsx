@@ -299,17 +299,19 @@ export function App(): React.ReactElement {
           joins={state.joins}
           onAddJoin={() => dispatch({ type: 'ADD_JOIN' })}
           onRemoveJoin={index => dispatch({ type: 'REMOVE_JOIN', index })}
-          onSetTable={(index, side, tableId) => dispatch({ type: 'SET_JOIN_TABLE', index, side, tableId })}
+          onAddJoinCondition={index => dispatch({ type: 'ADD_JOIN_CONDITION', index })}
+          onRemoveJoinCondition={(index, condIndex) => dispatch({ type: 'REMOVE_JOIN_CONDITION', index, condIndex })}
+          onSetTable={(index, side, tableId, condIndex) => dispatch({ type: 'SET_JOIN_TABLE', index, side, tableId, condIndex })}
           onSetAll={(index, side, value) => dispatch({ type: 'SET_JOIN_ALL', index, side, value })}
-          onSetCustom={(index, custom) => dispatch({ type: 'SET_JOIN_CUSTOM', index, custom })}
-          onSetField={(index, side, path) => dispatch({ type: 'SET_JOIN_FIELD', index, side, path })}
-          onSetOperator={(index, operator) => dispatch({ type: 'SET_JOIN_OPERATOR', index, operator })}
-          onOpenExpressionBuilder={(index, currentText) => {
+          onSetCustom={(index, custom, condIndex) => dispatch({ type: 'SET_JOIN_CUSTOM', index, custom, condIndex })}
+          onSetField={(index, side, path, condIndex) => dispatch({ type: 'SET_JOIN_FIELD', index, side, path, condIndex })}
+          onSetOperator={(index, operator, condIndex) => dispatch({ type: 'SET_JOIN_OPERATOR', index, operator, condIndex })}
+          onOpenExpressionBuilder={(index, currentText, condIndex) => {
             setExprBuilder({
               fields: qualifiedFieldsAllTables(),
               initial: currentText,
               onOk: text => {
-                dispatch({ type: 'SET_JOIN_EXPRESSION', index, expression: text });
+                dispatch({ type: 'SET_JOIN_EXPRESSION', index, expression: text, condIndex });
                 setExprBuilder(null);
               },
             });

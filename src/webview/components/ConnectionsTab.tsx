@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { MetaTable, MetaField } from '../../core/metadata/types';
-import type { SelectedTable, Join, ConditionOperator } from '../../core/query/queryModel';
+import type { SelectedTable, Join, JoinCondition, ConditionOperator } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { accumPeriodFields } from '../../core/query/accumVirtualFields';
 
@@ -12,12 +12,32 @@ interface Props {
   joins: Join[];
   onAddJoin: () => void;
   onRemoveJoin: (index: number) => void;
-  onSetTable: (index: number, side: 'left' | 'right', tableId: string) => void;
+  onAddJoinCondition: (index: number) => void;
+  onRemoveJoinCondition: (index: number, condIndex: number) => void;
+  onSetTable: (index: number, side: 'left' | 'right', tableId: string, condIndex: number) => void;
   onSetAll: (index: number, side: 'left' | 'right', value: boolean) => void;
-  onSetCustom: (index: number, custom: boolean) => void;
-  onSetField: (index: number, side: 'left' | 'right', path: string) => void;
-  onSetOperator: (index: number, operator: ConditionOperator) => void;
-  onOpenExpressionBuilder: (index: number, currentText: string) => void;
+  onSetCustom: (index: number, custom: boolean, condIndex: number) => void;
+  onSetField: (index: number, side: 'left' | 'right', path: string, condIndex: number) => void;
+  onSetOperator: (index: number, operator: ConditionOperator, condIndex: number) => void;
+  onOpenExpressionBuilder: (index: number, currentText: string, condIndex: number) => void;
+}
+
+/**
+ * Конъюнкты соединения для отрисовки: из `join.conditions[]` (фаза 6.13), либо —
+ * для соединений из UI без поконъюнктной модели — один конъюнкт из
+ * верхнеуровневых полей соединения (зеркало conditions[0]).
+ */
+function joinConjuncts(j: Join): JoinCondition[] {
+  if (j.conditions && j.conditions.length > 0) return j.conditions;
+  return [{
+    custom: j.custom,
+    leftTableId: j.leftTableId,
+    leftPath: j.leftPath,
+    operator: j.operator,
+    rightTableId: j.rightTableId,
+    rightPath: j.rightPath,
+    expression: j.expression,
+  }];
 }
 
 const SECTION_HEADER: React.CSSProperties = {
@@ -97,7 +117,8 @@ function tableFields(meta: MetaTable, sel: SelectedTable): MetaField[] {
 export function ConnectionsTab(props: Props): React.ReactElement {
   const {
     selectedTables, metaTables, joins,
-    onAddJoin, onRemoveJoin, onSetTable, onSetAll, onSetCustom, onSetField,
+    onAddJoin, onRemoveJoin, onAddJoinCondition, onRemoveJoinCondition,
+    onSetTable, onSetAll, onSetCustom, onSetField,
     onSetOperator, onOpenExpressionBuilder,
   } = props;
 
@@ -110,10 +131,10 @@ export function ConnectionsTab(props: Props): React.ReactElement {
     return tableFields(meta, sel).map(f => f.name);
   }
 
-  const tableSelect = (index: number, side: 'left' | 'right', value: string) => (
+  const tableSelect = (index: number, condIndex: number, side: 'left' | 'right', value: string) => (
     <select
       value={value}
-      onChange={e => onSetTable(index, side, e.target.value)}
+      onChange={e => onSetTable(index, side, e.target.value, condIndex)}
       style={{ ...INPUT, width: W_TABLE, flexShrink: 0 }}
     >
       {selectedTables.map(t => (
@@ -122,10 +143,10 @@ export function ConnectionsTab(props: Props): React.ReactElement {
     </select>
   );
 
-  const fieldSelect = (index: number, side: 'left' | 'right', tableId: string, value: string) => (
+  const fieldSelect = (index: number, condIndex: number, side: 'left' | 'right', tableId: string, value: string) => (
     <select
       value={value}
-      onChange={e => onSetField(index, side, e.target.value)}
+      onChange={e => onSetField(index, side, e.target.value, condIndex)}
       style={{ ...INPUT, flex: 1, minWidth: 0 }}
     >
       <option value=""></option>
@@ -154,66 +175,91 @@ export function ConnectionsTab(props: Props): React.ReactElement {
           <div style={{ flex: 1, padding: '2px 6px' }}>Условие связи</div>
         </div>
         <div style={dropZone}>
-          {joins.map((j, i) => (
-            <div key={i} style={{ ...ROW, borderBottom: '1px solid var(--vscode-panel-border, #333)' }}>
-              <span style={{ width: W_NUM, flexShrink: 0, textAlign: 'right', paddingRight: 8 }}>{i + 1}</span>
-              {tableSelect(i, 'left', j.leftTableId)}
-              <input
-                type="checkbox"
-                title="Все (таблица 1)"
-                checked={j.leftAll}
-                onChange={e => onSetAll(i, 'left', e.target.checked)}
-                style={{ width: W_ALL, flexShrink: 0 }}
-              />
-              {tableSelect(i, 'right', j.rightTableId)}
-              <input
-                type="checkbox"
-                title="Все (таблица 2)"
-                checked={j.rightAll}
-                onChange={e => onSetAll(i, 'right', e.target.checked)}
-                style={{ width: W_ALL, flexShrink: 0 }}
-              />
-              <input
-                type="checkbox"
-                title="Произвольное условие"
-                checked={j.custom}
-                onChange={e => onSetCustom(i, e.target.checked)}
-                style={{ width: W_CUSTOM, flexShrink: 0 }}
-              />
-              {!j.custom ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}>
-                  {fieldSelect(i, 'left', j.leftTableId, j.leftPath ?? '')}
-                  <select
-                    value={j.operator ?? '='}
-                    onChange={e => onSetOperator(i, e.target.value as ConditionOperator)}
-                    style={{ ...INPUT, width: 60, flexShrink: 0 }}
-                  >
-                    {OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
-                  </select>
-                  {fieldSelect(i, 'right', j.rightTableId, j.rightPath ?? '')}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                  <span
-                    style={{
-                      flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      color: j.expression ? 'inherit' : 'var(--vscode-descriptionForeground, #888)',
-                    }}
-                  >
-                    {j.expression || 'Произвольное условие…'}
+          {joins.map((j, i) => {
+            const conjuncts = joinConjuncts(j);
+            const multi = conjuncts.length > 1;
+            return conjuncts.map((c, ci) => {
+              // Таблицы конъюнкта: для стандартного — из leftTableId/rightTableId
+              // конъюнкта (с откатом на верхнеуровневые поля соединения).
+              const leftTableId = c.leftTableId ?? j.leftTableId;
+              const rightTableId = c.rightTableId ?? j.rightTableId;
+              return (
+                <div key={`${i}.${ci}`} style={{ ...ROW, borderBottom: '1px solid var(--vscode-panel-border, #333)' }}>
+                  <span style={{ width: W_NUM, flexShrink: 0, textAlign: 'right', paddingRight: 8 }}>
+                    {ci === 0 ? i + 1 : ''}
                   </span>
+                  {tableSelect(i, ci, 'left', leftTableId)}
+                  <input
+                    type="checkbox"
+                    title="Все (таблица 1)"
+                    checked={j.leftAll}
+                    onChange={e => onSetAll(i, 'left', e.target.checked)}
+                    style={{ width: W_ALL, flexShrink: 0 }}
+                  />
+                  {tableSelect(i, ci, 'right', rightTableId)}
+                  <input
+                    type="checkbox"
+                    title="Все (таблица 2)"
+                    checked={j.rightAll}
+                    onChange={e => onSetAll(i, 'right', e.target.checked)}
+                    style={{ width: W_ALL, flexShrink: 0 }}
+                  />
+                  <input
+                    type="checkbox"
+                    title="Произвольное условие"
+                    checked={c.custom}
+                    onChange={e => onSetCustom(i, e.target.checked, ci)}
+                    style={{ width: W_CUSTOM, flexShrink: 0 }}
+                  />
+                  {!c.custom ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}>
+                      {fieldSelect(i, ci, 'left', leftTableId, c.leftPath ?? '')}
+                      <select
+                        value={c.operator ?? '='}
+                        onChange={e => onSetOperator(i, e.target.value as ConditionOperator, ci)}
+                        style={{ ...INPUT, width: 60, flexShrink: 0 }}
+                      >
+                        {OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
+                      </select>
+                      {fieldSelect(i, ci, 'right', rightTableId, c.rightPath ?? '')}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                      <span
+                        style={{
+                          flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          color: c.expression ? 'inherit' : 'var(--vscode-descriptionForeground, #888)',
+                        }}
+                      >
+                        {c.expression || 'Произвольное условие…'}
+                      </span>
+                      <button
+                        style={ICON_BTN}
+                        title="Открыть конструктор выражения"
+                        onClick={() => onOpenExpressionBuilder(i, c.expression ?? '', ci)}
+                      >
+                        …
+                      </button>
+                    </div>
+                  )}
                   <button
                     style={ICON_BTN}
-                    title="Открыть конструктор выражения"
-                    onClick={() => onOpenExpressionBuilder(i, j.expression ?? '')}
+                    title="Добавить условие к связи"
+                    onClick={() => onAddJoinCondition(i)}
                   >
-                    …
+                    +
+                  </button>
+                  <button
+                    style={REMOVE_BTN}
+                    title={multi ? 'Удалить условие' : 'Удалить связь'}
+                    onClick={() => multi ? onRemoveJoinCondition(i, ci) : onRemoveJoin(i)}
+                  >
+                    ✕
                   </button>
                 </div>
-              )}
-              <button style={REMOVE_BTN} title="Удалить связь" onClick={() => onRemoveJoin(i)}>✕</button>
-            </div>
-          ))}
+              );
+            });
+          })}
           {joins.length === 0 && (
             <div style={{ padding: 6, color: 'var(--vscode-descriptionForeground, #888)', fontSize: 12 }}>
               Нажмите «+», чтобы добавить связь между таблицами.
