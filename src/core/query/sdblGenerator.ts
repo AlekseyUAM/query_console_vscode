@@ -929,7 +929,11 @@ function renderConditions(
 
 /**
  * Секция ИМЕЮЩИЕ (фильтр по агрегатам). Конструктор 1С отделяет её пустой строкой и
- * форматирует условия как ГДЕ. Возвращает [] если условий нет.
+ * форматирует условия как ГДЕ, НО разделитель списка — ЗАВЕРШАЮЩЕЕ ` И` в конце
+ * последней строки условия, а не префикс `И ` следующего (фаза 6.14, MCP):
+ *   `КОЛИЧЕСТВО(…) > 1 И\n\t&Параметр`. После `ЕСТЬ НЕ NULL ` (с хвостовым
+ * пробелом) получается двойной пробел перед И — так печатает и конструктор.
+ * Возвращает [] если условий нет.
  */
 function renderHaving(
   having: Condition[] | undefined,
@@ -937,7 +941,7 @@ function renderHaving(
 ): string[] {
   const conds = buildConditionStrings(having, aliases, 'having');
   if (conds.length === 0) return [];
-  return ['', 'ИМЕЮЩИЕ', ...conds.map((c, i) => (i === 0 ? `\t${c}` : `\tИ ${c}`))];
+  return ['', 'ИМЕЮЩИЕ', ...conds.map((c, i) => `\t${c}${i < conds.length - 1 ? ' И' : ''}`)];
 }
 
 export function formatAsBslString(text: string): string {
