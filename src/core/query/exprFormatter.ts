@@ -122,6 +122,17 @@ export function appendIsNotNullTrailingSpace(text: string): string {
  * раскладывает по строкам с переносом по оператору; сплющивать его нельзя.
  */
 export function leafHasTopBoolean(raw: string): boolean {
+  return leafHasBoolean(raw, false);
+}
+
+/**
+ * Обобщение: булев оператор И/ИЛИ на верхнем уровне (`anyDepth=false`) либо на
+ * ЛЮБОЙ глубине скобок (`anyDepth=true`); `И` диапазона `МЕЖДУ a И b` не считается.
+ * Конструктор переносит строку по И/ИЛИ и внутри скобочной группы
+ * (`a <> (x И y)` печатается с переносом) — для сплющивания листа важна
+ * любая глубина.
+ */
+function leafHasBoolean(raw: string, anyDepth: boolean): boolean {
   let toks: Token[];
   try {
     toks = tokenize(raw);
@@ -134,7 +145,7 @@ export function leafHasTopBoolean(raw: string): boolean {
     if (t.type === 'eof') break;
     if (t.type === 'punct' && t.value === '(') { depth++; continue; }
     if (t.type === 'punct' && t.value === ')') { if (depth > 0) depth--; continue; }
-    if (depth !== 0) continue;
+    if (!anyDepth && depth !== 0) continue;
     if (isWord(t, 'МЕЖДУ')) { betweenPending++; continue; }
     if (isOr(t)) return true;
     if (isAnd(t)) {
@@ -174,6 +185,48 @@ export function flattenLeafText(raw: string): string {
     out += text;
   }
   return out;
+}
+
+/**
+ * Сплющивание МНОГОСТРОЧНОГО листового выражения в одну строку, если это
+ * безопасно (фаза 6.15.3, MCP-пробы): конструктор 1С печатает листовые выражения
+ * (вложенные вызовы функций вида `ЕСТЬNULL(a, ЕСТЬNULL(b, c))`, разбитые
+ * разработчиком по строкам) ОДНОЙ строкой — и в списке выборки, и в ГДЕ.
+ * Не сплющиваем: лист с вложенным подзапросом (`В (ВЫБРАТЬ …)` раскладывается
+ * по строкам), лист с верхнеуровневым И/ИЛИ (конструктор переносит по
+ * оператору, в т.ч. ВНУТРИ скобочной группы: `a <> (x И y)`), лист с ВЫБОР
+ * где угодно — даже внутри вызова функции (`СУММА(ВЫБОР … КОНЕЦ)`) конструктор
+ * раскладывает ВЫБОР по строкам, — а также лист, в который парсер ошибочно
+ * захватил хвостовые секции запроса (`…3\n\nУПОРЯДОЧИТЬ ПО …`, `{ГДЕ …}`) —
+ * их многострочную геометрию трогать нельзя. Однострочный текст возвращается
+ * как есть.
+ */
+export function flattenMultilineLeaf(raw: string): string {
+  return raw.includes('\n') && !leafFlattenBlocked(raw) && !leafHasBoolean(raw, true)
+    ? flattenLeafText(raw)
+    : raw;
+}
+
+/**
+ * Стоп-слова сплющивания листа: подзапрос (ВЫБРАТЬ), ВЫБОР, секции запроса,
+ * которые парсер мог затянуть в хвост листа, и `{` построителя.
+ */
+const FLATTEN_STOP_WORDS = new Set([
+  'ВЫБРАТЬ', 'ВЫБОР', 'УПОРЯДОЧИТЬ', 'СГРУППИРОВАТЬ', 'ИТОГИ', 'ОБЪЕДИНИТЬ',
+  'ИНДЕКСИРОВАТЬ', 'ИМЕЮЩИЕ', 'ПОМЕСТИТЬ',
+]);
+function leafFlattenBlocked(raw: string): boolean {
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return true;
+  }
+  return toks.some(
+    (t) =>
+      (t.type === 'punct' && (t.value === '{' || t.value === '}')) ||
+      ((t.type === 'keyword' || t.type === 'ident') && FLATTEN_STOP_WORDS.has(t.value.toUpperCase()))
+  );
 }
 
 /**

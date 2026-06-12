@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -520,7 +520,9 @@ export function formatSelectExpression(expression: string): string {
     ? formatExpression(expression.trim(), 'select')
     // Квирк `… ЕСТЬ НЕ NULL ` (хвостовой пробел) действует и в слоте выборки: при
     // наличии `КАК <псевдоним>` это даёт двойной пробел `NULL  КАК` (как конструктор).
-    : appendIsNotNullTrailingSpace(normalizeLeafCase(expression));
+    // Многострочный лист (разбитый разработчиком вызов функции) конструктор
+    // печатает одной строкой — сплющиваем до нормализации (фаза 6.15.3).
+    : appendIsNotNullTrailingSpace(normalizeLeafCase(flattenMultilineLeaf(expression)));
 }
 
 /**
@@ -850,7 +852,7 @@ function buildConditionStrings(
       // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
       // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.
       // НЕ-блок (`НЕ (a И b)`) переотрисовывается даже без ИЛИ внутри (фаза 6.14).
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(expr))));
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(flattenMultilineLeaf(expr)))));
       continue;
     }
     if (!c.path) continue;
