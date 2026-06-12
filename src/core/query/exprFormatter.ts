@@ -1362,15 +1362,16 @@ function renderJoin(tree: Node, ctx: RenderCtx): string {
  * И-конъюнкт — ind=3/orLvl=1 (ИЛИ на 4). Первая строка без ведущего отступа (как у
  * `formatExpression`); префикс `И ` добавляет вызывающий.
  */
-export function formatJoinConjunct(raw: string, first: boolean): string {
+export function formatJoinConjunct(raw: string, first: boolean, base = 2): string {
   // flattenLeaves: многострочные листья внутри конъюнкта (`В (\n a,\n b)` в
   // ИЛИ-операнде) конструктор сплющивает в одну строку (корпус: ВариантыОтчетов
   // bsl_27/28); листья с подзапросом/булевыми операторами не трогаются.
+  // `base` — отступ строки ПО (2 + глубина вложенного дерева, фаза 6.15.8).
   const parser = new Parser(raw.trim(), true);
   const tree = parser.parse();
   const tail = parser.tail();
-  const ctx: RenderCtx = { cont: 2, caseBoolean: true };
-  const ind = first ? 2 : 3;
+  const ctx: RenderCtx = { cont: base, caseBoolean: true };
+  const ind = first ? base : base + 1;
   const orLvl = first ? 0 : 1;
   // Произвольный ВЫБОР-конъюнкт конструктор печатает в скобках (корпус: 6/6 в
   // скобках, голых нет) — скобки исходника сняты классификатором, восстанавливаем

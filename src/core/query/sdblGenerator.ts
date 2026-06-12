@@ -168,6 +168,7 @@ function hasTopLevelBooleanOp(expr: string): boolean {
   const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
   let depth = 0;
   let inStr = false;
+  let betweenPending = 0;
   for (let i = 0; i < n; i++) {
     const c = expr[i];
     if (inStr) {
@@ -179,10 +180,15 @@ function hasTopLevelBooleanOp(expr: string): boolean {
     if (c === ')') { depth--; continue; }
     if (depth !== 0) continue;
     // Граница слова на глубине 0: проверяем И и ИЛИ (регистронезависимо).
+    // `И` диапазона `МЕЖДУ a И b` — не булев оператор (фаза 6.15.8).
     if (!isWordChar(expr[i - 1])) {
-      const up = expr.slice(i, i + 3).toUpperCase();
+      const up = expr.slice(i, i + 6).toUpperCase();
+      if (up.startsWith('МЕЖДУ') && !isWordChar(expr[i + 5])) { betweenPending++; continue; }
       if (up.startsWith('ИЛИ') && !isWordChar(expr[i + 3])) return true;
-      if (expr[i].toUpperCase() === 'И' && !isWordChar(expr[i + 1])) return true;
+      if (expr[i].toUpperCase() === 'И' && !isWordChar(expr[i + 1])) {
+        if (betweenPending > 0) { betweenPending--; continue; }
+        return true;
+      }
     }
   }
   return false;
@@ -223,7 +229,7 @@ function renderArbitraryConjunct(expr: string): string {
  * многострочный) — структурной переотрисовкой форматера с той же геометрией, что
  * у legacy-пути (фаза 6.15.5: ворота «сложный конъюнкт → legacy» сняты).
  */
-function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>): string {
+function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>, depth = 0): string {
   const lines: string[] = [];
   conditions.forEach((c, k) => {
     let sub: string[];
@@ -233,11 +239,11 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
       const op = c.operator ?? '=';
       sub = [`${la}.${c.leftPath ?? ''} ${op} ${ra}.${c.rightPath ?? ''}`];
     } else if (conjunctNeedsComplexFormat(c)) {
-      sub = formatJoinConjunct((c.expression ?? '').trim(), k === 0).split('\n');
+      sub = formatJoinConjunct((c.expression ?? '').trim(), k === 0, 2 + depth).split('\n');
     } else {
       sub = [renderArbitraryConjunct(c.expression ?? '')];
     }
-    if (k > 0) sub[0] = `\t\t\tИ ${sub[0]}`;
+    if (k > 0) sub[0] = `${'\t'.repeat(3 + depth)}И ${sub[0]}`;
     lines.push(...sub);
   });
   return lines.join('\n');
@@ -254,13 +260,13 @@ function conjunctNeedsComplexFormat(c: NonNullable<Join['conditions']>[number]):
   return hasTopLevelBooleanOp(e) || needsFormatting(e);
 }
 
-function renderJoinCondition(join: Join, aliases: Map<string, string>): string {
+function renderJoinCondition(join: Join, aliases: Map<string, string>, depth = 0): string {
   // Поконъюнктная модель (фаза 6.13): при наличии conditions[] рендерим из неё —
   // скобки решаются пер-конъюнкт по флагу custom, сложные конъюнкты — форматером
   // по месту (фаза 6.15.5). Legacy-путь ниже остаётся для моделей без conditions[]
   // (построенных вебвью/сторой).
   if (join.conditions && join.conditions.length > 0) {
-    return renderJoinConjuncts(join.conditions, aliases);
+    return renderJoinConjuncts(join.conditions, aliases, depth);
   }
   if (join.custom) {
     // Составное условие (верхнеуровневый И/ИЛИ) или структура (ИЛИ/ВЫБОР) —
@@ -313,6 +319,19 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
   const inChain = new Set<string>();
   const lines: string[] = [];
 
+  // Отложенные `ПО` правовложенного дерева (фаза 6.15.8): список joins — преордер
+  // с глубиной; `ПО` соединения печатается после непрерывного хвоста соединений
+  // БОЛЬШЕЙ глубины (его подцепочки). Для плоской цепочки (все depth 0) стек
+  // выталкивается перед каждым следующим соединением — поведение прежнее.
+  const pendingPo: Array<{ join: Join; depth: number }> = [];
+  const flushPo = (toDepth: number): void => {
+    while (pendingPo.length > 0 && pendingPo[pendingPo.length - 1].depth >= toDepth) {
+      const p = pendingPo.pop()!;
+      const cond = renderJoinCondition(p.join, aliases, p.depth);
+      if (cond) lines.push(`\t\t${'\t'.repeat(p.depth)}ПО ${cond}`);
+    }
+  };
+
   joins.forEach((join, idx) => {
     // Источники соединения в порядке записи: затравка — левая таблица, присоединяемая —
     // правая. ПРАВОЕ соединение конструктор сохраняет без перестановки. Порядок
@@ -322,20 +341,23 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
     // полей) — откат к left/rightTableId (фаза 6.12).
     const seedId = join.seedTableId ?? join.leftTableId;
     const joinedId = join.joinedTableId ?? join.rightTableId;
+    const depth = join.depth ?? 0;
     const keyword = joinKeyword(join.leftAll, join.rightAll);
     const seed = byId.get(seedId);
     const joined = byId.get(joinedId);
     if (!seed || !joined) return;
 
-    if (idx === 0 || !inChain.has(seedId)) {
+    flushPo(depth);
+    if (idx === 0 || (depth === 0 && !inChain.has(seedId))) {
       lines.push(`\t${sourceLine(seed)}`);
       inChain.add(seedId);
     }
-    lines.push(`\t\t${keyword} СОЕДИНЕНИЕ ${sourceLine(joined)}`);
+    inChain.add(seedId);
+    lines.push(`\t\t${'\t'.repeat(depth)}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined)}`);
     inChain.add(joinedId);
-    const cond = renderJoinCondition(join, aliases);
-    if (cond) lines.push(`\t\tПО ${cond}`);
+    pendingPo.push({ join, depth });
   });
+  flushPo(0);
 
   // Таблицы, не участвующие ни в одной связи — дописываем после цепочки.
   const trailing = model.tables.filter(t => !inChain.has(t.id));

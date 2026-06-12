@@ -633,6 +633,8 @@ interface RawJoin {
   /** Сырые токены условия после `ПО` (до следующего соединения/запятой/секции). */
   condTokens: Token[];
   condText: string;
+  /** Глубина правовложенного дерева (0 — верхняя цепочка); см. Join.depth. */
+  depth: number;
 }
 
 interface FromResult {
@@ -684,7 +686,7 @@ function parseFrom(cur: Cursor): FromResult {
    * `RawJoin` накапливаются в порядке «затравка раньше использования»,
    * совместимом с плоским рендером генератора.
    */
-  const parseJoinChainFrom = (seedAlias: string): void => {
+  const parseJoinChainFrom = (seedAlias: string, depth: number): void => {
     let lastAlias = seedAlias;
     while (isJoinKeyword(cur)) {
       const kind = cur.next().value as RawJoin['kind'];
@@ -692,22 +694,29 @@ function parseFrom(cur: Cursor): FromResult {
       const joinedSource = readSource();
       tables.push(joinedSource);
       const joinedHead = joinedSource.alias!;
-      // Вложенная цепочка присоединяемого источника (её `ПО` раньше нашего).
-      if (isJoinKeyword(cur)) parseJoinChainFrom(joinedHead);
-      cur.expectKeyword('ПО');
-      const { tokens, text } = readJoinCondition(cur);
-      joins.push({
+      // ТЕКСТОВЫЙ порядок (преордер дерева, фаза 6.15.8): соединение пушится ДО
+      // разбора вложенной подцепочки, условие дозаполняется после её дочитки.
+      const raw: RawJoin = {
         kind,
         seedAlias: lastAlias,
         joinedAlias: joinedHead,
         // КОРЕНЬ цепочки (первая по тексту таблица): конструктор 1С при левоассоциа-
         // тивной цепочке считает СТАНДАРТНЫМ условие `<корень>.поле cmp <присоединяемая>.поле`,
         // а не `<предыдущая>.поле …`. Для классификации `ПО` (фаза 6.13) нужен корень,
-        // тогда как порядок СЦЕПЛЕНИЯ (seedAlias) — предыдущая таблица.
+        // тогда как порядок СЦЕПЛЕНИЯ (seedAlias) — предыдущая таблица. У вложенной
+        // подцепочки корень — её собственная затравка (joinedHead).
         chainSeedAlias: seedAlias,
-        condTokens: tokens,
-        condText: text,
-      });
+        condTokens: [],
+        condText: '',
+        depth,
+      };
+      joins.push(raw);
+      // Вложенная цепочка присоединяемого источника (её `ПО` раньше нашего).
+      if (isJoinKeyword(cur)) parseJoinChainFrom(joinedHead, depth + 1);
+      cur.expectKeyword('ПО');
+      const { tokens, text } = readJoinCondition(cur);
+      raw.condTokens = tokens;
+      raw.condText = text;
       // Левоассоциативность плоской цепочки: следующее `СОЕД` к последней таблице.
       lastAlias = joinedHead;
     }
@@ -716,7 +725,7 @@ function parseFrom(cur: Cursor): FromResult {
   for (;;) {
     const seed = readSource();
     tables.push(seed);
-    parseJoinChainFrom(seed.alias!);
+    parseJoinChainFrom(seed.alias!, 0);
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -1864,7 +1873,10 @@ function classifyJoinConjunct(
   joinedId: string
 ): JoinCondition {
   const arbitrary = (): JoinCondition => {
-    const text = stripOuterParens(sliceSource(source, tokens));
+    // Все внешние пары скобок снимаются (двойные `((НЕ x))` не накапливаются —
+    // генератор восстановит одну пару; фаза 6.15.8).
+    let text = sliceSource(source, tokens);
+    for (let s = stripOuterParens(text); s !== text; s = stripOuterParens(text)) text = s;
     return { custom: true, expression: text };
   };
   // Снять внешние сбалансированные пары скобок перед структурным разбором.
@@ -1958,6 +1970,8 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
       seedTableId: seedId,
       joinedTableId: joinedId,
       conditions,
+      // depth добавляется только у вложенных — плоские модели не меняются.
+      ...(raw.depth > 0 ? { depth: raw.depth } : {}),
     };
   }
 
@@ -1973,6 +1987,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
     seedTableId: seedId,
     joinedTableId: joinedId,
     conditions,
+    ...(raw.depth > 0 ? { depth: raw.depth } : {}),
   };
 }
 
