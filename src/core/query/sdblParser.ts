@@ -1819,6 +1819,13 @@ function splitJoinConjuncts(tokens: Token[]): Token[][] {
  * левый принадлежит затравке (`seedId`), правый присоединяемой (`joinedId`),
  * `cmp ∈ {=,<>,<,>,<=,>=}`. Всё прочее — произвольный конъюнкт (`custom=true`),
  * хранится дословным текстом (со снятой одной внешней парой скобок).
+ *
+ * Скобки исходника в классификации НЕ участвуют (фаза 6.15.5): конструктор 1С
+ * решает по структуре — стандартное условие связи (задаваемое мышкой: Таблица1,
+ * Таблица2, оператор) печатается без скобок, даже если разработчик обернул его
+ * во вводе; произвольное (галочка «Произвольное») — всегда в скобках. В золотом
+ * корпусе исключений нет: 575 голых конъюнктов все стандартные, 679 скобочных
+ * все произвольные.
  */
 function classifyJoinConjunct(
   tokens: Token[],
@@ -1831,24 +1838,23 @@ function classifyJoinConjunct(
     const text = stripOuterParens(sliceSource(source, tokens));
     return { custom: true, expression: text };
   };
-  // Внешние скобки вокруг конъюнкта → разработчик пометил «Произвольное».
-  if (tokens.length > 0 && tokens[0].type === 'punct' && tokens[0].value === '(') {
-    return arbitrary();
-  }
+  // Снять внешние сбалансированные пары скобок перед структурным разбором.
+  let inner = tokens;
+  while (hasBalancedOuterParens(inner)) inner = inner.slice(1, -1);
   // Найти верхнеуровневый оператор сравнения.
   let opIdx = -1;
   let depth = 0;
-  for (let k = 0; k < tokens.length; k++) {
-    const t = tokens[k];
+  for (let k = 0; k < inner.length; k++) {
+    const t = inner[k];
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
     else if (depth === 0 && isCondOperatorToken(t)) { opIdx = k; break; }
   }
-  if (opIdx <= 0 || opIdx >= tokens.length - 1) return arbitrary();
-  const op = tokens[opIdx].value;
+  if (opIdx <= 0 || opIdx >= inner.length - 1) return arbitrary();
+  const op = inner[opIdx].value;
   if (!STD_JOIN_OPERATORS.has(op)) return arbitrary();
-  const left = parseFieldRef(tokens.slice(0, opIdx), aliasToId);
-  const right = parseFieldRef(tokens.slice(opIdx + 1), aliasToId);
+  const left = parseFieldRef(inner.slice(0, opIdx), aliasToId);
+  const right = parseFieldRef(inner.slice(opIdx + 1), aliasToId);
   if (!left || !right) return arbitrary();
   // Стандартное: ЛЕВЫЙ операнд — поле КОРНЯ цепочки (затравки), ПРАВЫЙ — поле
   // присоединяемой таблицы. Конструктор 1С НЕ нормализует порядок операндов:
