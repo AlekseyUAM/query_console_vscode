@@ -647,8 +647,14 @@ describe('generate — дополнительно (фаза 5.3)', () => {
       );
     });
 
-    it('top <= 0 не добавляет ПЕРВЫЕ', () => {
-      expect(generate({ ...base(), selection: { top: 0 } })).toBe(expectedPlain);
+    it('top = 0 печатает ПЕРВЫЕ 0 (конструктор сохраняет нулевой лимит, MCP 6.15.11b)', () => {
+      expect(generate({ ...base(), selection: { top: 0 } })).toBe(
+        'ВЫБРАТЬ ПЕРВЫЕ 0\n\tВалюты.Ссылка КАК Ссылка\nИЗ\n\tСправочник.Валюты КАК Валюты'
+      );
+    });
+
+    it('отрицательный top не добавляет ПЕРВЫЕ', () => {
+      expect(generate({ ...base(), selection: { top: -1 } })).toBe(expectedPlain);
     });
 
     it('пустой selection → как раньше', () => {

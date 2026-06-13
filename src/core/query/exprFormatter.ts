@@ -328,6 +328,21 @@ function leafFlattenBlocked(raw: string): boolean {
 export function reindentLeafSubquery(text: string, base: number): string {
   if (!text.includes('\n')) return text;
   const lines = text.split('\n');
+  // Склеенная открывающая скобка `… В (` в конце строки, когда `ВЫБРАТЬ` стоит на
+  // СЛЕДУЮЩЕЙ строке (геометрия разработчика `В (\n\tВЫБРАТЬ …`). Конструктор 1С
+  // переносит `(` на строку `ВЫБРАТЬ` (`… В` + `\n` + отступ + `(ВЫБРАТЬ …`).
+  // Нормализуем перед перебазировкой: отделяем хвостовую `(` оператора `В`/
+  // `В ИЕРАРХИИ` и приклеиваем к началу следующей строки. Срабатывает только если
+  // отдельной строки `(ВЫБРАТЬ` ещё нет.
+  if (!lines.some((l) => l.replace(/^[\t ]+/u, '').startsWith('(ВЫБРАТЬ'))) {
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (!/(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\($/u.test(lines[i])) continue;
+      if (!lines[i + 1].replace(/^[\t ]+/u, '').startsWith('ВЫБРАТЬ')) continue;
+      lines[i] = lines[i].replace(/\s*\($/u, '');
+      lines[i + 1] = lines[i + 1].replace(/^([\t ]*)/u, '$1(');
+      break;
+    }
+  }
   let start = -1;
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].replace(/^[\t ]+/u, '').startsWith('(ВЫБРАТЬ')) { start = i; break; }
@@ -364,6 +379,14 @@ export function reindentLeafSubquery(text: string, base: number): string {
         lines[i] = lines[i].slice(-delta);
       }
     }
+  }
+  // Хвостовые пробелы СОДЕРЖАТЕЛЬНЫХ строк подзапроса конструктор срезает
+  // (`ИЗ ` → `ИЗ`). Не трогаем: строки со строковым литералом (там пробел может быть
+  // значимым) и пустые/только-пробельные строки-разделители (конструктор сохраняет их
+  // отступ, напр. `\t\t` вокруг `ОБЪЕДИНИТЬ ВСЕ`).
+  for (let i = start; i < lines.length; i++) {
+    if (lines[i].trim() === '') continue;
+    if (!lines[i].includes('"')) lines[i] = lines[i].replace(/[ \t]+$/u, '');
   }
   return lines.join('\n');
 }
@@ -1575,6 +1598,20 @@ export function stripNegatedFieldParens(text: string): string {
   return `НЕ ${m[1]}${m[2] ?? ''}`;
 }
 
+/**
+ * `НЕ(Алиас.Путь)` → `НЕ Алиас.Путь` (фаза 6.15.11b, MCP): конструктор 1С снимает
+ * скобки вокруг отрицания ОДИНОЧНОЙ ссылки на поле, когда `НЕ` стоит вплотную к
+ * скобке-операнду (`НЕ(поле)`, в отличие от `(НЕ поле)` — это stripNegatedFieldParens).
+ * Скобки сохраняются, если внутри что-то сложнее ссылки (сравнение, функция,
+ * запятая, вложенные скобки) — консервативно, чтобы не задеть правила 6.14.
+ * Применяется глобально по тексту листа (несколько `НЕ(поле)` в И/ИЛИ-цепочке).
+ */
+const NOT_FIELD_PARENS_RE =
+  /(^|[^\p{L}\p{N}_])НЕ\(\s*([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)\s*\)/gu;
+export function stripNotFieldParens(text: string): string {
+  return text.replace(NOT_FIELD_PARENS_RE, (_m, pre: string, path: string) => `${pre}НЕ ${path}`);
+}
+
 function renderBool(
   node: Node,
   ind: number,
@@ -1649,7 +1686,7 @@ function renderBool(
       return renderCaseE(node, caseE, ctx);
     }
     case 'leaf': {
-      let t = ctx.stripNotParens ? stripNegatedFieldParens(node.text) : node.text;
+      let t = ctx.stripNotParens ? stripNotFieldParens(stripNegatedFieldParens(node.text)) : node.text;
       // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении — в скобках (фаза 6.15.12).
       t = wrapBareCastOperand(t);
       // Подзапрос внутри листа — перебазировка на контекстный отступ (фаза 6.15.9).
