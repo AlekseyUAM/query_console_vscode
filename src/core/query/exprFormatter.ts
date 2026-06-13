@@ -403,6 +403,16 @@ export function reindentLeafSubquery(text: string, base: number): string {
       split.push(l);
     }
   }
+  // Закрывающая скобка В-подзапроса на ОТДЕЛЬНОЙ последней строке (`…\n\t)`):
+  // конструктор приклеивает её к последней содержательной строке тела
+  // (`…&КлючВарианта)`), а псевдоним поля добавляет вызывающий (фаза 6.15.20, MCP).
+  // Срабатывает только когда последняя строка — ровно закрывающие скобки.
+  const last = split.length - 1;
+  if (last > start && /^\t*\)+$/u.test(split[last])) {
+    const close = split[last].trim();
+    split.splice(last, 1);
+    split[split.length - 1] = split[split.length - 1].replace(/[ \t]+$/u, '') + close;
+  }
   return split.join('\n');
 }
 
