@@ -181,28 +181,46 @@ export function run(): void {
 
   fs.mkdirSync(outDir, { recursive: true });
 
-  const files = walk(cfRoot, '.bsl').sort();
   const seen = new Set<string>();
   let found = 0;
   let uniqueWritten = 0;
 
-  for (const file of files) {
+  const writeQuery = (q: ExtractedQuery, rel: string, idx: number): void => {
+    found++;
+    if (seen.has(q.text)) return;
+    seen.add(q.text);
+    uniqueWritten++;
+    const outFile = path.join(outDir, `${rel}_${idx + 1}.txt`);
+    fs.writeFileSync(outFile, q.text, 'utf8');
+  };
+
+  // .bsl: код модулей по всему CONFIG_DIR.
+  const bslFiles = walk(cfRoot, '.bsl').sort();
+  for (const file of bslFiles) {
     let source: string;
     try {
       source = fs.readFileSync(file, 'utf8');
     } catch {
       continue;
     }
-    const queries = extractQueryStrings(source);
     const rel = path.relative(cfRoot, file).split(path.sep).join('-');
-    queries.forEach((q, idx) => {
-      found++;
-      if (seen.has(q.text)) return;
-      seen.add(q.text);
-      uniqueWritten++;
-      const outFile = path.join(outDir, `${rel}_${idx + 1}.txt`);
-      fs.writeFileSync(outFile, q.text, 'utf8');
-    });
+    extractQueryStrings(source).forEach((q, idx) => writeQuery(q, rel, idx));
+  }
+
+  // .xml: макеты СКД — только поддерево Reports/ (см. spec 2026-06-13).
+  const reportsDir = path.join(cfRoot, 'Reports');
+  if (fs.existsSync(reportsDir)) {
+    const xmlFiles = walk(reportsDir, '.xml').sort();
+    for (const file of xmlFiles) {
+      let source: string;
+      try {
+        source = fs.readFileSync(file, 'utf8');
+      } catch {
+        continue;
+      }
+      const rel = path.relative(cfRoot, file).split(path.sep).join('-');
+      extractQueriesFromXml(source).forEach((q, idx) => writeQuery(q, rel, idx));
+    }
   }
 
   console.log(`found=${found} uniqueWritten=${uniqueWritten}`);
