@@ -162,7 +162,9 @@ function renderSource(t: SelectedTable, bodyTabs = 1): string {
       ? [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.condition ?? '']
       : [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.fillMethod ?? '', v.condition ?? ''];
     if (!positions.some(p => p !== '')) return t.fullName;
-    return `${t.fullName}(${positions.join(', ')})`;
+    // Условие (последняя позиция) — составное или подзапрос → конструктор разносит
+    // все параметры по строкам (как у Остатки, фаза 6.16.2).
+    return renderVirtualParams(t.fullName, positions, v.condition ?? '', bodyTabs);
   }
 
   // Остатки/срезы регистра сведений и накопления: фиксированная арность (Период, Условие),
