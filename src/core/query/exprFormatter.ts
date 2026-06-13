@@ -515,6 +515,16 @@ export function reindentLeafCase(text: string, base: number): string {
       lines[i] = reTab(raw, E);
       stack.pop();
       curWhen = -1;
+      // Соседний ВЫБОР на той же строке КОНЕЦ (`КОНЕЦ + ВЫБОР`, `КОНЕЦ) + СУММА(ВЫБОР`):
+      // арифметика из нескольких ВЫБОР внутри одного листа. Конструктор открывает
+      // новый блок с E, сдвинутым на чистый баланс скобок строки ДО слова ВЫБОР
+      // (закрытие `)` сразу скомпенсировано открытием `(` следующего вызова → E тот
+      // же). Переоткрываем стек и продолжаем (фаза 6.15.19).
+      if (endsWithVybor(lines[i])) {
+        const head = lines[i].replace(/(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u, '$1');
+        stack.push(E + parenDelta(head));
+        continue;
+      }
       if (stack.length === 0) {
         // Достигли КОНЕЦ внешнего ВЫБОР: оставшиеся строки (если есть непустые) —
         // нестандартный хвост, который не должен возникать; всё ок если их нет.
@@ -1856,6 +1866,20 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
     }
   } else if (slot === 'select') {
     const ctx: RenderCtx = { cont: 1, caseBoolean: false };
+    if (tree.kind === 'case' && tail.trim() !== '') {
+      // ВЫБОР — часть арифметики поля (`ВЫБОР…КОНЕЦ + ВЫБОР…КОНЕЦ`): булев парсер
+      // забирает только первый ВЫБОР, остаток уходит в tail дословно. Несколько
+      // соседних ВЫБОР раскладывает построчный reindentLeafCase (фаза 6.15.19);
+      // он переотбивает все КОНЕЦ/КОГДА на E=cont. Если он не справился (вернул
+      // вход без изменений) — откатываемся на старую склейку первого ВЫБОР + tail.
+      const flat = flattenMultilineLeaf(trimmed);
+      const reindented = reindentLeafCase(flat, ctx.cont);
+      body =
+        reindented !== flat
+          ? reindented
+          : renderCase(tree, ctx.cont, ctx, false).join('\n') + tail;
+      return body;
+    }
     if (tree.kind === 'case') {
       body = renderCase(tree, ctx.cont, ctx, false).join('\n');
     } else {
