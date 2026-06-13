@@ -542,6 +542,11 @@ export function reindentLeafCase(text: string, base: number): string {
   // (`И`/`ИЛИ`), стоящее внутри вложенной скобочной группы условия, конструктор
   // отступает на +1 за каждый незакрытый уровень скобок.
   let condParen = 0;
+  // Множество скобочных уровней текущего условия КОГДА, на которых встречается
+  // верхнеуровневый `ИЛИ` (см. orLevelsForCondition). На таком уровне конъюнкты `И`
+  // конструктор отступает на +1 глубже строк `ИЛИ` (приоритет И выше ИЛИ; фаза
+  // 6.15.21, MCP). Чистая `И`-цепочка (без `ИЛИ` на уровне) сдвига НЕ получает.
+  let condOrLevels = new Set<number>();
   // Чистый баланс скобок строки (вне строковых литералов).
   const parenDelta = (s: string): number => {
     let d = 0;
@@ -565,6 +570,25 @@ export function reindentLeafCase(text: string, base: number): string {
     const m = /^\t*([\p{L}]+)/u.exec(s);
     return m ? m[1].toUpperCase() : '';
   };
+  // Предсканирование условия КОГДА (строка startIdx — сама КОГДА): какие скобочные
+  // уровни несут верхнеуровневый `ИЛИ`. Уровень строки = баланс скобок к её НАЧАЛУ
+  // (после строки КОГДА). На таких уровнях конъюнкты `И` идут глубже (приоритет И>ИЛИ).
+  const orLevelsForCondition = (startIdx: number): Set<number> => {
+    const levels = new Set<number>();
+    let lvl = parenDelta(lines[startIdx]); // незакрытые скобки после строки КОГДА
+    for (let j = startIdx + 1; j < lines.length; j++) {
+      const r = lines[j];
+      if (r.trim() === '') continue;
+      const fw = firstWord(r);
+      if (fw === 'И' || fw === 'ИЛИ') {
+        if (fw === 'ИЛИ') levels.add(lvl);
+        lvl += parenDelta(r);
+      } else {
+        break; // ТОГДА/КОНЕЦ/прочее — конец условия
+      }
+    }
+    return levels;
+  };
 
   for (let i = openIdx + 1; i < lines.length; i++) {
     const raw = lines[i];
@@ -576,13 +600,17 @@ export function reindentLeafCase(text: string, base: number): string {
       const whenInd = E + 1;
       curWhen = whenInd;
       condParen = 0;
+      condOrLevels = orLevelsForCondition(i);
       lines[i] = reTab(raw, whenInd);
       condParen += parenDelta(raw);
     } else if (w === 'И' || w === 'ИЛИ') {
       // Продолжение условия КОГДА: базовый отступ whenInd+2, плюс по +1 за каждый
-      // незакрытый уровень скобок условия (вложенная группа `И (… ИЛИ …)`).
+      // незакрытый уровень скобок условия (вложенная группа `И (… ИЛИ …)`). Если на
+      // текущем уровне есть верхнеуровневый `ИЛИ`, конъюнкт `И` идёт ещё на +1 глубже
+      // (приоритет И>ИЛИ; фаза 6.15.21, MCP).
       if (curWhen < 0) return text;
-      lines[i] = reTab(raw, curWhen + 2 + condParen);
+      const orShift = w === 'И' && condOrLevels.has(condParen) ? 1 : 0;
+      lines[i] = reTab(raw, curWhen + 2 + condParen + orShift);
       condParen += parenDelta(raw);
     } else if (w === 'ТОГДА') {
       lines[i] = reTab(raw, E + 2);
@@ -2054,10 +2082,15 @@ function renderNotGroup(child: Node, ind: number, orLvl: number, ctx: RenderCtx)
   if (child.kind === 'or' || child.kind === 'and') {
     const word = child.kind === 'or' ? 'ИЛИ ' : 'И ';
     lines = [];
+    // Когда НЕ(-блок — это OR-цепочка с И-конъюнктами в операндах, конъюнкты `И`
+    // ВЕДУЩЕГО операнда конструктор кладёт на тот же отступ, что и `И` прочих
+    // операндов — cont+1, на +1 глубже строк `ИЛИ` (приоритет И>ИЛИ; фаза 6.15.21,
+    // MCP). Для одиночного операнда (нет верхнеур. ИЛИ) сдвига нет — andCont=cont.
+    const op0And = child.kind === 'or' ? cont + 1 : cont;
     child.operands.forEach((op, k) => {
       if (k === 0) {
         // Подзапрос операнда НЕ(-блока — на cont+1 (выравнен по операндам, 6.15.9).
-        lines.push(...renderBool(op, ind, cont, orLvl + 1, ctx, ind + 1, cont + 1));
+        lines.push(...renderBool(op, ind, op0And, orLvl + 1, ctx, ind + 1, cont + 1));
       } else {
         const sub = renderBool(op, cont, cont + 1, orLvl + 1, ctx, cont + 1, cont + 1);
         sub[0] = tabs(cont) + word + sub[0];
