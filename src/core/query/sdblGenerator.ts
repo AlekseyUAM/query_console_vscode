@@ -498,8 +498,12 @@ function buildQueryBlock(
 
   const conditionLines = renderConditions(model.conditions, aliases);
   // Конструктор 1С отделяет блок группировки пустой строкой (в отличие от ГДЕ).
+  // ВНУТРИ подзапроса-операнда условия (`В (ВЫБРАТЬ … СГРУППИРОВАТЬ … ИМЕЮЩИЕ …)`)
+  // конструктор такие разделительные пустые строки НЕ ставит (фаза 6.15.11c,
+  // MCP-пробы): секции идут вплотную.
+  const sectionSep = inConditionSubquery ? [] : [''];
   const groupingInner = renderGrouping(model.grouping, aliases);
-  const groupingLines = groupingInner.length ? ['', ...groupingInner] : [];
+  const groupingLines = groupingInner.length ? [...sectionSep, ...groupingInner] : [];
   // ИМЕЮЩИЕ — сразу за группировкой, тоже с предшествующей пустой строкой.
   const havingLines = renderHaving(model.having, aliases);
 
@@ -1064,7 +1068,10 @@ function renderHaving(
 ): string[] {
   const conds = buildConditionStrings(having, aliases, 'having');
   if (conds.length === 0) return [];
-  return ['', 'ИМЕЮЩИЕ', ...conds.map((c, i) => `\t${c}${i < conds.length - 1 ? ' И' : ''}`)];
+  // Разделительная пустая строка перед ИМЕЮЩИЕ — только на верхнем уровне; внутри
+  // подзапроса-операдна условия конструктор её не ставит (фаза 6.15.11c, MCP).
+  const sep = inConditionSubquery ? [] : [''];
+  return [...sep, 'ИМЕЮЩИЕ', ...conds.map((c, i) => `\t${c}${i < conds.length - 1 ? ' И' : ''}`)];
 }
 
 export function formatAsBslString(text: string): string {
