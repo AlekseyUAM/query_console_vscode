@@ -219,7 +219,13 @@ function splitTopLevelBool(expr: string): string {
  * условие остаётся инлайн: `Имя(П1, условие)`.
  */
 function renderVirtualParams(fullName: string, positions: string[], condition: string, bodyTabs: number): string {
-  if (!condition || !hasTopLevelBooleanOp(condition)) {
+  const hasBool = !!condition && hasTopLevelBooleanOp(condition);
+  // Условие-подзапрос (`(поля) В (ВЫБРАТЬ …)`) тоже разносит параметры по строкам,
+  // даже без верхнеуровневого И/ИЛИ: конструктор 1С печатает каждый параметр на своей
+  // строке, а тело подзапроса перебазирует на base+1 (фаза 6.16, MCP). Признак —
+  // многострочное условие (содержит перенос строки от тела `(ВЫБРАТЬ …)`).
+  const hasSubquery = !!condition && condition.includes('\n');
+  if (!condition || (!hasBool && !hasSubquery)) {
     return `${fullName}(${positions.join(', ')})`;
   }
   const base = bodyTabs + 2;
@@ -228,9 +234,11 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // вводе оно на одной строке): каждый конъюнкт — на отдельной строке, продолжения
   // на base+1. Если входной текст уже многострочный — reindentLeafBool лишь
   // переотбивает отступы. Сперва принудительно ставим переносы перед верхнеуровневыми
-  // И/ИЛИ, затем нормализуем отступ.
-  const split = splitTopLevelBool(condition.trim());
-  const condText = reindentLeafBool(split, base);
+  // И/ИЛИ, затем нормализуем отступ. Чистое условие-подзапрос (без И/ИЛИ) — через
+  // reindentLeafSubquery: `(ВЫБРАТЬ` встаёт на base+1, тело — на base+2.
+  const condText = hasBool
+    ? reindentLeafBool(splitTopLevelBool(condition.trim()), base)
+    : reindentLeafSubquery(condition.trim(), base + 1);
   const condLines = condText.split('\n');
   condLines[0] = pad + condLines[0].replace(/^\t+/u, '');
   // Предшествующие параметры (период и др.) — каждый на своей строке с запятой.
