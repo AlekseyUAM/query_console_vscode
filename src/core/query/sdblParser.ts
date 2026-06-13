@@ -2486,6 +2486,38 @@ function parseOrder(cur: Cursor, ctx: SectionResolveContext): Order {
       if (headTok.type !== 'ident' && headTok.type !== 'keyword') {
         throw cur.error('ожидался псевдоним поля упорядочивания', headTok);
       }
+      // Выражение ВЫБОР…КОНЕЦ как поле упорядочивания: поглощаем весь CASE
+      // (баланс ВЫБОР/КОНЕЦ + скобки) до запятой/секции/модификатора и сохраняем
+      // сырой срез как expression — генератор печатает его через formatSelectExpression
+      // (многострочная раскладка КОГДА/ТОГДА/ИНАЧЕ/КОНЕЦ). Без этого parseOrder
+      // распознавал ВЫБОР как голую ссылку и терял тело CASE.
+      if (headTok.value.toUpperCase() === 'ВЫБОР') {
+        const exprTokens: Token[] = [cur.next()];
+        let depth = 0;
+        let caseDepth = 1;
+        for (;;) {
+          const t = cur.peek();
+          if (t.type === 'eof') break;
+          if (depth === 0 && caseDepth === 0) {
+            if (t.type === 'keyword' && (isSectionKeyword(t.value) || t.value === 'УБЫВ' || t.value === 'ВОЗР' || t.value === 'ИЕРАРХИЯ')) break;
+            if (t.type === 'ident' && t.text.toUpperCase() === 'ВОЗР') break;
+            if (t.type === 'punct' && (t.value === ',' || t.value === ';' || t.value === '{' || t.value === '}')) break;
+          }
+          if (t.type === 'punct' && t.value === '(') depth++;
+          else if (t.type === 'punct' && t.value === ')') depth--;
+          else if ((t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === 'ВЫБОР') caseDepth++;
+          else if ((t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === 'КОНЕЦ' && caseDepth > 0) caseDepth--;
+          exprTokens.push(cur.next());
+        }
+        const { direction: caseDir, hierarchy: caseHier } = parseOrderModifiers(cur);
+        fields.push({
+          tableId: '', path: '', direction: caseDir,
+          expression: sliceSource(cur.source, exprTokens),
+          ...(caseHier ? { hierarchy: true } : {}),
+        });
+        if (cur.matchPunct(',')) continue;
+        break;
+      }
       cur.next();
       // Точечно-разделённый путь: `<голова>(.<сегмент>)*`.
       const segs = [headTok.text];
