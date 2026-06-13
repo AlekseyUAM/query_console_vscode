@@ -737,9 +737,11 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
 
   const tsLine = (tsf: SelectedTabSectionField): string => {
     const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
-    const subLines = tsf.fields.map((f, i) =>
-      `\t\t${f} КАК ${f}${i < tsf.fields.length - 1 ? ',' : ''}`
-    );
+    const subLines = tsf.fields.map((f, i) => {
+      // Псевдоним колонки: отличный — печатаем как есть, иначе авто `<поле> КАК <поле>`.
+      const colAlias = tsf.fieldAliases?.[i] ?? f;
+      return `\t\t${f} КАК ${colAlias}${i < tsf.fields.length - 1 ? ',' : ''}`;
+    });
     return `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.alias ?? tsf.tsName}`;
   };
 
@@ -1042,10 +1044,17 @@ export function generateDocument(doc: QueryDocument): string {
 
   const columns = deriveUnionColumns(members);
 
+  // Внутри подзапроса-условия (`В (ВЫБРАТЬ … ОБЪЕДИНИТЬ …)`) конструктор НЕ
+  // добавляет авто-псевдоним полю участника 0 (как и в не-union В-подзапросе,
+  // suppressAutoAlias); ЯВНЫЙ псевдоним при этом сохраняется (MCP validate_query).
+  const head0 = members[0]?.model.fields ?? [];
   const blocks = members.map((m, i) => {
-    const fieldLines = columns.map(col => {
+    const fieldLines = columns.map((col, ci) => {
       const expr = col.cells[i] ?? 'NULL';
-      return i === 0 ? `\t${expr} КАК ${col.alias}` : `\t${expr}`;
+      if (i !== 0) return `\t${expr}`;
+      const explicitAlias = head0[ci]?.alias !== undefined;
+      const emitAlias = !suppressAutoAlias || explicitAlias;
+      return emitAlias ? `\t${expr} КАК ${col.alias}` : `\t${expr}`;
     });
     const aliases = resolveAliases(m.model.tables);
     return buildQueryBlock(m.model, fieldLines, aliases);

@@ -61,6 +61,11 @@ export interface SelectedTabSectionField {
   tsName: string;
   tsFullName: string;
   fields: string[];
+  /**
+   * Псевдоним колонки, ОТЛИЧНЫЙ от имени поля (позиционно по `fields`); undefined —
+   * псевдоним совпадает с именем (генератор печатает `<поле> КАК <поле>`).
+   */
+  fieldAliases?: (string | undefined)[];
   /** Явный псевдоним всей табличной части (`… КАК <alias>`); по умолчанию = tsName. */
   alias?: string;
   /** Позиция в исходном списке выборки — см. SelectedField.selectOrder (фаза 6.15.20). */

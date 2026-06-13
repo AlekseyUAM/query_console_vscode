@@ -190,6 +190,12 @@ interface RawTabSection {
   tableAlias: string;
   tsName: string;
   fields: string[];
+  /**
+   * Явный псевдоним колонки `<поле> КАК <alias>`, отличный от имени поля
+   * (позиционно соответствует `fields`); undefined — псевдоним = имя поля.
+   * Конструктор печатает заданный псевдоним, иначе авто `<поле> КАК <поле>`.
+   */
+  fieldAliases?: (string | undefined)[];
   /** Явный псевдоним `… КАК <alias>` (если задан), иначе undefined. */
   alias?: string;
 }
@@ -551,6 +557,7 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
   // необязателен — 1С допускает голые имена `Идентификатор, ВариантЗапуска`,
   // которым конструктор сам подставляет псевдоним = имя поля.
   const fields: string[] = [];
+  const fieldAliases: (string | undefined)[] = [];
   for (;;) {
     let f = cur.peek();
     if (f.type !== 'ident' && f.type !== 'keyword') throw cur.error('ожидалось поле табличной части', f);
@@ -565,11 +572,19 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
       cur.next();
       f = seg;
     }
-    if (cur.matchKeyword('КАК')) {
-      cur.next(); // псевдоним поля (= имя поля)
+    // Псевдоним колонки. Обычно совпадает с именем поля; конструктор сохраняет и
+    // ОТЛИЧНЫЙ псевдоним (`ЭлементарныйВопрос КАК ЭлементарныйВопросОтвет`).
+    let colAlias: string | undefined;
+    if (cur.matchKeyword('КАК')) { // matchKeyword уже поглотил токен `КАК`
+      const a = cur.peek();
+      if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним поля после КАК', a);
+      cur.next();
+      colAlias = a.text;
     }
     // Исходный текст имени поля (для keyword-токенов value в верхнем регистре).
     fields.push(f.text);
+    // Отличный псевдоним сохраняем; совпадающий с именем — нет (авто `Поле КАК Поле`).
+    fieldAliases.push(colAlias !== undefined && colAlias !== f.text ? colAlias : undefined);
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -584,7 +599,7 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
       cur.next();
     }
   }
-  return { tableAlias, tsName, fields, alias };
+  return { tableAlias, tsName, fields, fieldAliases, alias };
 }
 
 function parseOneField(cur: Cursor): RawField {
@@ -677,7 +692,11 @@ function resolveTabSection(
   const table = tables.find(t => t.id === tableId);
   // tsFullName косметический (генератор использует только tsName и fields).
   const tsFullName = table ? `${table.fullName}.${ts.tsName}` : ts.tsName;
-  return { tableId, tsName: ts.tsName, tsFullName, fields: ts.fields, alias: ts.alias };
+  const hasColAlias = ts.fieldAliases?.some(a => a !== undefined);
+  return {
+    tableId, tsName: ts.tsName, tsFullName, fields: ts.fields, alias: ts.alias,
+    ...(hasColAlias ? { fieldAliases: ts.fieldAliases } : {}),
+  };
 }
 
 /** Сырой срез исходника по диапазону токенов тела. */
