@@ -2096,7 +2096,11 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
       node.operands.forEach((op, k) => {
         if (k === 0) {
           // Подзапрос операнда0 выравнивается с операндами ИЛИ: contInd+1 (MCP, 6.15.9).
-          lines.push(...renderBool(op, whenInd, contInd + 1, 1, ctx, whenInd + 1, contInd + 1));
+          // ВЫБОР как операнд0 верхнеуровневого ИЛИ КОГДА-условия: его КОНЕЦ конструктор
+          // выравнивает со строками ИЛИ (E = contInd = whenInd+2), а НЕ на whenInd+1, как
+          // у ВЫБОР, целиком составляющего условие (фаза 6.15.28, MCP).
+          const op0CaseE = op.kind === 'case' ? contInd : whenInd + 1;
+          lines.push(...renderBool(op, whenInd, contInd + 1, 1, ctx, op0CaseE, contInd + 1));
         } else {
           const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
           sub[0] = tabs(contInd) + 'ИЛИ ' + sub[0];
