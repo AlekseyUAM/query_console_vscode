@@ -6,8 +6,12 @@ import { generate } from '../../src/core/query/sdblGenerator';
 import { buildSelectAllModel } from '../../src/core/query/buildSelectAllModel';
 import type { MetaTable } from '../../src/core/metadata/types';
 
-const REF_DIR = path.resolve(__dirname, '../../tmp/meta1c');
-const YAML_DIR = path.resolve(__dirname, '../../tmp/parser_data/cf');
+// Закоммиченные эталоны и YAML-кэш текущей конфигурации (не зависят от gitignored
+// tmp/ — переживают очистку tmp и смену конфигурации). Подмножество meta1c,
+// нужное этим тестам, лежит в test/fixtures/corpus/meta1c; полный YAML-кэш —
+// в test/fixtures/corpus/metadata/cf (тот же, что у corpusRegression).
+const REF_DIR = path.resolve(__dirname, '../fixtures/corpus/meta1c');
+const YAML_DIR = path.resolve(__dirname, '../fixtures/corpus/metadata/cf');
 const model = loadMetadataFromYaml(YAML_DIR);
 const byFull = new Map(model.tables.map(t => [t.fullName, t]));
 
