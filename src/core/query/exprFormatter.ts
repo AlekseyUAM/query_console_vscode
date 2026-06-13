@@ -550,6 +550,49 @@ export function reindentLeafCase(text: string, base: number): string {
 }
 
 /**
+ * Переотступ продолжений булева листа поля выборки (фаза 6.15.19, MCP). Конструктор
+ * нормализует отступ строк-продолжений `И`/`ИЛИ` плоской И/ИЛИ-цепочки поля выборки
+ * к `base + 1` НЕЗАВИСИМО от исходного отступа разработчика (`X\n\t\t\tИ Y` →
+ * `X\n\tИ Y` при base=1). Применяется только к ПЛОСКОЙ цепочке: первая строка —
+ * операнд0 (любой текст), все последующие непустые строки обязаны начинаться с
+ * `И`/`ИЛИ` на верхнем уровне скобок. Любая иная геометрия (ВЫБОР, подзапрос,
+ * перенос операнда без И/ИЛИ, непарный баланс скобок) → возврат входа без изменений.
+ */
+export function reindentLeafBool(text: string, base: number): string {
+  if (!text.includes('\n')) return text;
+  if (/\bВЫБРАТЬ\b|\bВЫБОР\b/u.test(text)) return text; // подзапрос/CASE — не наша зона
+  const lines = text.split('\n');
+  const parenDelta = (s: string): number => {
+    let d = 0;
+    let inS = false;
+    for (let c = 0; c < s.length; c++) {
+      const ch = s[c];
+      if (ch === '"') { inS = !inS; continue; }
+      if (inS) continue;
+      if (ch === '(') d++;
+      else if (ch === ')') d--;
+    }
+    return d;
+  };
+  const firstWord = (s: string): string => {
+    const m = /^\t*([\p{L}]+)/u.exec(s);
+    return m ? m[1].toUpperCase() : '';
+  };
+  // Баланс скобок к началу каждой следующей строки: продолжение `И`/`ИЛИ` считаем
+  // верхнеуровневым, только если до него все скобки сбалансированы (depth 0).
+  let depth = parenDelta(lines[0]);
+  for (let i = 1; i < lines.length; i++) {
+    const raw = lines[i];
+    if (raw.trim() === '') { depth += parenDelta(raw); continue; }
+    const w = firstWord(raw);
+    if (depth !== 0 || (w !== 'И' && w !== 'ИЛИ')) return text; // не плоская цепочка
+    lines[i] = '\t'.repeat(base + 1) + raw.replace(/^\t+/u, '').replace(/\s+$/u, '');
+    depth += parenDelta(lines[i]);
+  }
+  return lines.join('\n');
+}
+
+/**
  * Правая часть простого условия `<op> <param>`. Конструктор 1С не ставит пробел перед
  * скобкой списка значений у оператора `В` (и `В ИЕРАРХИИ`): `В (&Список)` → `В(&Список)`,
  * `В ИЕРАРХИИ (&Род)` → `В ИЕРАРХИИ(&Род)`. Перед подзапросом (`В (ВЫБРАТЬ …)`) конструктор

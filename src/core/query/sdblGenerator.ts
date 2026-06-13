@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, wrapBareCastOperand, reprintLeafArithmetic } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -712,7 +712,10 @@ export function formatSelectExpression(expression: string): string {
     // число НЕзакрытых скобок перед ВЫБОР (фаза 6.15.9b, MCP).
     // Арифметика листа выборки переотрисовывается конструктором (пробелы вокруг
     // `+ - * /`, скобки по приоритету, обёртка ВЫРАЗИТЬ-операнда) — фаза 6.15.11a.
-    : appendIsNotNullTrailingSpace(normalizeLeafCase(reprintLeafArithmetic(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expression), 2), 1))));
+    // Плоская И/ИЛИ-цепочка поля (`X\n\t\t\tИ Y`) — продолжения на отступ 1+1
+    // (фаза 6.15.19, reindentLeafBool); needsFormatting=false (нет OR/CASE), поэтому
+    // булев принтер её не трогает.
+    : appendIsNotNullTrailingSpace(normalizeLeafCase(reprintLeafArithmetic(reindentLeafBool(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expression), 2), 1), 1))));
 }
 
 /**
