@@ -1355,6 +1355,13 @@ function pushOrOperand(operands: Node[], op: Node): void {
       return;
     }
   }
+  // Скобки вокруг И-группы операнда ИЛИ — избыточны (И связывает крепче ИЛИ);
+  // конструктор их снимает: `… ИЛИ (a И b)` → `… ИЛИ a И b` (фаза 6.15.21, MCP).
+  // Применимо к любой позиции операнда (приоритет операторов не зависит от места).
+  if (op.kind === 'group' && op.child.kind === 'and') {
+    operands.push(op.child);
+    return;
+  }
   operands.push(op);
 }
 
