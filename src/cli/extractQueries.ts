@@ -2,6 +2,34 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfig } from './corpusConfig';
 
+const NAMED_XML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+/**
+ * Декодирует XML-сущности в тексте за один проход слева направо.
+ * Обрабатывает именованные (&lt; &gt; &amp; &quot; &apos;) и числовые
+ * (&#nn; / &#xHH;) сущности. Проход слева направо корректно разбирает
+ * `&amp;lt;` → литерал `&lt;` (а не `<`).
+ */
+export function unescapeXmlEntities(s: string): string {
+  return s.replace(/&(amp|lt|gt|quot|apos|#[xX][0-9a-fA-F]+|#[0-9]+);/g, (m, ent: string) => {
+    if (ent[0] === '#') {
+      const code =
+        ent[1] === 'x' || ent[1] === 'X'
+          ? parseInt(ent.slice(2), 16)
+          : parseInt(ent.slice(1), 10);
+      if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return m;
+      return String.fromCodePoint(code);
+    }
+    return NAMED_XML_ENTITIES[ent];
+  });
+}
+
 export interface ExtractedQuery {
   text: string;
   lineStart: number;
@@ -105,7 +133,36 @@ export function extractQueryStrings(bslSource: string): ExtractedQuery[] {
   return result;
 }
 
+/**
+ * Извлекает запросы из XML-макета СКД: каждый блок <query>…</query>.
+ * Безопасно регэкспом — внутри текста запроса любой `<` экранирован как
+ * `&lt;`, поэтому `</query>` в теле встретиться не может. Тело декодируется
+ * из XML-сущностей и фильтруется по тому же критерию, что и BSL-литералы
+ * (начинается с ВЫБРАТЬ/УНИЧТОЖИТЬ). Тело отдаётся дословно (без trim).
+ */
+export function extractQueriesFromXml(xmlSource: string): ExtractedQuery[] {
+  const result: ExtractedQuery[] = [];
+  const re = /<query>([\s\S]*?)<\/query>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xmlSource)) !== null) {
+    const lineStart = xmlSource.slice(0, m.index).split('\n').length;
+    const text = unescapeXmlEntities(m[1]);
+    if (startsWithQueryKeyword(text)) {
+      result.push({ text, lineStart });
+    }
+  }
+  return result;
+}
+
 // ---- CLI ----
+
+function readSource(file: string): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
 
 function walk(dir: string, ext: string): string[] {
   const out: string[] = [];
@@ -132,28 +189,38 @@ export function run(): void {
 
   fs.mkdirSync(outDir, { recursive: true });
 
-  const files = walk(cfRoot, '.bsl').sort();
   const seen = new Set<string>();
   let found = 0;
   let uniqueWritten = 0;
 
-  for (const file of files) {
-    let source: string;
-    try {
-      source = fs.readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-    const queries = extractQueryStrings(source);
+  const writeQuery = (q: ExtractedQuery, rel: string, idx: number): void => {
+    found++;
+    if (seen.has(q.text)) return;
+    seen.add(q.text);
+    uniqueWritten++;
+    const outFile = path.join(outDir, `${rel}_${idx + 1}.txt`);
+    fs.writeFileSync(outFile, q.text, 'utf8');
+  };
+
+  // .bsl: код модулей по всему CONFIG_DIR.
+  const bslFiles = walk(cfRoot, '.bsl').sort();
+  for (const file of bslFiles) {
+    const source = readSource(file);
+    if (source === null) continue;
     const rel = path.relative(cfRoot, file).split(path.sep).join('-');
-    queries.forEach((q, idx) => {
-      found++;
-      if (seen.has(q.text)) return;
-      seen.add(q.text);
-      uniqueWritten++;
-      const outFile = path.join(outDir, `${rel}_${idx + 1}.txt`);
-      fs.writeFileSync(outFile, q.text, 'utf8');
-    });
+    extractQueryStrings(source).forEach((q, idx) => writeQuery(q, rel, idx));
+  }
+
+  // .xml: макеты СКД — только поддерево Reports/ (см. spec 2026-06-13).
+  const reportsDir = path.join(cfRoot, 'Reports');
+  if (fs.existsSync(reportsDir)) {
+    const xmlFiles = walk(reportsDir, '.xml').sort();
+    for (const file of xmlFiles) {
+      const source = readSource(file);
+      if (source === null) continue;
+      const rel = path.relative(cfRoot, file).split(path.sep).join('-');
+      extractQueriesFromXml(source).forEach((q, idx) => writeQuery(q, rel, idx));
+    }
   }
 
   console.log(`found=${found} uniqueWritten=${uniqueWritten}`);
