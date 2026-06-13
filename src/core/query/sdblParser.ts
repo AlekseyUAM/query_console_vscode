@@ -1209,7 +1209,9 @@ function interpretField(
   // 2) Попытка простого поля <alias>.<path>.
   const simple = trySimpleField(rf.bodyTokens, aliasToId);
   if (simple) {
-    const field: SelectedField = { tableId: simple.tableId, path: simple.path };
+    // Поле явно квалифицировано псевдонимом таблицы — помечаем для синтеза
+    // автопсевдонима склейкой сегментов пути (см. SelectedField.qualified).
+    const field: SelectedField = { tableId: simple.tableId, path: simple.path, qualified: true };
     if (rf.alias !== undefined) field.alias = rf.alias;
     fields.push(field);
     return;
@@ -3076,7 +3078,7 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
   // Участник 0 эмитит ровно одну строку поля на колонку, поэтому его поля
   // взаимно-однозначны с колонками объединения.
   /* v8 ignore next -- splitUnionMembers всегда даёт >=1 участника ⇒ ветвь [] недостижима */
-  const columnAliases = models.length > 0 ? models[0].fields.map(fieldAlias) : [];
+  const columnAliases = models.length > 0 ? models[0].fields.map(f => fieldAlias(f, models[0])) : [];
 
   const members: UnionMember[] = models.map((model, i) => {
     if (i > 0) rewriteMemberAliases(model, columnAliases);

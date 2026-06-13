@@ -765,6 +765,50 @@ function isBareParamExpr(expression: string | undefined): boolean {
 }
 
 /**
+ * Источник — табличная часть (ТЧ) объекта (`Справочник.X.ТЧ`, `Документ.X.ТЧ`,
+ * …): полное имя из ≥3 сегментов и НЕ виртуальная таблица регистра (та тоже
+ * трёхсегментна — `РегистрНакопления.X.Остатки`, но всегда `virtual`). У ТЧ
+ * ведущий сегмент пути `Ссылка` — навигация к владельцу, и конструктор 1С
+ * отбрасывает его при синтезе автопсевдонима склейкой (фаза 6.16).
+ */
+function isTabularSectionSource(t: SelectedTable | undefined): boolean {
+  if (!t || t.subquery || t.virtual) return false;
+  return t.fullName.split('.').length >= 3;
+}
+
+/**
+ * Автопсевдоним квалифицированного поля `<alias>.<path>` без явного `КАК`.
+ * Конструктор 1С склеивает ВСЕ сегменты пути (`Родитель.Имя` → `РодительИмя`),
+ * предварительно отбрасывая ведущий `Ссылка` у источника-ТЧ (где `Ссылка` —
+ * навигация к владельцу; `Ссылка.Контрагент` → `Контрагент`). У справочника/
+ * регистра ведущий `Ссылка` сохраняется (`Ссылка.Наименование` →
+ * `СсылкаНаименование`). Голое (неквалифицированное) поле сюда не попадает —
+ * ему даётся последний сегмент (курируемый 0043). Фаза 6.16, сверено MCP.
+ */
+function qualifiedAutoAlias(path: string, tabularSource: boolean): string {
+  let segs = path.split('.');
+  if (tabularSource && segs.length > 1 && segs[0].toUpperCase() === 'ССЫЛКА') {
+    segs = segs.slice(1);
+  }
+  return segs.join('');
+}
+
+/**
+ * Синтезированный автопсевдоним простого поля выборки без явного `КАК`, как его
+ * ставит конструктор 1С. Квалифицированному полю (`Алиас.Путь`) — склейка
+ * сегментов (с отбрасыванием ведущего `Ссылка` у ТЧ), голому — последний сегмент
+ * (фаза 6.16). Источник поля определяется по `model.tables`. Единая точка правды
+ * для генератора (fieldLine) и выравнивания колонок объединения (unionModel).
+ */
+export function synthesizedFieldAlias(model: QueryModel, field: SelectedField): string {
+  if (field.qualified) {
+    const t = model.tables.find(tb => tb.id === field.tableId);
+    return qualifiedAutoAlias(field.path, isTabularSectionSource(t));
+  }
+  return field.path.split('.').pop() ?? field.path;
+}
+
+/**
  * Автопсевдоним произвольного поля выборки без явного `КАК`. Конструктор 1С
  * для голого параметра `&Имя` ставит псевдоним = имени параметра (без `&`),
  * для остального — сквозной `Поле{n}`. Возвращает выбранный псевдоним; для
@@ -814,10 +858,15 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     const lhs = func
       ? wrapAggregate(func, `${tableAlias}.${f.path}`)
       : `${tableAlias}.${f.path}`;
-    // Конструктор 1С всегда даёт простому полю псевдоним = последний сегмент пути,
-    // если явный не задан (Таблица.Ссылка → Таблица.Ссылка КАК Ссылка). Агрегаты
-    // без явного псевдонима оставляем как есть.
-    const autoAlias = !func && !suppressAutoAlias ? (f.path.split('.').pop() ?? f.path) : undefined;
+    // Автопсевдоним простого поля без явного `КАК` (агрегаты — без автопсевдонима):
+    //  • квалифицированное поле (`Алиас.Путь`) — склейка ВСЕХ сегментов пути
+    //    (`Родитель.Имя` → `РодительИмя`), с отбрасыванием ведущего `Ссылка` у
+    //    источника-ТЧ (см. qualifiedAutoAlias, фаза 6.16, сверено MCP);
+    //  • голое поле (квалифицировано единственным источником) — последний сегмент
+    //    (`Владелец.Наименование` → `Наименование`, курируемый 0043).
+    const autoAlias = !func && !suppressAutoAlias
+      ? synthesizedFieldAlias(model, f)
+      : undefined;
     const effAlias = f.alias ?? autoAlias;
     return effAlias ? `\t${lhs} КАК ${effAlias}` : `\t${lhs}`;
   };

@@ -1,5 +1,5 @@
 import type { QueryModel, SelectedField } from './queryModel';
-import { fieldExpr } from './sdblGenerator';
+import { fieldExpr, synthesizedFieldAlias } from './sdblGenerator';
 
 /** Один запрос-участник объединения. */
 export interface UnionMember {
@@ -21,12 +21,16 @@ export interface QueryDocument {
 }
 
 /**
- * Псевдоним поля для целей объединения: явный `alias`, иначе последний сегмент
- * пути; для произвольного поля без псевдонима — сам текст выражения.
+ * Псевдоним поля для целей объединения/совпадения: явный `alias`, иначе
+ * синтезированный конструктором (склейка сегментов у квалифицированного поля,
+ * последний сегмент у голого — см. synthesizedFieldAlias); для произвольного
+ * поля без псевдонима — сам текст выражения. `model` нужна для определения
+ * ТЧ-источника при склейке; без неё — последний сегмент (legacy-вызовы).
  */
-export function fieldAlias(field: SelectedField): string {
+export function fieldAlias(field: SelectedField, model?: QueryModel): string {
   if (field.alias) return field.alias;
   if (field.expression) return field.expression;
+  if (model) return synthesizedFieldAlias(model, field);
   return field.path.split('.').pop()!;
 }
 
@@ -53,7 +57,7 @@ export function deriveUnionColumns(members: UnionMember[]): UnionColumn[] {
     const headField = head[i];
     columns.push({
       // Заголовок колонки — псевдоним соответствующего поля первого участника.
-      alias: headField ? fieldAlias(headField) : `Поле${i + 1}`,
+      alias: headField ? fieldAlias(headField, members[0].model) : `Поле${i + 1}`,
       cells: members.map(m => {
         const f = m.model.fields[i];
         return f ? fieldExpr(m.model, f) : null;

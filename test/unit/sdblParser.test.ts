@@ -201,7 +201,7 @@ describe('parseQuery — model shape', () => {
       { id: 't0', fullName: 'Справочник.Валюты', alias: 'Валюты' },
     ]);
     expect(model.fields).toEqual([
-      { tableId: 't0', path: 'Код', alias: 'КодВалюты' },
+      { tableId: 't0', path: 'Код', alias: 'КодВалюты', qualified: true },
     ]);
     expect(model.selection).toBeUndefined();
     expect(model.grouping).toBeUndefined();
