@@ -222,7 +222,7 @@ describe('parseQuery — model shape', () => {
       aggregates: [{ tableId: 't0', path: 'Наценка', func: 'КоличествоРазличных' }],
     });
     expect(model.fields).toEqual([
-      { tableId: 't0', path: 'Наценка', alias: 'Наценка' },
+      { tableId: 't0', path: 'Наценка', alias: 'Наценка', func: 'КоличествоРазличных' },
     ]);
   });
 });

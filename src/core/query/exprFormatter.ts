@@ -785,6 +785,227 @@ export function canonicalizeLeafLexemes(raw: string): string {
   return out;
 }
 
+// --- Переотрисовка арифметики листа (фаза 6.15.11a) -------------------------
+//
+// Конструктор 1С переотрисовывает арифметические выражения листа в каноническом
+// виде (подтверждено MCP validate_query):
+//   - бинарные операторы `+ - * / %` окружаются пробелами;
+//   - лишние скобки снимаются по приоритету/ассоциативности (левый операнд `/`,`-`
+//     без скобок: `(a - 1) - 2` → `a - 1 - 2`; правый — сохраняет: `a - (1 - 2)`);
+//   - вызов-приведение `ВЫРАЗИТЬ(…)`, стоящий ОПЕРАНДОМ арифметики, оборачивается
+//     в скобки: `ВЫРАЗИТЬ(…) * &П` → `(ВЫРАЗИТЬ(…)) * &П` (расширение правила
+//     6.15.12 со сравнения на арифметику);
+//   - унарный минус/плюс к пробелам оператора не относится (`-Поле`, `- -1`).
+// Реализация — самостоятельный рекурсивный парсер арифметики; при ЛЮБОМ незнакомом
+// токене (сравнение, булевы операторы, ЕСТЬ/МЕЖДУ/В/ПОДОБНО, `[` `?` `@`, ВЫБОР и
+// т. п.) возвращает исходный текст без изменений (чтобы не задеть прочие листья).
+// Регистр/числа/прочее НЕ трогает — этим занимается `normalizeLeafCase` после.
+
+interface ArithNode {
+  /** Готовый текст узла без внешних скобок. */
+  text: string;
+  /** Приоритет верхнего оператора узла: 2 = `* / %`, 1 = `+ -`, 3 = атом/унарный. */
+  prec: number;
+  /** Узел — голый вызов `ВЫРАЗИТЬ(…)` (особое правило обёртки операнда). */
+  bareCast: boolean;
+}
+
+const ARITH_ADD = new Set(['+', '-']);
+const ARITH_MUL = new Set(['*', '/', '%']);
+// Токены, при встрече которых арифметический парсер сдаётся (не наш случай).
+const ARITH_STOP_PUNCT = new Set(['<', '>', '=', '<=', '>=', '<>', '[', ']', '?', '@', ';']);
+const ARITH_STOP_WORDS = new Set([
+  'ИЛИ', 'И', 'НЕ', 'ВЫБОР', 'КОГДА', 'ТОГДА', 'ИНАЧЕ', 'КОНЕЦ', 'ЕСТЬ',
+  'МЕЖДУ', 'В', 'ПОДОБНО', 'ССЫЛКА', 'СПЕЦСИМВОЛ', 'ИЕРАРХИИ',
+]);
+
+class ArithError extends Error {}
+
+class ArithReprinter {
+  private i = 0;
+  constructor(private readonly sig: Token[]) {}
+
+  private peek(): Token | undefined { return this.sig[this.i]; }
+  private next(): Token { return this.sig[this.i++]; }
+  private val(t: Token | undefined): string { return t ? (t.text ?? t.value) : ''; }
+
+  /** Полный разбор: выражение должно занять все токены. */
+  parseAll(): string {
+    const node = this.parseExpr();
+    if (this.i !== this.sig.length) throw new ArithError('хвост');
+    return node.text;
+  }
+
+  private parseExpr(): ArithNode {
+    let left = this.parseTerm();
+    while (this.peek() && this.peek()!.type === 'punct' && ARITH_ADD.has(this.peek()!.value)) {
+      const op = this.next().value;
+      const right = this.parseTerm();
+      left = {
+        text: `${this.wrap(left, 1, 'left', op)} ${op} ${this.wrap(right, 1, 'right', op)}`,
+        prec: 1,
+        bareCast: false,
+      };
+    }
+    return left;
+  }
+
+  private parseTerm(): ArithNode {
+    let left = this.parseUnary();
+    while (this.peek() && this.peek()!.type === 'punct' && ARITH_MUL.has(this.peek()!.value)) {
+      const op = this.next().value;
+      const right = this.parseUnary();
+      left = {
+        text: `${this.wrap(left, 2, 'left', op)} ${op} ${this.wrap(right, 2, 'right', op)}`,
+        prec: 2,
+        bareCast: false,
+      };
+    }
+    return left;
+  }
+
+  private parseUnary(): ArithNode {
+    const t = this.peek();
+    if (t && t.type === 'punct' && (t.value === '-' || t.value === '+')) {
+      this.next();
+      const operand = this.parseUnary();
+      // Унарный минус/плюс без пробела: `-Поле`, `- -1` (родитель уже отделил).
+      return { text: `${t.value}${this.atomText(operand)}`, prec: 3, bareCast: false };
+    }
+    return this.parsePrimary();
+  }
+
+  /** Операнд унарного оператора в скобках, если это бинарная арифметика. */
+  private atomText(n: ArithNode): string {
+    return n.prec < 3 ? `(${n.text})` : n.text;
+  }
+
+  private parsePrimary(): ArithNode {
+    const t = this.peek();
+    if (!t) throw new ArithError('конец');
+    if (t.type === 'punct' && t.value === '(') {
+      this.next();
+      const inner = this.parseExpr();
+      const close = this.next();
+      if (!close || !(close.type === 'punct' && close.value === ')')) throw new ArithError('нет )');
+      // Скобочная группа: возвращаем содержимое, родитель решит про скобки.
+      return inner;
+    }
+    if (t.type === 'number' || t.type === 'string' || t.type === 'param' || t.type === 'date') {
+      this.next();
+      return { text: this.val(t), prec: 3, bareCast: false };
+    }
+    if (t.type === 'ident' || t.type === 'keyword') {
+      // Стоп-слова булевой/предикатной логики — не арифметика.
+      if (ARITH_STOP_WORDS.has((t.text ?? t.value).toUpperCase())) throw new ArithError('стоп-слово');
+      return this.parseNameOrCall();
+    }
+    if (t.type === 'punct' && ARITH_STOP_PUNCT.has(t.value)) throw new ArithError('стоп-пункт');
+    throw new ArithError('неизвестно');
+  }
+
+  /** Точечный путь `Имя(.Имя)*` или вызов `Имя(arg, …)`. */
+  private parseNameOrCall(): ArithNode {
+    const headTok = this.next();
+    const head = this.val(headTok);
+    // Путь: Имя.Имя…
+    let path = head;
+    while (this.peek() && this.peek()!.type === 'punct' && this.peek()!.value === '.') {
+      this.next();
+      const seg = this.next();
+      if (!seg || (seg.type !== 'ident' && seg.type !== 'keyword' && seg.type !== 'number')) {
+        throw new ArithError('сегмент пути');
+      }
+      path += '.' + this.val(seg);
+    }
+    // Вызов функции? Открывающая скобка СРАЗУ за именем (без точки).
+    if (path === head && this.peek() && this.peek()!.type === 'punct' && this.peek()!.value === '(') {
+      this.next(); // (
+      const args = this.parseArgList();
+      const close = this.next();
+      if (!close || !(close.type === 'punct' && close.value === ')')) throw new ArithError('нет ) вызова');
+      const isCast = head.toUpperCase() === 'ВЫРАЗИТЬ';
+      return { text: `${head}(${args.join(', ')})`, prec: 3, bareCast: isCast };
+    }
+    return { text: path, prec: 3, bareCast: false };
+  }
+
+  /** Список аргументов вызова: каждый — арифметика, опц. с `КАК <тип>` (ВЫРАЗИТЬ). */
+  private parseArgList(): string[] {
+    const args: string[] = [];
+    if (this.peek() && this.peek()!.type === 'punct' && this.peek()!.value === ')') return args;
+    for (;;) {
+      args.push(this.parseArg());
+      const t = this.peek();
+      if (t && t.type === 'punct' && t.value === ',') { this.next(); continue; }
+      break;
+    }
+    return args;
+  }
+
+  /** Аргумент вызова: арифм. выражение и опц. `КАК <тип-выражение>` (приведение). */
+  private parseArg(): string {
+    const expr = this.parseExpr();
+    const t = this.peek();
+    if (t && (t.type === 'keyword' || t.type === 'ident') && (t.text ?? t.value).toUpperCase() === 'КАК') {
+      this.next(); // КАК
+      // Тип — это вызов/имя (`ЧИСЛО(11, 0)`, `СТРОКА(10)`, ссылочный тип). Печатаем
+      // через тот же примитив (parseNameOrCall) для нормализации запятых внутри.
+      const type = this.parseNameOrCall();
+      return `${expr.text} КАК ${type.text}`;
+    }
+    return expr.text;
+  }
+
+  /**
+   * Решает обрамление дочернего операнда скобками. `parentPrec` — приоритет
+   * родительского оператора; `side` — слева/справа от него.
+   *   - Голый ВЫРАЗИТЬ-операнд арифметики всегда в скобках (особое правило 1С).
+   *   - prec < parentPrec → нужны скобки (защита приоритета).
+   *   - prec == parentPrec и правый операнд под `- /` (non-assoc) → скобки.
+   */
+  private wrap(n: ArithNode, parentPrec: number, side: 'left' | 'right', op: string): string {
+    if (n.bareCast) return `(${n.text})`;
+    if (n.prec < parentPrec) return `(${n.text})`;
+    // Правый операнд при равном приоритете: `-`/`/`/`%` неассоциативны справа
+    // (`a - (1 - 2)` сохраняет скобки), а `+`/`*` ассоциативны (скобки снимаются).
+    // Левый операнд при равном приоритете скобок не требует (левая ассоциативность):
+    // `(a - 1) - 2` → `a - 1 - 2`.
+    if (n.prec === parentPrec && side === 'right' && (op === '-' || op === '/' || op === '%')) {
+      return `(${n.text})`;
+    }
+    return n.text;
+  }
+}
+
+/**
+ * Переотрисовка арифметики листа. Возвращает канонический текст; при незнакомой
+ * конструкции — исходный (без изменений). См. комментарий выше.
+ */
+export function reprintLeafArithmetic(raw: string): string {
+  if (!raw || raw.includes('\n')) return raw;
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return raw;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length === 0) return raw;
+  // Должна присутствовать арифметика (оператор `+ - * / %` на каком-либо уровне)
+  // ИЛИ голый ВЫРАЗИТЬ-операнд — иначе незачем (и не рискуем чужими листьями).
+  const hasArithOp = sig.some(
+    (t) => t.type === 'punct' && (ARITH_ADD.has(t.value) || ARITH_MUL.has(t.value))
+  );
+  if (!hasArithOp) return raw;
+  try {
+    const out = new ArithReprinter(sig).parseAll();
+    return out;
+  } catch {
+    return raw;
+  }
+}
+
 export function normalizeLeafCase(raw: string): string {
   if (!raw) return raw;
   raw = canonicalizeLeafLexemes(raw);

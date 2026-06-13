@@ -32,6 +32,13 @@ export interface SelectedField {
   path: string;
   alias?: string;
   expression?: string;
+  /**
+   * Функция агрегирования поля (`СУММА(Алиас.Поле)` и т. п.). Хранится прямо на
+   * поле, т. к. два агрегата с ОДНИМ операндом (`СРЕДНЕЕ(Т.Вес)` и `МАКСИМУМ(Т.Вес)`)
+   * не различимы по (tableId, path) в общем списке `grouping.aggregates` — поиск
+   * по операнду возвращал бы первую функцию для обоих полей (фаза 6.15.11a).
+   */
+  func?: AggregateFunction;
 }
 
 export interface SelectedTabSectionField {

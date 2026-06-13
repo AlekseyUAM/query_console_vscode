@@ -1101,7 +1101,7 @@ function interpretField(
   // 1) Попытка агрегата.
   const agg = tryAggregate(rf.bodyTokens, aliasToId, resolveOwner);
   if (agg) {
-    const field: SelectedField = { tableId: agg.tableId, path: agg.path };
+    const field: SelectedField = { tableId: agg.tableId, path: agg.path, func: agg.func };
     if (rf.alias !== undefined) field.alias = rf.alias;
     fields.push(field);
     aggregates.push({ tableId: agg.tableId, path: agg.path, func: agg.func });
@@ -2297,12 +2297,43 @@ function parseOrder(cur: Cursor, ctx: SectionResolveContext): Order {
         }
         segs.push(cur.next().text);
       }
-      // Вызов функции (`ДОБАВИТЬКДАТЕ(…`) — не голое поле: квалификация не применяется.
-      const isCall = cur.isPunct('(');
+      // Вызов функции (`ДОБАВИТЬКДАТЕ(…`) или произвольное выражение — не голое поле.
+      // Поглощаем выражение целиком (баланс скобок) до запятой/секции и сохраняем
+      // сырой срез как expression: конструктор 1С печатает его дословно (норм. в
+      // генераторе). Без этого parseOrder терял хвост `(…)` и поле усекалось до
+      // имени функции (фаза 6.15.11a, MCP).
+      if (cur.isPunct('(')) {
+        const exprTokens: Token[] = [headTok];
+        let depth = 0;
+        for (;;) {
+          const t = cur.peek();
+          if (depth === 0) {
+            if (t.type === 'keyword' && (isSectionKeyword(t.value) || t.value === 'УБЫВ' || t.value === 'ВОЗР' || t.value === 'ИЕРАРХИЯ')) break;
+            if (t.type === 'ident' && (t.text.toUpperCase() === 'ВОЗР')) break;
+            if (t.type === 'punct' && (t.value === ',' || t.value === ';' || t.value === '{' || t.value === '}')) break;
+            if (t.type === 'eof') break;
+          }
+          if (t.type === 'punct' && t.value === '(') depth++;
+          else if (t.type === 'punct' && t.value === ')') {
+            if (depth === 0) break;
+            depth--;
+          }
+          exprTokens.push(cur.next());
+        }
+        const { direction: exprDir, hierarchy: exprHier } = parseOrderModifiers(cur);
+        fields.push({
+          tableId: '', path: '', direction: exprDir,
+          expression: sliceSource(cur.source, exprTokens),
+          ...(exprHier ? { hierarchy: true } : {}),
+        });
+        if (cur.matchPunct(',')) continue;
+        break;
+      }
       const { direction, hierarchy } = parseOrderModifiers(cur);
       const hier = hierarchy ? { hierarchy } : {};
 
-      const bareOwner = isCall ? undefined : sectionBareOwner(segs, ctx);
+      // Сюда попадают только голые ссылки (вызовы функций обработаны выше).
+      const bareOwner = sectionBareOwner(segs, ctx);
       if (segs.length > 1 && aliasToId.has(segs[0].toUpperCase())) {
         // Квалифицированная ссылка `<псевдонимТаблицы>.<path>` — сохраняем как есть.
         fields.push({

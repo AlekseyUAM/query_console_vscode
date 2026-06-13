@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, wrapBareCastOperand } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, wrapBareCastOperand, reprintLeafArithmetic } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -537,6 +537,11 @@ function buildQueryBlock(
 /** Голый параметр выборки `&Имя` (без вызова/индексации/прочего). */
 const BARE_PARAM = /^&([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)$/u;
 
+/** Выражение — это ТОЛЬКО голый параметр `&Имя` (для отбраковки в группировке). */
+function isBareParamExpr(expression: string | undefined): boolean {
+  return expression !== undefined && BARE_PARAM.test(expression.trim());
+}
+
 /**
  * Автопсевдоним произвольного поля выборки без явного `КАК`. Конструктор 1С
  * для голого параметра `&Имя` ставит псевдоним = имени параметра (без `&`),
@@ -555,8 +560,14 @@ function exprAutoAlias(expression: string, next: () => string): string {
  */
 function buildFieldLines(model: QueryModel, aliases: Map<string, string>): string[] {
   const aggregates = model.grouping?.aggregates ?? [];
+  // Резерв для legacy-моделей (UI), где функция агрегата живёт ТОЛЬКО в общем
+  // списке, а на полях `func` не задан. Если хотя бы одно поле несёт `func`,
+  // считаем модель «новой» (парсерной) и резерв НЕ применяем — иначе плоское поле,
+  // делящее операнд с агрегатом, ошибочно подхватывало бы чужую функцию (баг 6.15.11a).
+  const fieldsCarryFunc = model.fields.some(f => f.func !== undefined)
+    || (model.trailingFields ?? []).some(f => f.func !== undefined);
   const aggregateFunc = (tableId: string, path: string): AggregateFunction | undefined =>
-    aggregates.find(a => a.tableId === tableId && a.path === path)?.func;
+    fieldsCarryFunc ? undefined : aggregates.find(a => a.tableId === tableId && a.path === path)?.func;
 
   const allLines: string[] = [];
   // Счётчик автопсевдонимов произвольных полей. Не проверяет коллизии с явными
@@ -571,7 +582,9 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
       continue;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
-    const func = aggregateFunc(f.tableId, f.path);
+    // Функция агрегата берётся ПРЯМО с поля (различает два агрегата одного
+    // операнда, фаза 6.15.11a); общий список — лишь резерв для старых моделей.
+    const func = f.func ?? aggregateFunc(f.tableId, f.path);
     const lhs = func
       ? wrapAggregate(func, `${tableAlias}.${f.path}`)
       : `${tableAlias}.${f.path}`;
@@ -601,7 +614,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
       continue;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
-    const func = aggregateFunc(f.tableId, f.path);
+    const func = f.func ?? aggregateFunc(f.tableId, f.path);
     const lhs = func
       ? wrapAggregate(func, `${tableAlias}.${f.path}`)
       : `${tableAlias}.${f.path}`;
@@ -634,7 +647,9 @@ export function formatSelectExpression(expression: string): string {
     // Вложенный в лист ВЫБОР (`СУММА(ВЫБОР …)`, `… - ВЫБОР …`) переотрисовывается
     // конструктором по глубине обрамляющих скобок: КОНЕЦ на (отступ поля = 1) +
     // число НЕзакрытых скобок перед ВЫБОР (фаза 6.15.9b, MCP).
-    : appendIsNotNullTrailingSpace(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expression), 2), 1)));
+    // Арифметика листа выборки переотрисовывается конструктором (пробелы вокруг
+    // `+ - * /`, скобки по приоритету, обёртка ВЫРАЗИТЬ-операнда) — фаза 6.15.11a.
+    : appendIsNotNullTrailingSpace(normalizeLeafCase(reprintLeafArithmetic(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expression), 2), 1))));
 }
 
 /**
@@ -649,7 +664,7 @@ export function fieldExpr(model: QueryModel, field: SelectedField): string {
   if (field.expression) return formatSelectExpression(field.expression);
   const aliases = resolveAliases(model.tables);
   const tableAlias = aliases.get(field.tableId) ?? field.tableId;
-  const func = (model.grouping?.aggregates ?? []).find(
+  const func = field.func ?? (model.grouping?.aggregates ?? []).find(
     a => a.tableId === field.tableId && a.path === field.path
   )?.func;
   const lhs = `${tableAlias}.${field.path}`;
@@ -704,7 +719,9 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
     lines.push('УПОРЯДОЧИТЬ ПО');
     order.fields.forEach((f, i) => {
       const ref = f.expression
-        ? f.expression
+        // Параметр `&Имя` — дословно; вызов функции/арифметика — через нормализацию
+        // выражений выборки (пробелы, скобки, регистр), как печатает конструктор 1С.
+        ? (f.expression.trim().startsWith('&') ? f.expression : formatSelectExpression(f.expression))
         : f.qualified
         ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
         : sectionFieldRefText(model, tableAliases, f.tableId, f.path);
@@ -946,9 +963,13 @@ function renderGrouping(
   if (!grouping) return [];
 
   if (!grouping.multiple) {
-    if (grouping.groupFields.length === 0) return [];
-    const lines = grouping.groupFields.map((f, i) => {
-      const comma = i < grouping.groupFields.length - 1 ? ',' : '';
+    // Голый параметр `&Имя` в списке группировки конструктор 1С отбрасывает
+    // (нельзя группировать по параметру) — фаза 6.15.11a, MCP. Удаляем такие
+    // элементы; прочие выражения с параметром внутри (`ВЫРАЗИТЬ(… &Имя …)`) остаются.
+    const fields = grouping.groupFields.filter(f => !isBareParamExpr(f.expression));
+    if (fields.length === 0) return [];
+    const lines = fields.map((f, i) => {
+      const comma = i < fields.length - 1 ? ',' : '';
       return `\t${fieldRefExpr(f, aliases)}${comma}`;
     });
     return ['СГРУППИРОВАТЬ ПО', ...lines];
