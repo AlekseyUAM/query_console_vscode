@@ -61,12 +61,14 @@ function parsedObjectToMetaTable(obj: ParsedObject): MetaTable {
     ],
   }));
 
+  const hierarchical = (obj.properties as { hierarchical?: boolean } | undefined)?.hierarchical === true;
   return {
     kind: obj.kind as TableKind,
     name: obj.name,
     fullName: obj.fullName,
     fields: (obj.fields ?? []).map(mapParsedField),
     ...(tabularSections.length ? { tabularSections } : {}),
+    ...(hierarchical ? { hierarchical: true } : {}),
   };
 }
 

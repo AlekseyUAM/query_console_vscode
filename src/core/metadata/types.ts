@@ -33,6 +33,7 @@ export interface MetaTable {
   fields: MetaField[];
   tabularSections?: MetaTable[];
   virtual?: VirtualTableInfo;
+  hierarchical?: boolean; // справочник/ПВХ: иерархический (для суффикса ИЕРАРХИЯ)
 }
 
 export interface MetadataModel {

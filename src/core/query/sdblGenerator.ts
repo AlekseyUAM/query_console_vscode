@@ -1000,7 +1000,12 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
       const lastSeg = f.path.split('.').pop();
       const ownerTable = model.tables.find(t => t.id === f.tableId);
       const metadataTable = ownerTable !== undefined && !ownerTable.subquery && ownerTable.fullName.includes('.');
-      const hierSuffix = f.hierarchy && lastSeg === 'Ссылка' && metadataTable ? ' ИЕРАРХИЯ' : '';
+      // Конструктор сохраняет ИЕРАРХИЯ, если источник — ИЕРАРХИЧЕСКИЙ справочник/ПВХ
+      // (по метаданным, фаза 6.16.6): тогда ИЕРАРХИЯ держится на ЛЮБОМ поле
+      // (Родитель/Наименование/…), а не только на `…Ссылка`. Прежний признак
+      // `lastSeg === 'Ссылка'` оставлен как фолбэк для случаев без флага hierarchical.
+      const hierKeep = metadataTable && (ownerTable!.hierarchical || lastSeg === 'Ссылка');
+      const hierSuffix = f.hierarchy && hierKeep ? ' ИЕРАРХИЯ' : '';
       const suffix = (f.direction === 'desc' ? ' УБЫВ' : '') + hierSuffix;
       const comma = i < order.fields.length - 1 ? ',' : '';
       lines.push(`\t${ref}${suffix}${comma}`);

@@ -3026,6 +3026,14 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     // Тихий дроп конъюнкта ГДЕ, навигирующего к идентификационным реквизитам ИБ
     // через ссылку на пользователя (фаза 6.15.23, по типам метаданных).
     dropUserIBConditions(model, resolver);
+    // Пометка иерархических источников (для суффикса ИЕРАРХИЯ в УПОРЯДОЧИТЬ ПО,
+    // фаза 6.16.6). По метаданным; без резолвера флаг не ставится.
+    if (resolver) {
+      for (const t of model.tables) {
+        if (t.subquery || !t.fullName) continue;
+        if (resolver.tableByFullName(t.fullName)?.hierarchical) t.hierarchical = true;
+      }
+    }
     return model;
   });
 

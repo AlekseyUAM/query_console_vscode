@@ -33,6 +33,9 @@ export interface SelectedTable {
   /** Источник-подзапрос: `ИЗ (<подзапрос>) КАК <alias>`. Если задан — fullName/virtual
    *  игнорируются, источник рендерится как вложенный запрос; alias обязателен, fullName === ''. */
   subquery?: QueryDocument;
+  /** Источник — иерархический справочник/ПВХ (из метаданных). Влияет на сохранение
+   *  суффикса `ИЕРАРХИЯ` в УПОРЯДОЧИТЬ ПО (фаза 6.16.6). */
+  hierarchical?: boolean;
 }
 
 export interface SelectedField {
