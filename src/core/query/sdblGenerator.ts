@@ -256,8 +256,14 @@ function renderArbitraryConjunct(expr: string, depth = 0): string {
  * многострочный) — структурной переотрисовкой форматера с той же геометрией, что
  * у legacy-пути (фаза 6.15.5: ворота «сложный конъюнкт → legacy» сняты).
  */
-function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>, depth = 0): string {
+function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>, depth = 0, poOwnLine = false): string {
   const lines: string[] = [];
+  // Внутри подзапроса-операнда условия (`В (ВЫБРАТЬ … СОЕДИНЕНИЕ … ПО …)`) конструктор
+  // 1С печатает `ПО` на отдельной строке, а условие НИЖЕ с доп. отступом +1: первый
+  // конъюнкт на base+1 (3+depth), продолжения `И` на base+2 (4+depth) (фаза 6.15.14,
+  // MCP). На верхнем уровне (poOwnLine=false) — прежний layout: cond0 после `ПО `,
+  // `И` на 3+depth.
+  const cont = poOwnLine ? 4 + depth : 3 + depth;
   // Расщепление вложенной И-цепочки конъюнкта (фаза 6.15.12): источник вида
   // `(a = b) И (c = ЗНАЧЕНИЕ(…) И (d <> ""))` парсер делит лишь по ВНЕШНЕМУ И —
   // второй конъюнкт остаётся И-цепочкой `c = ЗНАЧЕНИЕ(…) И (d <> "")`. Конструктор
@@ -277,7 +283,8 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
     } else {
       sub = [renderArbitraryConjunct(c.expression ?? '', depth)];
     }
-    if (k > 0) sub[0] = `${'\t'.repeat(3 + depth)}И ${sub[0]}`;
+    if (k > 0) sub[0] = `${'\t'.repeat(cont)}И ${sub[0]}`;
+    else if (poOwnLine) sub[0] = `${'\t'.repeat(3 + depth)}${sub[0]}`;
     lines.push(...sub);
   });
   return lines.join('\n');
@@ -361,13 +368,13 @@ function conjunctNeedsComplexFormat(c: NonNullable<Join['conditions']>[number]):
   return hasTopLevelBooleanOp(e) || needsFormatting(e);
 }
 
-function renderJoinCondition(join: Join, aliases: Map<string, string>, depth = 0): string {
+function renderJoinCondition(join: Join, aliases: Map<string, string>, depth = 0, poOwnLine = false): string {
   // Поконъюнктная модель (фаза 6.13): при наличии conditions[] рендерим из неё —
   // скобки решаются пер-конъюнкт по флагу custom, сложные конъюнкты — форматером
   // по месту (фаза 6.15.5). Legacy-путь ниже остаётся для моделей без conditions[]
   // (построенных вебвью/сторой).
   if (join.conditions && join.conditions.length > 0) {
-    return renderJoinConjuncts(join.conditions, aliases, depth);
+    return renderJoinConjuncts(join.conditions, aliases, depth, poOwnLine);
   }
   if (join.custom) {
     // Составное условие (верхнеуровневый И/ИЛИ) или структура (ИЛИ/ВЫБОР) —
@@ -387,13 +394,15 @@ function renderJoinCondition(join: Join, aliases: Map<string, string>, depth = 0
     //    конструктор оборачивает в скобки.
     const leaf = normalizeLeafCase(expr);
     const wrap = join.parenthesized || !isPlainFieldComparison(expr);
-    return wrap ? `(${leaf})` : leaf;
+    const body = wrap ? `(${leaf})` : leaf;
+    return poOwnLine ? `${'\t'.repeat(3 + depth)}${body}` : body;
   }
   const leftAlias = aliases.get(join.leftTableId) ?? join.leftTableId;
   const rightAlias = aliases.get(join.rightTableId) ?? join.rightTableId;
   const op = join.operator ?? '=';
   // Простое резолвленное условие конструктор всегда печатает без внешних скобок.
-  return `${leftAlias}.${join.leftPath ?? ''} ${op} ${rightAlias}.${join.rightPath ?? ''}`;
+  const simple = `${leftAlias}.${join.leftPath ?? ''} ${op} ${rightAlias}.${join.rightPath ?? ''}`;
+  return poOwnLine ? `${'\t'.repeat(3 + depth)}${simple}` : simple;
 }
 
 /**
@@ -436,8 +445,18 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
   const flushPo = (toDepth: number): void => {
     while (pendingPo.length > 0 && pendingPo[pendingPo.length - 1].depth >= toDepth) {
       const p = pendingPo.pop()!;
-      const cond = renderJoinCondition(p.join, aliases, p.depth);
-      if (cond) lines.push(`\t\t${'\t'.repeat(p.depth)}ПО ${cond}`);
+      // Внутри подзапроса-операнда условия `ПО` печатается на отдельной строке, а
+      // условие ниже с отступом (фаза 6.15.14). На верхнем уровне — условие на той
+      // же строке после `ПО `.
+      const poOwnLine = inConditionSubquery;
+      const cond = renderJoinCondition(p.join, aliases, p.depth, poOwnLine);
+      if (!cond) continue;
+      if (poOwnLine) {
+        lines.push(`\t\t${'\t'.repeat(p.depth)}ПО`);
+        lines.push(cond);
+      } else {
+        lines.push(`\t\t${'\t'.repeat(p.depth)}ПО ${cond}`);
+      }
     }
   };
 

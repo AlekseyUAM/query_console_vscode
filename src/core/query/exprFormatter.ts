@@ -388,7 +388,22 @@ export function reindentLeafSubquery(text: string, base: number): string {
     if (lines[i].trim() === '') continue;
     if (!lines[i].includes('"')) lines[i] = lines[i].replace(/[ \t]+$/u, '');
   }
-  return lines.join('\n');
+  // Внутри подзапроса-операнда условия `ПО` соединения печатается на отдельной
+  // строке, а условие — НИЖЕ с отступом +1 (фаза 6.15.14, MCP). В сыром тексте
+  // подзапроса (`В (ВЫБРАТЬ … СОЕДИНЕНИЕ … ПО <условие>)`) перекладываем строку
+  // `<таб>ПО <условие>` в две: `<таб>ПО` + `<таб+1><условие>`. Продолжения `И`
+  // конъюнктов уже стоят на нужном отступе в исходнике — их не трогаем.
+  const split: string[] = [];
+  for (const l of lines) {
+    const m = /^(\t*)ПО\s+(\S.*)$/u.exec(l);
+    if (m) {
+      split.push(`${m[1]}ПО`);
+      split.push(`${m[1]}${TAB}${m[2]}`);
+    } else {
+      split.push(l);
+    }
+  }
+  return split.join('\n');
 }
 
 /**
