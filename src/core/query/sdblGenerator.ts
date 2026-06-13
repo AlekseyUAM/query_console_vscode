@@ -239,13 +239,78 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // И/ИЛИ, затем нормализуем отступ. Чистое условие-подзапрос (без И/ИЛИ) — через
   // reindentLeafSubquery: `(ВЫБРАТЬ` встаёт на base+1, тело — на base+2.
   const condText = hasBool
-    ? reindentLeafBool(splitTopLevelBool(condition.trim()), base)
+    ? reindentVtCondition(condition.trim(), base)
     : reindentLeafSubquery(condition.trim(), base + 1);
   const condLines = condText.split('\n');
   condLines[0] = pad + condLines[0].replace(/^\t+/u, '');
   // Предшествующие параметры (период и др.) — каждый на своей строке с запятой.
   const head = positions.slice(0, -1).map(p => pad + p);
   return `${fullName}(\n${[...head, condLines.join('\n')].join(',\n')})`;
+}
+
+/**
+ * Делит условие на ВЕРХНЕУРОВНЕВЫЕ конъюнкты по И/ИЛИ (вне скобок и строк; `И`
+ * диапазона `МЕЖДУ a И b` не считается), сохраняя оператор-разделитель. Первый
+ * элемент несёт op=''. В отличие от splitTopLevelAnd учитывает и ИЛИ.
+ */
+function splitTopLevelBoolConjuncts(expr: string): { op: string; text: string }[] {
+  const n = expr.length;
+  const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  const parts: { op: string; text: string }[] = [];
+  let depth = 0, inStr = false, between = 0, start = 0, op = '';
+  for (let i = 0; i < n; i++) {
+    const c = expr[i];
+    if (inStr) { if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '(') { depth++; continue; }
+    if (c === ')') { depth--; continue; }
+    if (depth !== 0) continue;
+    if (!isWordChar(expr[i - 1])) {
+      const up = expr.slice(i, i + 6).toUpperCase();
+      if (up.startsWith('МЕЖДУ') && !isWordChar(expr[i + 5])) { between++; continue; }
+      const isIli = up.startsWith('ИЛИ') && !isWordChar(expr[i + 3]);
+      const isI = expr[i].toUpperCase() === 'И' && !isWordChar(expr[i + 1]);
+      if (isI && between > 0) { between--; continue; }
+      if (isIli || isI) {
+        parts.push({ op, text: expr.slice(start, i).trim() });
+        op = isIli ? 'ИЛИ' : 'И';
+        start = i + (isIli ? 3 : 1);
+      }
+    }
+  }
+  parts.push({ op, text: expr.slice(start).trim() });
+  return parts;
+}
+
+/**
+ * СОСТАВНОЕ условие виртуальной таблицы (И/ИЛИ) — фаза 6.16.4. Разбираем
+ * поконъюнктно: конъюнкт 0 на base, каждый следующий `И`/`ИЛИ` на base+1. Случаи,
+ * на которых пасуют reindentLeafBool (стоп по `ВЫБРАТЬ`) и reindentLeafSubquery
+ * (блок подзапроса закрывается до конца из-за хвостовых конъюнктов):
+ *   - конъюнкт-подзапрос (`… В (ВЫБРАТЬ …)`): тело подзапроса перебазируется на
+ *     base+2 (АБСОЛЮТНО, не зависит от номера конъюнкта — проверено на корпусе);
+ *   - многострочный конъюнкт-ИЛИ-группа (`(&A\n ИЛИ B)`): продолжения на ind+1.
+ * Простые однострочные конъюнкты дают тот же вывод, что и reindentLeafBool.
+ */
+function reindentVtCondition(condition: string, base: number): string {
+  const conjuncts = splitTopLevelBoolConjuncts(condition);
+  const out: string[] = [];
+  conjuncts.forEach((c, k) => {
+    const ind = k === 0 ? base : base + 1;
+    const prefix = k === 0 ? '' : `${c.op} `;
+    if (c.text.includes('\n') && /\(ВЫБРАТЬ/u.test(c.text)) {
+      const r = reindentLeafSubquery(c.text, base + 2).split('\n');
+      r[0] = '\t'.repeat(ind) + prefix + r[0].replace(/^\t+/u, '');
+      out.push(...r);
+    } else if (c.text.includes('\n')) {
+      const lines = c.text.split('\n');
+      out.push('\t'.repeat(ind) + prefix + lines[0].trim());
+      for (let j = 1; j < lines.length; j++) out.push('\t'.repeat(ind + 1) + lines[j].trim());
+    } else {
+      out.push('\t'.repeat(ind) + prefix + c.text);
+    }
+  });
+  return out.join('\n');
 }
 
 /** Модификаторы выборки записей: РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N. */
