@@ -2680,7 +2680,13 @@ function matchSumAlias(tokens: Token[]): string | undefined {
  */
 function resolveTotalsFieldRef(segs: string[], ctx: SectionResolveContext): FieldRef {
   if (segs.length > 1 && ctx.aliasToId.has(segs[0].toUpperCase())) {
-    return { tableId: ctx.aliasToId.get(segs[0].toUpperCase())!, path: segs.slice(1).join('.'), qualified: true };
+    const tableId = ctx.aliasToId.get(segs[0].toUpperCase())!;
+    const path = segs.slice(1).join('.');
+    // Квалифицированное `Таблица.Поле`, совпадающее с КОЛОНКОЙ выборки, конструктор
+    // печатает её псевдонимом (без квалификации) — итоги адресуют колонки (6.16.10,
+    // MCP). Не-колонку оставляем квалифицированной (6.15.4).
+    const isColumn = ctx.fields.some(f => !f.expression && f.tableId === tableId && f.path === path);
+    return isColumn ? { tableId, path } : { tableId, path, qualified: true };
   }
   const name = segs.join('.');
   const hit = ctx.aliasMap.get(name);
