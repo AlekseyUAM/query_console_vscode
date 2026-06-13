@@ -1544,7 +1544,11 @@ function qualifyBareFieldsInExpression(
       if (declared !== undefined) {
         // Уже квалифицировано — нормализуем написание псевдонима.
         if (t.text !== declared) edits.push({ pos: t.pos, len: t.text.length, text: declared });
-      } else if (soleAlias !== undefined) {
+      } else if (soleAlias !== undefined && j === i) {
+        // Квалифицируем псевдонимом источника ТОЛЬКО ОДНОСЕГМЕНТНОЕ голое имя
+        // (`Код` → `Алиас.Код`). Многосегментная цепочка с НЕобъявленной головой
+        // (`Регионы.КодСубъектаРФ`) — коррелированная ссылка на внешнюю таблицу:
+        // оставляем как есть, иначе сломали бы коррелированный подзапрос (фаза 6.15.27).
         edits.push({ pos: t.pos, len: 0, text: `${soleAlias}.` });
       }
     }
@@ -1810,7 +1814,33 @@ function trySimpleCondition(
     ?? (soleSource
       ? bareLhsRef(lhs, aliasToId, soleSource)
       : undefined);
-  if (!ref) return undefined;
+
+  // УЗКИЙ случай (фаза 6.15.27): нессылочный левый операнд `В`-подзапроса
+  // (`1 В (ВЫБРАТЬ …)`, литерал/выражение) при КОМПАКТНОМ МНОГОВЕТОЧНОМ подзапросе.
+  // Конструктор 1С разворачивает такой подзапрос канонически (структурный путь
+  // `renderConditionSubquery`), тогда как текстовый ре-флоу не может его
+  // канонизировать (не квалифицирует голые поля источника). Триггер намеренно узок:
+  //   • LHS не ссылка на поле (ref отсутствует) — `ИСТИНА В`/`ЛОЖЬ В`/`&П В` сюда
+  //     тоже попадают, поэтому …
+  //   • подзапрос задан КОМПАКТНО (строка с `ВЫБРАТЬ … ИЗ` вместе) — уже принятые
+  //     `ИСТИНА В`/`ЛОЖЬ В` написаны канонически (по строкам) и сюда НЕ попадают;
+  //   • подзапрос МНОГОВЕТОЧНЫЙ (`ОБЪЕДИНИТЬ`, members > 1).
+  // Подтверждено по корпусу: единственный файл с компактным В-подзапросом —
+  // АдресныйКлассификатор; принятые формы остаются на прежнем (текстовом) пути.
+  if (!ref) {
+    const opTok = tokens[opIdx].value;
+    if (opTok === 'В') {
+      const subTokens = tokens.slice(opIdx + 1);
+      const inner = subqueryInnerText(subTokens, source);
+      if (inner !== undefined && isCompactSubquerySource(inner)) {
+        const sub = trySubqueryParam(subTokens, source);
+        if (sub && sub.members.length > 1) {
+          return { custom: true, leftExpr: sliceSource(source, lhs), subquery: sub };
+        }
+      }
+    }
+    return undefined;
+  }
 
   const op = tokens[opIdx].value as ConditionOperator;
   const paramTokens = tokens.slice(opIdx + 1);
@@ -1927,6 +1957,38 @@ function isCondOperatorToken(t: Token): boolean {
  * внутреннего запроса (поддержка ОБЪЕДИНИТЬ через parseDocument). Иначе — undefined
  * (список значений `(&Список)` / `(a, b)` остаётся как простой param).
  */
+/**
+ * Сырой текст внутреннего запроса В-подзапроса (`(ВЫБРАТЬ …)` → `ВЫБРАТЬ …`), если
+ * paramTokens — ровно одна сбалансированная пара скобок, начинающаяся с ВЫБРАТЬ
+ * (без хвоста). Иначе undefined. Используется для проверки КОМПАКТНОСТИ исходника
+ * (фаза 6.15.27) без повторного парсинга.
+ */
+function subqueryInnerText(paramTokens: Token[], source: string): string | undefined {
+  const first = paramTokens[0];
+  if (!first || first.type !== 'punct' || first.value !== '(') return undefined;
+  let depth = 0;
+  let closeIdx = -1;
+  for (let k = 0; k < paramTokens.length; k++) {
+    const t = paramTokens[k];
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') { depth--; if (depth === 0) { closeIdx = k; break; } }
+  }
+  if (closeIdx !== paramTokens.length - 1) return undefined;
+  const inner = paramTokens[1];
+  if (!inner || !(inner.type === 'keyword' && inner.value === 'ВЫБРАТЬ')) return undefined;
+  return source.slice(paramTokens[0].pos + 1, paramTokens[closeIdx].pos);
+}
+
+/**
+ * КОМПАКТНА ли запись подзапроса: есть строка, где ключевые слова `ВЫБРАТЬ` и `ИЗ`
+ * стоят ВМЕСТЕ (`ВЫБРАТЬ … ИЗ …`). Канонический ввод конструктора держит `ВЫБРАТЬ`,
+ * `ИЗ`, `ГДЕ` на отдельных строках — такой ввод НЕ компактен (фаза 6.15.27).
+ */
+function isCompactSubquerySource(inner: string): boolean {
+  const re = /(?:^|[^\p{L}\p{N}_])ВЫБРАТЬ(?:[^\p{L}\p{N}_].*?)(?:^|[^\p{L}\p{N}_])ИЗ(?:[^\p{L}\p{N}_]|$)/u;
+  return inner.split('\n').some((l) => re.test(l));
+}
+
 function trySubqueryParam(paramTokens: Token[], source: string): QueryDocument | undefined {
   const first = paramTokens[0];
   if (!first || first.type !== 'punct' || first.value !== '(') return undefined;

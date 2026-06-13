@@ -717,6 +717,13 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
 
   const fieldLine = (f: SelectedField): string => {
     if (f.expression) {
+      // В подзапросе-операнде `В` (suppressAutoAlias) конструктор НЕ добавляет
+      // автопсевдоним произвольному полю выборки (`1`/`ИСТИНА` остаются голыми);
+      // явный (НЕ `Поле{n}`) псевдоним сохраняется (фаза 6.15.27, MCP). Парсер уже
+      // навесил авто-`Поле{n}` (assignExpressionFieldAliases) — снимаем его здесь.
+      if (suppressAutoAlias && (f.alias === undefined || /^Поле\d+$/u.test(f.alias))) {
+        return `\t${formatSelectExpression(f.expression)}`;
+      }
       const alias = f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
       return `\t${formatSelectExpression(f.expression)} КАК ${alias}`;
     }
@@ -1071,7 +1078,10 @@ export function generateDocument(doc: QueryDocument): string {
     const fieldLines = columns.map((col, ci) => {
       const expr = col.cells[i] ?? 'NULL';
       if (i !== 0) return `\t${expr}`;
-      const explicitAlias = head0[ci]?.alias !== undefined;
+      // Авто-`Поле{n}` (assignExpressionFieldAliases) явным НЕ считается: в
+      // suppressAutoAlias его не печатаем (`1`/`ИСТИНА` остаются голыми, фаза 6.15.27).
+      const a0 = head0[ci]?.alias;
+      const explicitAlias = a0 !== undefined && !/^Поле\d+$/u.test(a0);
       const emitAlias = !suppressAutoAlias || explicitAlias;
       return emitAlias ? `\t${expr} КАК ${col.alias}` : `\t${expr}`;
     });
@@ -1200,6 +1210,15 @@ function buildConditionStrings(
       const subBase = slot === 'where' && !inConditionSubquery ? 3 : 2;
       // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении — в скобках (фаза 6.15.12).
       if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase), 1)))))));
+      continue;
+    }
+    // Нессылочный левый операнд `В`-подзапроса (`1 В (ВЫБРАТЬ …)`, фаза 6.15.27):
+    // печатаем сам текст LHS перед `В`, дальше — структурный подзапрос как обычно.
+    // path при этом не задан; обрабатываем до гейта `!c.path`.
+    if (c.leftExpr && c.subquery) {
+      const subBase = (inConditionSubquery ? 2 : 3) + (c.negated ? 1 : 0);
+      const negPrefix = c.negated ? 'НЕ ' : '';
+      conds.push(`${negPrefix}${normalizeLeafCase(c.leftExpr)} В\n${renderConditionSubquery(c.subquery, subBase)}`);
       continue;
     }
     if (!c.path) continue;
