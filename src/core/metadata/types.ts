@@ -34,6 +34,8 @@ export interface MetaTable {
   tabularSections?: MetaTable[];
   virtual?: VirtualTableInfo;
   hierarchical?: boolean; // справочник/ПВХ: иерархический (для суффикса ИЕРАРХИЯ)
+  subcontoCount?: number; // регистр бухгалтерии: maxExtDimensionCount плана счетов (0 → нет ВидыСубконто)
+  correspondence?: boolean; // регистр бухгалтерии: поддержка корреспонденции
 }
 
 export interface MetadataModel {

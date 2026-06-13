@@ -16,6 +16,38 @@ export interface VirtualParams {
   top?: string;                  // Первые (ДвиженияССубконто)
   correspondence?: boolean;      // проброшен из метаданных при добавлении ВТ
   hadParens?: boolean;           // во вводе были скобки параметров (даже пустые `(, )`)
+  subconto?: boolean;            // регистр бухгалтерии имеет субконто (план счетов с maxExtDimensionCount>0)
+  accountingArgs?: string[];     // сырые позиционные аргументы регистра бухгалтерии (для пост-разбора по метаданным)
+}
+
+/**
+ * Позиционная раскладка параметров виртуальной таблицы регистра бухгалтерии —
+ * единый источник правды для парсера (инверсия) и генератора. `null` — пустой слот
+ * (`ВидыСубконто`, который присутствует ТОЛЬКО при наличии субконто у плана счетов).
+ * При `hasSubconto=true` совпадает с прежней захардкоженной раскладкой (фаза 6.16.11).
+ */
+export function accountingPositionKeys(
+  slice: string,
+  hasSubconto: boolean,
+  corr: boolean
+): (keyof VirtualParams | null)[] {
+  const sub: (keyof VirtualParams | null)[] = hasSubconto ? [null] : [];
+  switch (slice) {
+    case 'Остатки':
+      return ['period', 'accountCondition', ...sub, 'condition'];
+    case 'Обороты':
+      return corr
+        ? ['startPeriod', 'endPeriod', 'periodicity', 'accountCondition', ...sub, 'condition', 'corrAccountCondition', ...sub]
+        : ['startPeriod', 'endPeriod', 'periodicity', 'accountCondition', ...sub, 'condition'];
+    case 'ОборотыДтКт':
+      return ['startPeriod', 'endPeriod', 'periodicity', 'accountDtCondition', ...sub, 'accountKtCondition', ...sub, 'condition'];
+    case 'ОстаткиИОбороты':
+      return ['startPeriod', 'endPeriod', 'periodicity', 'fillMethod', 'accountCondition', ...sub, 'condition'];
+    case 'ДвиженияССубконто':
+      return ['startPeriod', 'endPeriod', 'condition', 'order', 'top'];
+    default:
+      return [];
+  }
 }
 
 export interface SelectedTable {

@@ -47,7 +47,7 @@ import type {
   BuilderField,
 } from './queryModel';
 
-import { defaultTableAlias } from './queryModel';
+import { defaultTableAlias, accountingPositionKeys } from './queryModel';
 import { renderOperatorRhs, needsFormatting, isRootNotGroup, normalizeLeafCase } from './exprFormatter';
 import { tokenize } from './sdblLexer';
 import type { Token } from './sdblLexer';
@@ -213,7 +213,13 @@ const BARE_PARAM_ALIAS = /^&([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)
 export function parseQuery(text: string): QueryModel {
   const tokens = tokenize(text);
   const cur = new Cursor(tokens, text);
-  return parseSingleQuery(cur);
+  const model = parseSingleQuery(cur);
+  // accountingArgs — транзиентное поле пост-разбора (parseDocument); прямой parseQuery
+  // его не использует, поэтому снимаем, чтобы не светить в финальной модели.
+  for (const t of model.tables) {
+    if (t.virtual?.accountingArgs) delete t.virtual.accountingArgs;
+  }
+  return model;
 }
 
 /**
@@ -1055,6 +1061,9 @@ function parseVirtualParams(cur: Cursor, fullName: string): VirtualParams {
   };
 
   if (kind === 'РегистрБухгалтерии') {
+    // Сырые аргументы сохраняем для пост-разбора по метаданным (субконто/корр):
+    // на этом этапе резолвера нет, раскладку уточняем в parseDocument.
+    v.accountingArgs = args;
     fillAccounting(v, slice, args, set);
     return v;
   }
@@ -1083,60 +1092,23 @@ function parseVirtualParams(cur: Cursor, fullName: string): VirtualParams {
   return v;
 }
 
-/** Раскладка позиций регистра бухгалтерии — инверсия `accountingPositions`. */
+/**
+ * Раскладка позиций регистра бухгалтерии — инверсия `accountingPositions` через
+ * единый `accountingPositionKeys`. На этапе разбора метаданных нет, поэтому
+ * `hasSubconto=true` (прежняя захардкоженная арность); корреспонденцию для Обороты
+ * выводим из числа аргументов (>=8). Точную раскладку по субконто/корр уточняет
+ * пост-разбор `applyAccountingMeta` в `parseDocument` (фаза 6.16.11).
+ */
 function fillAccounting(
   v: VirtualParams,
   slice: string,
   args: string[],
   set: (key: keyof VirtualParams, value: string) => void
 ): void {
-  switch (slice) {
-    case 'Остатки':
-      // [period, accountCondition, '', condition]
-      set('period', arg(args, 0));
-      set('accountCondition', arg(args, 1));
-      set('condition', arg(args, 3));
-      return;
-    case 'Обороты':
-      // non-corr: [startPeriod, endPeriod, periodicity, accountCondition, '', condition]
-      // corr (8): + [corrAccountCondition, ''] и correspondence=true
-      set('startPeriod', arg(args, 0));
-      set('endPeriod', arg(args, 1));
-      set('periodicity', arg(args, 2));
-      set('accountCondition', arg(args, 3));
-      set('condition', arg(args, 5));
-      if (args.length >= 8) {
-        set('corrAccountCondition', arg(args, 6));
-        v.correspondence = true;
-      }
-      return;
-    case 'ОборотыДтКт':
-      // [startPeriod, endPeriod, periodicity, accountDtCondition, '', accountKtCondition, '', condition]
-      set('startPeriod', arg(args, 0));
-      set('endPeriod', arg(args, 1));
-      set('periodicity', arg(args, 2));
-      set('accountDtCondition', arg(args, 3));
-      set('accountKtCondition', arg(args, 5));
-      set('condition', arg(args, 7));
-      return;
-    case 'ОстаткиИОбороты':
-      // [startPeriod, endPeriod, periodicity, fillMethod, accountCondition, '', condition]
-      set('startPeriod', arg(args, 0));
-      set('endPeriod', arg(args, 1));
-      set('periodicity', arg(args, 2));
-      set('fillMethod', arg(args, 3));
-      set('accountCondition', arg(args, 4));
-      set('condition', arg(args, 6));
-      return;
-    case 'ДвиженияССубконто':
-      // [startPeriod, endPeriod, condition, order, top]
-      set('startPeriod', arg(args, 0));
-      set('endPeriod', arg(args, 1));
-      set('condition', arg(args, 2));
-      set('order', arg(args, 3));
-      set('top', arg(args, 4));
-      return;
-  }
+  const corr = slice === 'Обороты' && args.length >= 8;
+  const keys = accountingPositionKeys(slice, true, corr);
+  keys.forEach((k, i) => { if (k) set(k, arg(args, i)); });
+  if (corr) v.correspondence = true;
 }
 
 /**
@@ -3051,6 +3023,12 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
         if (t.subquery || !t.fullName) continue;
         if (resolver.tableByFullName(t.fullName)?.hierarchical) t.hierarchical = true;
       }
+      applyAccountingMeta(model, resolver);
+    }
+    // accountingArgs — транзиентное поле для пост-разбора; в финальной модели его нет
+    // (без резолвера остаётся разложенное на этапе разбора значение).
+    for (const t of model.tables) {
+      if (t.virtual?.accountingArgs) delete t.virtual.accountingArgs;
     }
     return model;
   });
@@ -3094,6 +3072,40 @@ function assignExpressionFieldAliases(model: QueryModel): void {
     // конструктора; счётчик `Поле{n}` им не занимается.
     const m = BARE_PARAM_ALIAS.exec(f.expression.trim());
     f.alias = m ? m[1] : `Поле${++exprCounter}`;
+  }
+}
+
+/**
+ * Уточняет раскладку параметров регистра бухгалтерии по метаданным (фаза 6.16.11).
+ * Парсер на этапе разбора предполагает наличие субконто (прежняя арность). Здесь, имея
+ * резолвер, узнаём реальное число субконто (план счетов `maxExtDimensionCount`) и
+ * корреспонденцию регистра, перераскладываем сырые позиционные аргументы по
+ * `accountingPositionKeys(slice, hasSubconto, corr)` и фиксируем флаги для генератора.
+ */
+function applyAccountingMeta(model: QueryModel, resolver: MetadataResolver): void {
+  const ACC_KEYS: (keyof VirtualParams)[] = [
+    'period', 'startPeriod', 'endPeriod', 'periodicity', 'fillMethod', 'condition',
+    'accountCondition', 'corrAccountCondition', 'accountDtCondition', 'accountKtCondition', 'order', 'top',
+  ];
+  for (const t of model.tables) {
+    const v = t.virtual;
+    if (!v?.accountingArgs || t.subquery || !t.fullName) continue;
+    const parts = t.fullName.split('.');
+    if (parts[0] !== 'РегистрБухгалтерии') continue;
+    const slice = parts[2];
+    const base = resolver.tableByFullName(`${parts[0]}.${parts[1]}`);
+    const hasSubconto = (base?.subcontoCount ?? 0) > 0;
+    const corr = base?.correspondence === true;
+    const args = v.accountingArgs;
+    // Чистим ранее разложенные позиции и заполняем по корректной раскладке.
+    for (const k of ACC_KEYS) delete (v as Record<string, unknown>)[k];
+    accountingPositionKeys(slice, hasSubconto, corr).forEach((k, i) => {
+      const val = args[i] ?? '';
+      if (k && val !== '') (v as Record<string, unknown>)[k] = val;
+    });
+    v.subconto = hasSubconto;
+    if (corr) v.correspondence = true;
+    delete v.accountingArgs;
   }
 }
 

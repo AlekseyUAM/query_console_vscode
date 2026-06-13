@@ -253,6 +253,13 @@ export function loadMetadataFromYaml(cfYamlDir: string): MetadataModel {
     }
 
     const metaTable = parsedObjectToMetaTable(obj);
+    // Регистр бухгалтерии: пробрасываем число субконто плана счетов и корреспонденцию
+    // на базовую таблицу (для арности параметров ВТ, фаза 6.16.11).
+    if (obj.kind === 'РегистрБухгалтерии') {
+      const props = obj.properties as { chartOfAccounts?: string; correspondence?: boolean } | undefined;
+      metaTable.subcontoCount = charts.get(props?.chartOfAccounts ?? '')?.maxExtDimensionCount ?? 0;
+      metaTable.correspondence = props?.correspondence === true;
+    }
     tables.push(metaTable);
 
     for (const ts of metaTable.tabularSections ?? []) {

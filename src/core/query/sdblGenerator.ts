@@ -1,5 +1,5 @@
 import type { QueryModel, SelectedTable, SelectedField, SelectedTabSectionField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField, Indexing } from './queryModel';
-import { defaultTableAlias } from './queryModel';
+import { defaultTableAlias, accountingPositionKeys } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
@@ -59,23 +59,12 @@ export function resolveAliases(tables: SelectedTable[]): Map<string, string> {
 }
 
 function accountingPositions(slice: string, v: SelectedTable['virtual'] & {}): string[] {
-  const s = (x?: string) => x ?? '';
-  switch (slice) {
-    case 'Остатки':
-      return [s(v.period), s(v.accountCondition), '', s(v.condition)];
-    case 'Обороты':
-      return v.correspondence
-        ? [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.accountCondition), '', s(v.condition), s(v.corrAccountCondition), '']
-        : [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.accountCondition), '', s(v.condition)];
-    case 'ОборотыДтКт':
-      return [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.accountDtCondition), '', s(v.accountKtCondition), '', s(v.condition)];
-    case 'ОстаткиИОбороты':
-      return [s(v.startPeriod), s(v.endPeriod), s(v.periodicity), s(v.fillMethod), s(v.accountCondition), '', s(v.condition)];
-    case 'ДвиженияССубконто':
-      return [s(v.startPeriod), s(v.endPeriod), s(v.condition), s(v.order), s(v.top)];
-    default:
-      return [];
-  }
+  // Раскладка из единого `accountingPositionKeys`. Субконто берём из v.subconto
+  // (проставлен пост-разбором по метаданным); если флаг не задан (модель без
+  // резолвера/из UI) — прежнее поведение `hasSubconto=true`. Корреспонденция — v.correspondence.
+  const hasSubconto = v.subconto !== false;
+  const keys = accountingPositionKeys(slice, hasSubconto, v.correspondence === true);
+  return keys.map(k => (k ? ((v as Record<string, string | undefined>)[k] ?? '') : ''));
 }
 
 /**
@@ -148,7 +137,14 @@ function renderSource(t: SelectedTable, bodyTabs = 1): string {
   // скобки — только если задан хоть один параметр.
   if (kind === 'РегистрБухгалтерии') {
     const positions = accountingPositions(slice, v);
-    if (!positions.some(p => p !== '')) return t.fullName;
+    if (!positions.some(p => p !== '') && !v.hadParens) return t.fullName;
+    // Составное/подзапросное условие, стоящее ПОСЛЕДНЕЙ позицией, разносит параметры
+    // по строкам (как у РН, фаза 6.16.11). Где условие не последнее (Обороты-корр,
+    // ДвиженияССубконто) — инлайн.
+    const cond = v.condition ?? '';
+    if (cond && positions[positions.length - 1] === cond) {
+      return renderVirtualParams(t.fullName, positions, cond, bodyTabs);
+    }
     return `${t.fullName}(${positions.join(', ')})`;
   }
 
