@@ -1815,11 +1815,14 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
       return lines;
     }
     case 'and': {
-      // OR-конъюнкты внутри КОГДА-условия используют orDelta=1 (orLvl=1).
+      // OR-конъюнкты внутри КОГДА-условия используют orDelta=1 (orLvl=1), КРОМЕ
+      // ВЕДУЩЕГО операнда-группы `(… ИЛИ …)`: его ИЛИ конструктор выравнивает с
+      // И-конъюнктами на contInd (orDelta=2, orLvl=0) — `КОГДА (НЕ A\n\t\tИЛИ НЕ B)
+      // \n\t\tИ C` (фаза 6.15.20, MCP).
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderBool(op, whenInd, contInd, 1, ctx, whenInd + 1, contInd + 1));
+          lines.push(...renderBool(op, whenInd, contInd, 0, ctx, whenInd + 1, contInd + 1));
         } else {
           const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
           sub[0] = tabs(contInd) + 'И ' + sub[0];
