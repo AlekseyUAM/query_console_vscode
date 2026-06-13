@@ -17,12 +17,13 @@ const NAMED_XML_ENTITIES: Record<string, string> = {
  * `&amp;lt;` → литерал `&lt;` (а не `<`).
  */
 export function unescapeXmlEntities(s: string): string {
-  return s.replace(/&(amp|lt|gt|quot|apos|#x?[0-9a-fA-F]+);/g, (_m, ent: string) => {
+  return s.replace(/&(amp|lt|gt|quot|apos|#[xX]?[0-9a-fA-F]+);/g, (m, ent: string) => {
     if (ent[0] === '#') {
       const code =
         ent[1] === 'x' || ent[1] === 'X'
           ? parseInt(ent.slice(2), 16)
           : parseInt(ent.slice(1), 10);
+      if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return m;
       return String.fromCodePoint(code);
     }
     return NAMED_XML_ENTITIES[ent];

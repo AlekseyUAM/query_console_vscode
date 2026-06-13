@@ -91,6 +91,14 @@ describe('unescapeXmlEntities', () => {
   it('строку без сущностей возвращает без изменений', () => {
     expect(unescapeXmlEntities('ВЫБРАТЬ Поле')).toBe('ВЫБРАТЬ Поле');
   });
+
+  it('декодирует hex-сущность в верхнем регистре &#X...;', () => {
+    expect(unescapeXmlEntities('&#X42E;')).toBe('Ю');
+  });
+
+  it('некорректный кодпоинт оставляет сущность как есть (не падает)', () => {
+    expect(unescapeXmlEntities('&#x110000;')).toBe('&#x110000;');
+  });
 });
 
 describe('extractQueriesFromXml', () => {
