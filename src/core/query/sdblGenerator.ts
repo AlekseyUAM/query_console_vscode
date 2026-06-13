@@ -302,6 +302,13 @@ function reindentVtCondition(condition: string, base: number): string {
       const r = reindentLeafSubquery(c.text, base + 2).split('\n');
       r[0] = '\t'.repeat(ind) + prefix + r[0].replace(/^\t+/u, '');
       out.push(...r);
+    } else if (c.text.includes('\n') && /(?:^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(c.text)) {
+      // Конъюнкт-ВЫБОР: КОНЕЦ на base+1, КОГДА на base+2 (АБСОЛЮТНО относительно base,
+      // не зависит от номера конъюнкта — проверено на корпусе). Строка ВЫБОР (line 0)
+      // остаётся на ind конъюнкта.
+      const r = reindentLeafCase(c.text, base + 1).split('\n');
+      r[0] = '\t'.repeat(ind) + prefix + r[0].replace(/^\t+/u, '').replace(/\s+$/u, '');
+      out.push(...r);
     } else if (c.text.includes('\n')) {
       const lines = c.text.split('\n');
       out.push('\t'.repeat(ind) + prefix + lines[0].trim());
