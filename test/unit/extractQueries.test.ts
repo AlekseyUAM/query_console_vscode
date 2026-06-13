@@ -90,3 +90,38 @@ describe('unescapeXmlEntities', () => {
     expect(unescapeXmlEntities('ВЫБРАТЬ Поле')).toBe('ВЫБРАТЬ Поле');
   });
 });
+
+describe('extractQueriesFromXml', () => {
+  it('извлекает один <query>, декодируя сущности', () => {
+    const xml = '<dataSet><query>ВЫБРАТЬ Т.Поле\nГДЕ Т.А &lt;&gt; &amp;П</query></dataSet>';
+    const res = extractQueriesFromXml(xml);
+    expect(res).toHaveLength(1);
+    expect(res[0].text).toBe('ВЫБРАТЬ Т.Поле\nГДЕ Т.А <> &П');
+  });
+
+  it('извлекает несколько <query> с корректным lineStart', () => {
+    const xml = [
+      '<schema>',
+      '  <query>ВЫБРАТЬ Поле1</query>',
+      '  <other>x</other>',
+      '  <query>ВЫБРАТЬ Поле2</query>',
+      '</schema>',
+    ].join('\n');
+    const res = extractQueriesFromXml(xml);
+    expect(res).toHaveLength(2);
+    expect(res[0].text).toBe('ВЫБРАТЬ Поле1');
+    expect(res[0].lineStart).toBe(2);
+    expect(res[1].text).toBe('ВЫБРАТЬ Поле2');
+    expect(res[1].lineStart).toBe(4);
+  });
+
+  it('игнорирует <query>, не начинающийся с ключевого слова', () => {
+    const xml = '<query>не запрос</query>';
+    expect(extractQueriesFromXml(xml)).toHaveLength(0);
+  });
+
+  it('игнорирует прочие теги (dataSource и т.п.)', () => {
+    const xml = '<dataSource>ИсточникДанных1</dataSource>';
+    expect(extractQueriesFromXml(xml)).toHaveLength(0);
+  });
+});

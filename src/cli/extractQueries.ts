@@ -132,6 +132,27 @@ export function extractQueryStrings(bslSource: string): ExtractedQuery[] {
   return result;
 }
 
+/**
+ * Извлекает запросы из XML-макета СКД: каждый блок <query>…</query>.
+ * Безопасно регэкспом — внутри текста запроса любой `<` экранирован как
+ * `&lt;`, поэтому `</query>` в теле встретиться не может. Тело декодируется
+ * из XML-сущностей и фильтруется по тому же критерию, что и BSL-литералы
+ * (начинается с ВЫБРАТЬ/УНИЧТОЖИТЬ). Тело отдаётся дословно (без trim).
+ */
+export function extractQueriesFromXml(xmlSource: string): ExtractedQuery[] {
+  const result: ExtractedQuery[] = [];
+  const re = /<query>([\s\S]*?)<\/query>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xmlSource)) !== null) {
+    const lineStart = xmlSource.slice(0, m.index).split('\n').length;
+    const text = unescapeXmlEntities(m[1]);
+    if (startsWithQueryKeyword(text)) {
+      result.push({ text, lineStart });
+    }
+  }
+  return result;
+}
+
 // ---- CLI ----
 
 function walk(dir: string, ext: string): string[] {
