@@ -409,9 +409,12 @@ describe('formatExpression — НЕ-conjunct parens (WHERE/HAVING vs join)', () 
   it('strips parens in HAVING too', () => {
     expect(formatExpression('(НЕ Таблица.ПометкаУдаления)', 'having')).toBe('НЕ Таблица.ПометкаУдаления');
   });
-  it('keeps parens when НЕ wraps a comparison (ЕСТЬ NULL) in WHERE', () => {
+  it('strips parens when НЕ wraps a comparison (ЕСТЬ NULL) in WHERE', () => {
+    // Живой оракул (validate_query, 2026-06-13): `И (НЕ Поле ЕСТЬ NULL)` и
+    // `И НЕ (Поле ЕСТЬ NULL)` ОБА печатаются как `И НЕ Поле ЕСТЬ NULL` — конструктор
+    // снимает избыточные скобки вокруг отрицания предиката в ГДЕ/ИМЕЮЩИЕ (в ПО — НЕТ).
     expect(formatExpression('Таблица.Поле = &П И (НЕ Таблица.Идентификатор ЕСТЬ NULL)', 'where')).toBe(
-      'Таблица.Поле = &П\n\tИ (НЕ Таблица.Идентификатор ЕСТЬ NULL)'
+      'Таблица.Поле = &П\n\tИ НЕ Таблица.Идентификатор ЕСТЬ NULL'
     );
   });
   it('keeps parens around a negated field inside a join condition', () => {

@@ -1297,6 +1297,169 @@ class ArithReprinter {
   }
 }
 
+// Операторы сравнения/предиката, в чьём ОКРУЖЕНИИ скобки вокруг операнда избыточны
+// (булев/предикатный слой; конструктор 1С их снимает). НЕ включает `В`/`В ИЕРАРХИИ`
+// (там `(…)` — список значений / подзапрос, скобки обязательны) и `СПЕЦСИМВОЛ`.
+const PRED_NEIGHBOR_WORDS = new Set([
+  'НЕ', 'И', 'ИЛИ', 'КОГДА', 'ТОГДА', 'ИНАЧЕ', 'ЕСТЬ', 'МЕЖДУ', 'ПОДОБНО', 'ССЫЛКА',
+]);
+const COMPARISON_PUNCT_SET = new Set(['=', '<>', '<', '>', '<=', '>=']);
+const ARITH_PUNCT_SET = new Set(['+', '-', '*', '/', '%']);
+
+/**
+ * Скобка `(` слева от операнда является ВЫЗОВОМ функции / приведения (`ВЫРАЗИТЬ(`,
+ * `СУММА(`, `Поле.Метод(`), а НЕ группирующей: предыдущий значимый токен — имя
+ * (идентификатор/ключевое слово-имя/параметр/число/строка) либо закрывающая `)`.
+ */
+function isCallOpenContext(prev: Token | undefined): boolean {
+  if (!prev) return false;
+  // Слово-оператор предиката (НЕ/И/ИЛИ/ЕСТЬ/…) — НЕ имя функции, даже будучи ident.
+  if ((prev.type === 'ident' || prev.type === 'keyword') && PRED_NEIGHBOR_WORDS.has(prev.value.toUpperCase())) {
+    return false;
+  }
+  if (prev.type === 'ident' || prev.type === 'param' || prev.type === 'number' || prev.type === 'string') {
+    return true;
+  }
+  if (prev.type === 'punct' && prev.value === ')') return true;
+  // Ключевое слово-функция (СУММА/ВЫРАЗИТЬ/…) непосредственно перед `(` — вызов.
+  if (prev.type === 'keyword' && FUNCTION_WORDS.has(prev.value.toUpperCase())) return true;
+  return false;
+}
+
+/**
+ * Снимает ИЗБЫТОЧНЫЕ скобки вокруг операнда в булевом/предикатном слое листа, как это
+ * делает конструктор 1С (подтверждено живым оракулом): `НЕ (Поле В (…))` → `НЕ Поле В (…)`,
+ * `КОГДА (X = Y)` (через лист) → `X = Y`, `Поле = (&П)` → `Поле = &П`, `(Поле) = &П` →
+ * `Поле = &П`, `(Поле ЕСТЬ NULL) КАК Алиас` → `Поле ЕСТЬ NULL КАК Алиас`, `ТОГДА (a - b)`
+ * (через лист) → `a - b`.
+ *
+ * Снимаем пару `( C )` ТОЛЬКО когда:
+ *   - `(` не открывает вызов функции (isCallOpenContext);
+ *   - содержимое C сбалансировано и без верхнеуровневой запятой (иначе это список);
+ *   - НИ левый, НИ правый сосед пары не является арифметическим оператором `+ - * / %`
+ *     (чтобы НИКОГДА не менять приоритет арифметики — этим занят reprintLeafArithmetic);
+ *   - левый сосед — начало строки, оператор сравнения, или слово-предикат
+ *     (НЕ/И/ИЛИ/КОГДА/ТОГДА/ИНАЧЕ/ЕСТЬ/МЕЖДУ/ПОДОБНО/ССЫЛКА), или `(`;
+ *   - правый сосед — конец, `КАК`, `)`, `,`, оператор сравнения, или слово-предикат.
+ * Работает построчно (однострочный лист); многострочные листья не трогаем.
+ */
+export function stripRedundantLeafParens(raw: string): string {
+  if (!raw || raw.includes('\n') || !raw.includes('(')) return raw;
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return raw;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length < 2) return raw;
+
+  const isPredWord = (t: Token | undefined): boolean =>
+    !!t && (t.type === 'keyword' || t.type === 'ident') && PRED_NEIGHBOR_WORDS.has(t.value.toUpperCase());
+  const isCmpPunct = (t: Token | undefined): boolean =>
+    !!t && t.type === 'punct' && COMPARISON_PUNCT_SET.has(t.value);
+  const isArithPunct = (t: Token | undefined): boolean =>
+    !!t && t.type === 'punct' && ARITH_PUNCT_SET.has(t.value);
+  const isOpenParen = (t: Token | undefined): boolean =>
+    !!t && t.type === 'punct' && t.value === '(';
+
+  // Левый сосед пары допускает снятие скобок (предикатный/сравнительный контекст).
+  const leftOk = (prev: Token | undefined): boolean =>
+    !prev || isCmpPunct(prev) || isPredWord(prev) || isOpenParen(prev);
+  // Правый сосед пары допускает снятие скобок.
+  const rightOk = (nx: Token | undefined): boolean => {
+    if (!nx) return true;
+    if (nx.type === 'punct' && (nx.value === ')' || nx.value === ',')) return true;
+    if (nx.type === 'keyword' && nx.value.toUpperCase() === 'КАК') return true;
+    if (isCmpPunct(nx)) return true;
+    if (isPredWord(nx)) return true;
+    return false;
+  };
+
+  // Сопоставление скобок по индексам sig: match[openIdx] = closeIdx (и наоборот).
+  const match = new Map<number, number>();
+  const stack: number[] = [];
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (t.type === 'punct' && t.value === '(') stack.push(i);
+    else if (t.type === 'punct' && t.value === ')') {
+      const o = stack.pop();
+      if (o === undefined) return raw; // несбалансированно — не трогаем
+      match.set(o, i);
+    }
+  }
+  if (stack.length) return raw;
+
+  // Множество индексов скобок к удалению.
+  const drop = new Set<number>();
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (!(t.type === 'punct' && t.value === '(')) continue;
+    if (drop.has(i)) continue;
+    const close = match.get(i)!;
+    const prev = i > 0 ? sig[i - 1] : undefined;
+    const nx = close + 1 < sig.length ? sig[close + 1] : undefined;
+    // Уже помеченный к удалению сосед-скобка считается «прозрачным» (вложенная
+    // охватывающая пара): пропускаем — внешняя пара решит за обе.
+    if (isCallOpenContext(prev)) continue;
+    // Содержимое не пустое и без верхнеуровневой запятой.
+    if (close === i + 1) continue;
+    let hasTopComma = false;
+    let depth = 0;
+    for (let k = i + 1; k < close; k++) {
+      const c = sig[k];
+      if (c.type === 'punct' && c.value === '(') depth++;
+      else if (c.type === 'punct' && c.value === ')') depth--;
+      else if (depth === 0 && c.type === 'punct' && c.value === ',') { hasTopComma = true; break; }
+    }
+    if (hasTopComma) continue;
+    // Никогда не меняем приоритет арифметики: сосед-арифметика → оставляем скобки.
+    if (isArithPunct(prev) || isArithPunct(nx)) continue;
+    if (!leftOk(prev) || !rightOk(nx)) continue;
+    // Приоритет/ассоциативность сравнения: `A <> (B = C)` НЕ упрощается до `A <> B = C`
+    // (изменился бы смысл — сравнения левоассоциативны/неассоциативны). Если сосед —
+    // оператор сравнения/предиката, а внутри есть верхнеуровневое сравнение/предикат,
+    // скобки сохраняем. Префиксы НЕ/КОГДА/ТОГДА/ИНАЧЕ и границы (`,`/КАК/`)`/начало/
+    // конец) приоритета не навязывают (НЕ связывает слабее сравнения).
+    const neighborIsCompare = (t: Token | undefined): boolean =>
+      isCmpPunct(t) || (!!t && (t.type === 'keyword' || t.type === 'ident') &&
+        new Set(['ЕСТЬ', 'МЕЖДУ', 'ПОДОБНО', 'ССЫЛКА']).has(t.value.toUpperCase()));
+    if (neighborIsCompare(prev) || neighborIsCompare(nx)) {
+      let innerCompare = false;
+      let d = 0;
+      for (let k = i + 1; k < close; k++) {
+        const c = sig[k];
+        if (c.type === 'punct' && c.value === '(') d++;
+        else if (c.type === 'punct' && c.value === ')') d--;
+        else if (d === 0 && neighborIsCompare(c)) { innerCompare = true; break; }
+      }
+      if (innerCompare) continue;
+    }
+    drop.add(i);
+    drop.add(close);
+  }
+
+  if (!drop.size) return raw;
+
+  // Заменяем помеченные скобки ПРОБЕЛОМ (а не пустотой), чтобы не склеить соседние
+  // слова при слитной записи (`НЕ(поле)` → `НЕ поле`, а не `НЕполе`). Затем
+  // нормализуем пробелы: схлопываем серии, убираем пробел сразу после `(` / перед `)`
+  // оставшихся скобок и перед запятой.
+  const positions: number[] = [];
+  for (const idx of drop) positions.push(sig[idx].pos);
+  positions.sort((a, b) => b - a);
+  let out = raw;
+  for (const p of positions) {
+    out = out.slice(0, p) + ' ' + out.slice(p + 1);
+  }
+  return out
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .replace(/\s+,/g, ',')
+    .trim();
+}
+
 /**
  * Переотрисовка арифметики листа. Возвращает канонический текст; при незнакомой
  * конструкции — исходный (без изменений). См. комментарий выше.
@@ -2083,6 +2246,11 @@ function renderBool(
     }
     case 'leaf': {
       let t = ctx.stripNotParens ? stripNotFieldParens(stripNegatedFieldParens(node.text)) : node.text;
+      // Снятие избыточных скобок вокруг операндов булева/предикатного слоя (как оракул):
+      // `НЕ (Поле В (…))` → `НЕ Поле В (…)`, `(Поле ЕСТЬ NULL)` → `Поле ЕСТЬ NULL`,
+      // `Поле = (&П)` → `Поле = &П`. Применяем во всех булевых слотах (лист — полный
+      // предикатный операнд; В-список/подзапрос НЕ затрагивается, см. stripRedundantLeafParens).
+      t = stripRedundantLeafParens(t);
       // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении — в скобках (фаза 6.15.12).
       t = wrapBareCastOperand(t);
       // Подзапрос внутри листа — перебазировка на контекстный отступ (фаза 6.15.9).
