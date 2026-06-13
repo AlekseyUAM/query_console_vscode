@@ -438,6 +438,14 @@ function parseSingleQuery(
   if (cur.isKeyword('ИТОГИ')) {
     model.totals = parseTotals(cur, sectionCtx);
   }
+  // АВТОУПОРЯДОЧИВАНИЕ может стоять В САМОМ КОНЦЕ запроса — ПОСЛЕ ИТОГИ (1С печатает
+  // его последней строкой). Если осталось — выставляем флаг auto на секции порядка
+  // (создаём её при необходимости). Фаза 6.16.9.
+  if (cur.isKeyword('АВТОУПОРЯДОЧИВАНИЕ')) {
+    cur.next();
+    if (model.order) model.order.auto = true;
+    else model.order = { fields: [], auto: true };
+  }
   if (cur.isKeyword('ИНДЕКСИРОВАТЬ')) {
     model.indexing = parseIndex(cur, sectionCtx);
   }

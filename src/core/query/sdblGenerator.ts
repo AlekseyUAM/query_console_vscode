@@ -975,7 +975,7 @@ function sectionFieldRefText(
  * `direction==='desc'`; запятая после всех, кроме последнего. При `auto` без полей
  * секция = только `['АВТОУПОРЯДОЧИВАНИЕ']`.
  */
-function renderOrder(order: Order | undefined, model: QueryModel): string[] {
+function renderOrder(order: Order | undefined, model: QueryModel, includeAuto = true): string[] {
   if (!order) return [];
   const lines: string[] = [];
   if (order.fields.length > 0) {
@@ -1013,7 +1013,7 @@ function renderOrder(order: Order | undefined, model: QueryModel): string[] {
       lines.push(`\t${ref}${suffix}${comma}`);
     });
   }
-  if (order.auto) lines.push('АВТОУПОРЯДОЧИВАНИЕ');
+  if (order.auto && includeAuto) lines.push('АВТОУПОРЯДОЧИВАНИЕ');
   return lines;
 }
 
@@ -1133,13 +1133,24 @@ export function generate(model: QueryModel): string {
   const aliases = resolveAliases(model.tables);
   const fieldLines = buildFieldLines(model, aliases);
   let out = buildQueryBlock(model, fieldLines, aliases);
-  const orderLines = renderOrder(model.order, model);
+  const orderLines = renderOrder(model.order, model, false);
   if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
   const totalsLines = renderTotals(model.totals, model);
   if (totalsLines.length > 0) out += '\n' + totalsLines.join('\n');
   const indexLines = renderIndex(model.indexing, model);
   if (indexLines.length > 0) out += '\n\n' + indexLines.join('\n');
+  out += renderAutoOrder(model.order, orderLines.length > 0 || totalsLines.length > 0 || indexLines.length > 0);
   return out;
+}
+
+/**
+ * АВТОУПОРЯДОЧИВАНИЕ — ПОСЛЕДНЯЯ строка запроса (после ИТОГИ/ИНДЕКС, фаза 6.16.9).
+ * Если перед ним была секция (порядок-поля/ИТОГИ/индекс) — отбивка одним `\n`;
+ * если auto единственное — двумя `\n` от тела (как раньше для order-only-auto).
+ */
+function renderAutoOrder(order: Order | undefined, hadSection: boolean): string {
+  if (!order?.auto) return '';
+  return (hadSection ? '\n' : '\n\n') + 'АВТОУПОРЯДОЧИВАНИЕ';
 }
 
 /**
@@ -1192,15 +1203,17 @@ export function generateDocument(doc: QueryDocument): string {
   // и источники, фаза 6.15.4) — рендер использует его же поля/таблицы.
   const last = members[members.length - 1].model;
   const first = members[0].model;
-  const orderLines = renderOrder(last.order, first);
+  const orderLines = renderOrder(last.order, first, false);
   if (orderLines.length > 0) out += '\n\n' + orderLines.join('\n');
   const totalsLines = renderTotals(last.totals, first);
   if (totalsLines.length > 0) out += '\n' + totalsLines.join('\n');
+  let indexEmitted = false;
   const tempCarrier = members.find(m => m.model.queryType === 'createTemp')?.model;
   if (last.indexing && tempCarrier) {
     const indexLines = renderIndex(last.indexing, { ...tempCarrier, fields: first.fields, tables: first.tables });
-    if (indexLines.length > 0) out += '\n\n' + indexLines.join('\n');
+    if (indexLines.length > 0) { out += '\n\n' + indexLines.join('\n'); indexEmitted = true; }
   }
+  out += renderAutoOrder(last.order, orderLines.length > 0 || totalsLines.length > 0 || indexEmitted);
   return out;
 }
 
