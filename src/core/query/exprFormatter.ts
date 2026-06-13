@@ -1790,6 +1790,12 @@ function renderBool(
  */
 function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): string[] {
   const contInd = whenInd + 2;
+  // Условие КОГДА вида `НЕ(группа)` конструктор печатает как НЕ-блок: `НЕ(` слитно,
+  // продолжения на whenInd+3 (на один глубже обычного contInd=whenInd+2),
+  // ИЛИ внутри — ещё +1 (фаза 6.15.20, MCP). Иначе вышло бы `НЕ (` с пробелом.
+  if (node.kind === 'not' && node.child.kind === 'group') {
+    return renderNotGroup(node.child.child, whenInd, 0, ctx);
+  }
   switch (node.kind) {
     case 'group':
       return renderWhenCondition(node.child, whenInd, ctx);
@@ -1946,8 +1952,10 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
       body = renderCase(tree, ctx.cont, ctx, false).join('\n');
     } else {
       // Поле выборки = булево выражение (OR/AND/НЕ): value-слот, orDelta=1, без
-      // оборачивающих скобок. operand0 @ base 1, ИЛИ @ base+1.
-      body = renderSelectBool(tree, 1, 1, 0, ctx).join('\n');
+      // оборачивающих скобок. operand0 @ base 1, ИЛИ @ base+1. Продолжения
+      // верхнеуровневой И-цепочки поля — на base+1 (andCont=2), как у плоской
+      // цепочки reindentLeafBool (фаза 6.15.19) и по MCP (фаза 6.15.20).
+      body = renderSelectBool(tree, 1, 2, 0, ctx).join('\n');
     }
   } else {
     // join
