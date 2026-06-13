@@ -672,6 +672,107 @@ export function reindentLeafCase(text: string, base: number): string {
 }
 
 /**
+ * Рефлоу СЕЛЕКТОРНОГО ВЫБОР, ВЛОЖЕННОГО в значение ТОГДА/ИНАЧЕ внутрь вызова функции
+ * (фаза 6.15.26, MCP-пробы). Когда значение ветки CASE — листовой вызов вида
+ * `ЕСТЬNULL(a, ЕСТЬNULL(ВЫБОР sel КОГДА … ТОГДА … КОНЕЦ, b))`, конструктор 1С:
+ *   (а) сплющивает аргументы функции до строки `… ЕСТЬNULL(ВЫБОР sel` (первая строка);
+ *   (б) РЕФЛОИТ встроенный CASE — разбивает инлайн `КОГДА X ТОГДА Y` на отдельные
+ *       строки с канонической геометрией: КОГДА=E+1, ТОГДА=E+2, ИНАЧЕ=E+1, КОНЕЦ=E,
+ *       где E = `valueBaseInd` (отступ значения-листа = отступ ТОГДА/ИНАЧЕ + 2) +
+ *       число НЕзакрытых скобок, стоящих перед словом ВЫБОР;
+ *   (в) хвост после КОНЕЦ (закрывающие аргументы `, b))`) кладёт на строку КОНЕЦ.
+ *
+ * Применяется ТОЛЬКО когда: лист содержит ВЫБОР на глубине скобок > 0 (внутри вызова,
+ * а не голым значением — голый ВЫБОР парсер делает узлом case), у этого ВЫБОР есть
+ * СЕЛЕКТОР (`ВЫБОР <выражение> КОГДА`, а не `ВЫБОР КОГДА`), и весь CASE закрывается
+ * на верхнем уровне скобок одним КОНЕЦ. Любая иная геометрия (несколько ВЫБОР,
+ * подзапрос, вложенный ВЫБОР в ТОГДА) → возврат входа без изменений.
+ *
+ * ВАЖНО: в каноне всего корпуса нет ни одного инлайн `КОГДА X ТОГДА Y`, поэтому
+ * направленный сплит однострочных КОГДА/ТОГДА безопасен.
+ */
+export function reflowLeafSelectorCase(text: string, valueBaseInd: number): string | null {
+  if (!text) return null;
+  // Сплющиваем весь лист в одну строку (аргументы вызова), сохраняя пунктуацию.
+  const flat = flattenLeafText(text);
+  let toks: Token[];
+  try {
+    toks = tokenize(flat);
+  } catch {
+    return null;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  const isW = (t: Token, w: string): boolean =>
+    (t.type === 'keyword' || t.type === 'ident') && t.value.toUpperCase() === w;
+  if (!sig.some((t) => isW(t, 'ВЫБОР'))) return null;
+  if (sig.some((t) => isW(t, 'ВЫБРАТЬ'))) return null; // подзапрос — не наша зона
+  // Глубина скобок ПЕРЕД каждым токеном.
+  const depthBefore: number[] = [];
+  let d = 0;
+  for (const t of sig) {
+    depthBefore.push(d);
+    if (t.type === 'punct' && t.value === '(') d++;
+    else if (t.type === 'punct' && t.value === ')') d--;
+  }
+  // Первый ВЫБОР на глубине > 0 (внутри вызова функции).
+  let vi = -1;
+  for (let k = 0; k < sig.length; k++) {
+    if (isW(sig[k], 'ВЫБОР') && depthBefore[k] > 0) { vi = k; break; }
+  }
+  if (vi < 0) return null;
+  // Более одного ВЫБОР в листе — арифметика/иная геометрия, не наш случай.
+  if (sig.some((t, k) => k !== vi && isW(t, 'ВЫБОР'))) return null;
+  const caseDepth = depthBefore[vi];
+  // У ВЫБОР должен быть СЕЛЕКТОР: следующий значимый токен — не КОГДА.
+  if (vi + 1 >= sig.length || isW(sig[vi + 1], 'КОГДА')) return null;
+  // Найти первый КОГДА на уровне CASE (после селектора).
+  let firstWhen = -1;
+  for (let k = vi + 1; k < sig.length; k++) {
+    if (depthBefore[k] === caseDepth && isW(sig[k], 'КОГДА')) { firstWhen = k; break; }
+    // Скобка закрылась раньше КОГДА — нестандартно.
+    if (depthBefore[k] < caseDepth) return null;
+  }
+  if (firstWhen < 0) return null;
+  // E (отступ КОНЕЦ) = базовый отступ значения-листа − 1 + число НЕзакрытых скобок
+  // перед ВЫБОР. (valueBaseInd = отступ ТОГДА/ИНАЧЕ + 2; MCP-пробы фазы 6.15.26.)
+  const E = valueBaseInd - 1 + caseDepth;
+  // Первая строка: всё от начала листа до начала первого КОГДА (включая `ВЫБОР sel`).
+  const out: string[] = [];
+  out.push(flat.slice(0, sig[firstWhen].pos).replace(/\s+$/u, ''));
+  // Перебор КОГДА/ТОГДА/ИНАЧЕ/КОНЕЦ на уровне CASE; текст между ключевыми словами
+  // прикрепляется к предыдущему ключевому слову (инлайн-значение/условие).
+  type Mark = { k: number; word: 'КОГДА' | 'ТОГДА' | 'ИНАЧЕ' | 'КОНЕЦ' };
+  const marks: Mark[] = [];
+  for (let k = firstWhen; k < sig.length; k++) {
+    if (depthBefore[k] !== caseDepth) continue;
+    const t = sig[k];
+    if (isW(t, 'КОГДА')) marks.push({ k, word: 'КОГДА' });
+    else if (isW(t, 'ТОГДА')) marks.push({ k, word: 'ТОГДА' });
+    else if (isW(t, 'ИНАЧЕ')) marks.push({ k, word: 'ИНАЧЕ' });
+    else if (isW(t, 'КОНЕЦ')) { marks.push({ k, word: 'КОНЕЦ' }); break; }
+  }
+  // Последний mark обязан быть КОНЕЦ (CASE закрылся на своём уровне).
+  if (marks.length === 0 || marks[marks.length - 1].word !== 'КОНЕЦ') return null;
+  // Вложенный ВЫБОР в значении ветки исключён выше (единственный ВЫБОР в листе).
+  for (let m = 0; m < marks.length; m++) {
+    const cur = marks[m];
+    const ind = cur.word === 'КОГДА' ? E + 1
+      : cur.word === 'ТОГДА' ? E + 2
+      : cur.word === 'ИНАЧЕ' ? E + 1
+      : E; // КОНЕЦ
+    // Текст строки: от начала текущего ключевого слова до начала следующего
+    // (для КОНЕЦ — до конца листа, включая хвостовые `, b))`).
+    const from = cur.k;
+    const to = m + 1 < marks.length ? marks[m + 1].k : -1;
+    const sliceFrom = sig[from].pos;
+    const sliceTo = to >= 0 ? sig[to].pos : flat.length;
+    const seg = flat.slice(sliceFrom, sliceTo).replace(/\s+$/u, '');
+    out.push('\t'.repeat(ind) + seg);
+  }
+  return out.join('\n');
+}
+
+/**
  * Переотступ продолжений булева листа поля выборки (фаза 6.15.19, MCP). Конструктор
  * нормализует отступ строк-продолжений `И`/`ИЛИ` плоской И/ИЛИ-цепочки поля выборки
  * к `base + 1` НЕЗАВИСИМО от исходного отступа разработчика (`X\n\t\t\tИ Y` →
@@ -2049,6 +2150,24 @@ function valueText(node: Node): string {
   return node.kind === 'leaf' ? node.text : '';
 }
 
+/**
+ * Строки значения ветки ТОГДА/ИНАЧЕ листового value-узла. Базовый случай —
+ * `<keyword> <значение>` одной строкой (подзапрос/В-список переотступаются
+ * reindentLeafSubquery). Особый случай — листовой вызов функции с ВЛОЖЕННЫМ
+ * СЕЛЕКТОРНЫМ ВЫБОР (`ЕСТЬNULL(…, ЕСТЬNULL(ВЫБОР sel КОГДА … КОНЕЦ, …))`):
+ * конструктор сплющивает аргументы и рефлоит встроенный CASE построчно
+ * (reflowLeafSelectorCase, фаза 6.15.26). Первая строка рефлоу приклеивается к
+ * ключевому слову ветки, остальные — как есть.
+ */
+function renderBranchValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: string, kwInd: number): string[] {
+  const reflowed = reflowLeafSelectorCase(value, kwInd + 2);
+  if (reflowed !== null) {
+    const parts = reflowed.split('\n');
+    return [tabs(kwInd) + keyword + ' ' + parts[0], ...parts.slice(1)];
+  }
+  return [tabs(kwInd) + keyword + ' ' + reindentLeafSubquery(flattenMultilineLeaf(value), kwInd + 2)];
+}
+
 function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): string[] {
   const lines: string[] = [node.selector ? 'ВЫБОР ' + node.selector : 'ВЫБОР'];
   for (const cl of node.clauses) {
@@ -2066,7 +2185,7 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
       // не-подзапросный операнд `В`/`В ИЕРАРХИИ` (одиночный параметр, список
       // значений, `ЗНАЧЕНИЕ(…)`-список) конструктор печатает ИНЛАЙН — сплющиваем
       // (фаза 6.15.11c); подзапрос flattenMultilineLeaf не трогает (стоп-слово ВЫБРАТЬ).
-      lines.push(tabs(thenInd) + 'ТОГДА ' + reindentLeafSubquery(flattenMultilineLeaf(valueText(cl.thenNode)), thenInd + 2));
+      lines.push(...renderBranchValueLines('ТОГДА', valueText(cl.thenNode), thenInd));
     }
   }
   if (node.elseExpr) {
@@ -2078,7 +2197,7 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
     } else {
       // Подзапрос значения ИНАЧЕ — на elseInd+2 (MCP, 6.15.9). Не-подзапросный
       // многострочный операнд `В` — ИНЛАЙН (фаза 6.15.11c, см. ТОГДА выше).
-      lines.push(tabs(elseInd) + 'ИНАЧЕ ' + reindentLeafSubquery(flattenMultilineLeaf(valueText(node.elseExpr)), elseInd + 2));
+      lines.push(...renderBranchValueLines('ИНАЧЕ', valueText(node.elseExpr), elseInd));
     }
   }
   lines.push(tabs(E) + 'КОНЕЦ' + (node.trailing ? ' ' + node.trailing : ''));
