@@ -1780,8 +1780,11 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
       sub[0] = tabs(thenInd) + 'ТОГДА ' + sub[0];
       lines.push(...sub);
     } else {
-      // Подзапрос значения ТОГДА — на thenInd+2 (MCP, 6.15.9).
-      lines.push(tabs(thenInd) + 'ТОГДА ' + reindentLeafSubquery(valueText(cl.thenNode), thenInd + 2));
+      // Подзапрос значения ТОГДА — на thenInd+2 (MCP, 6.15.9). Многострочный
+      // не-подзапросный операнд `В`/`В ИЕРАРХИИ` (одиночный параметр, список
+      // значений, `ЗНАЧЕНИЕ(…)`-список) конструктор печатает ИНЛАЙН — сплющиваем
+      // (фаза 6.15.11c); подзапрос flattenMultilineLeaf не трогает (стоп-слово ВЫБРАТЬ).
+      lines.push(tabs(thenInd) + 'ТОГДА ' + reindentLeafSubquery(flattenMultilineLeaf(valueText(cl.thenNode)), thenInd + 2));
     }
   }
   if (node.elseExpr) {
@@ -1791,8 +1794,9 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
       sub[0] = tabs(elseInd) + 'ИНАЧЕ ' + sub[0];
       lines.push(...sub);
     } else {
-      // Подзапрос значения ИНАЧЕ — на elseInd+2 (MCP, 6.15.9).
-      lines.push(tabs(elseInd) + 'ИНАЧЕ ' + reindentLeafSubquery(valueText(node.elseExpr), elseInd + 2));
+      // Подзапрос значения ИНАЧЕ — на elseInd+2 (MCP, 6.15.9). Не-подзапросный
+      // многострочный операнд `В` — ИНЛАЙН (фаза 6.15.11c, см. ТОГДА выше).
+      lines.push(tabs(elseInd) + 'ИНАЧЕ ' + reindentLeafSubquery(flattenMultilineLeaf(valueText(node.elseExpr)), elseInd + 2));
     }
   }
   lines.push(tabs(E) + 'КОНЕЦ');
