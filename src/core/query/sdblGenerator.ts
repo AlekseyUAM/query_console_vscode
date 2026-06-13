@@ -161,7 +161,7 @@ function renderSource(t: SelectedTable, bodyTabs = 1): string {
     const positions = slice === 'Обороты'
       ? [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.condition ?? '']
       : [v.startPeriod ?? '', v.endPeriod ?? '', v.periodicity ?? '', v.fillMethod ?? '', v.condition ?? ''];
-    if (!positions.some(p => p !== '')) return t.fullName;
+    if (!positions.some(p => p !== '') && !v.hadParens) return t.fullName;
     // Условие (последняя позиция) — составное или подзапрос → конструктор разносит
     // все параметры по строкам (как у Остатки, фаза 6.16.2).
     return renderVirtualParams(t.fullName, positions, v.condition ?? '', bodyTabs);
@@ -171,7 +171,9 @@ function renderSource(t: SelectedTable, bodyTabs = 1): string {
   // как у регистра бухгалтерии и по эталону конструктора 1С — хвостовые пустые позиции
   // сохраняются. Скобки — только если задан хоть один параметр.
   const positions = [v.period ?? '', v.condition ?? ''];
-  if (!positions.some(p => p !== '')) return t.fullName;
+  // Скобки опускаем, только если параметров нет И во вводе скобок не было. Пустые
+  // скобки `(, )`, явно написанные в источнике, конструктор сохраняет (фаза 6.16.8).
+  if (!positions.some(p => p !== '') && !v.hadParens) return t.fullName;
   return renderVirtualParams(t.fullName, positions, v.condition ?? '', bodyTabs);
 }
 

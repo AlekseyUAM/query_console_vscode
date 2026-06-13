@@ -15,6 +15,7 @@ export interface VirtualParams {
   order?: string;                // Порядок (ДвиженияССубконто)
   top?: string;                  // Первые (ДвиженияССубконто)
   correspondence?: boolean;      // проброшен из метаданных при добавлении ВТ
+  hadParens?: boolean;           // во вводе были скобки параметров (даже пустые `(, )`)
 }
 
 export interface SelectedTable {

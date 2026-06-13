@@ -312,7 +312,7 @@ describe('parseQuery 6.2.B — виртуальные таблицы (round-trip
       fields: [{ tableId: 't1', path: 'Курс', alias: 'Курс' }],
     });
     const model = parseQuery(text);
-    expect(model.tables[0].virtual).toEqual({ period: '&Период', condition: 'Валюта = &Валюта' });
+    expect(model.tables[0].virtual).toEqual({ period: '&Период', condition: 'Валюта = &Валюта', hadParens: true });
   });
 
   it('deep-equality: РБ Обороты corr → correspondence:true', () => {
@@ -321,7 +321,7 @@ describe('parseQuery 6.2.B — виртуальные таблицы (round-trip
       fields: [{ tableId: 't1', path: 'Счет', alias: 'Счет' }],
     });
     const model = parseQuery(text);
-    expect(model.tables[0].virtual).toEqual({ periodicity: 'Период', correspondence: true });
+    expect(model.tables[0].virtual).toEqual({ periodicity: 'Период', correspondence: true, hadParens: true });
   });
 });
 
@@ -1859,88 +1859,88 @@ describe('parseQuery — краевые ветви', () => {
 describe('parseQuery — виртуальные таблицы с пропущенными позициями', () => {
   it('РН Остатки без условия (только период)', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрНакопления.Р.Остатки(&Дата) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ period: '&Дата' });
+    expect(m.tables[0].virtual).toEqual({ period: '&Дата', hadParens: true });
   });
 
   it('РН Остатки совсем без аргументов (все позиции пустые)', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрНакопления.Р.Остатки() КАК Т');
-    expect(m.tables[0].virtual).toEqual({});
+    expect(m.tables[0].virtual).toEqual({ hadParens: true });
   });
 
   it('РН Обороты с пропущенными серединными позициями', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрНакопления.Р.Обороты(, , , Т.Б = 1) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ condition: 'Т.Б = 1' });
+    expect(m.tables[0].virtual).toEqual({ condition: 'Т.Б = 1', hadParens: true });
   });
 
   it('РН ОстаткиИОбороты с пропущенными позициями', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрНакопления.Р.ОстаткиИОбороты(&Н, &К) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', endPeriod: '&К' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', endPeriod: '&К', hadParens: true });
   });
 
   it('РБ Остатки без позиций', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.Остатки() КАК Т');
-    expect(m.tables[0].virtual).toEqual({});
+    expect(m.tables[0].virtual).toEqual({ hadParens: true });
   });
 
   it('РБ Обороты non-corr (6 позиций, без корреспонденции)', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.Обороты(&Н, &К) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', endPeriod: '&К' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', endPeriod: '&К', hadParens: true });
     expect(m.tables[0].virtual?.correspondence).toBeUndefined();
   });
 
   it('РБ ОборотыДтКт без позиций', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.ОборотыДтКт() КАК Т');
-    expect(m.tables[0].virtual).toEqual({});
+    expect(m.tables[0].virtual).toEqual({ hadParens: true });
   });
 
   it('РБ ОстаткиИОбороты без позиций', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.ОстаткиИОбороты() КАК Т');
-    expect(m.tables[0].virtual).toEqual({});
+    expect(m.tables[0].virtual).toEqual({ hadParens: true });
   });
 
   it('РБ ДвиженияССубконто без позиций', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.ДвиженияССубконто() КАК Т');
-    expect(m.tables[0].virtual).toEqual({});
+    expect(m.tables[0].virtual).toEqual({ hadParens: true });
   });
 
   it('РБ неизвестный срез (default — нет раскладки)', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.НеизвестныйСрез(&П) КАК Т');
-    expect(m.tables[0].virtual).toEqual({});
+    expect(m.tables[0].virtual).toEqual({ hadParens: true });
   });
 
   it('РН Обороты с одним аргументом (хвостовые позиции отсутствуют → ?? "")', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрНакопления.Р.Обороты(&Н) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', hadParens: true });
   });
 
   it('РН ОстаткиИОбороты с одним аргументом', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрНакопления.Р.ОстаткиИОбороты(&Н) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', hadParens: true });
   });
 
   it('РБ Обороты с одним аргументом', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.Обороты(&Н) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', hadParens: true });
   });
 
   it('РБ ОборотыДтКт с одним аргументом', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.ОборотыДтКт(&Н) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', hadParens: true });
   });
 
   it('РБ ОстаткиИОбороты (бух) с одним аргументом', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.ОстаткиИОбороты(&Н) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', hadParens: true });
   });
 
   it('РБ ДвиженияССубконто с одним аргументом', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.ДвиженияССубконто(&Н) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н' });
+    expect(m.tables[0].virtual).toEqual({ startPeriod: '&Н', hadParens: true });
   });
 
   it('РБ Остатки с одним аргументом', () => {
     const m = parseQuery('ВЫБРАТЬ Т.А ИЗ РегистрБухгалтерии.Х.Остатки(&Н) КАК Т');
-    expect(m.tables[0].virtual).toEqual({ period: '&Н' });
+    expect(m.tables[0].virtual).toEqual({ period: '&Н', hadParens: true });
   });
 });
 

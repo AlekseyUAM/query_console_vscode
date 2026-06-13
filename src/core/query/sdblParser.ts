@@ -1038,6 +1038,10 @@ function parseVirtualParams(cur: Cursor, fullName: string): VirtualParams {
   const kind = parts[0];
   const slice = parts[2];
   const v: VirtualParams = {};
+  // parseVirtualParams вызывается ТОЛЬКО когда во вводе была открывающая скобка —
+  // значит скобки параметров присутствовали (даже пустые `(, )`). Конструктор 1С
+  // сохраняет такие пустые скобки (фаза 6.16.8), поэтому фиксируем факт.
+  v.hadParens = true;
   const set = (key: keyof VirtualParams, value: string): void => {
     if (value !== '') (v as Record<string, unknown>)[key] = value;
   };
