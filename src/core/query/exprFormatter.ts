@@ -325,7 +325,62 @@ function leafFlattenBlocked(raw: string): boolean {
  * (баланс скобок, кавычки учитываются). Листья сложнее (И/ИЛИ-цепочка значения
  * с двумя подзапросами, хвост после скобки) сохраняют геометрию исходника.
  */
+/**
+ * Сплющивает в одну строку многострочные СПИСКИ ЗНАЧЕНИЙ оператора `В (\n a,\n b)`
+ * внутри тела подзапроса (фаза 6.15.20). Находит строку, заканчивающуюся на ` В (`
+ * или ` В(` (открытие списка), где за `(` НЕ следует подзапрос (ВЫБРАТЬ), собирает
+ * последующие строки до закрытия скобок списка и склеивает их в одну строку с
+ * пунктуационным сплющиванием (как flattenLeafText). Хвост после закрытия списка
+ * (`)) КАК …` и т. п.) сохраняется на той же строке. Прочее не трогает.
+ */
+function flattenInlineValueLists(text: string): string {
+  if (!text.includes('\n')) return text;
+  const lines = text.split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Открытие списка значений: строка кончается на `В (` / `В(` (вне строкового
+    // литерала; кавычки в строке не учитываем — список значений их не содержит).
+    const opensList =
+      /(?:^|[^\p{L}\p{N}_])В\s*\($/u.test(line) &&
+      i + 1 < lines.length &&
+      !/^[\t ]*ВЫБРАТЬ(?![\p{L}\p{N}_])/u.test(lines[i + 1]);
+    if (!opensList) { out.push(line); continue; }
+    // Считаем баланс скобок начиная с этой строки, пока список не закроется.
+    let depth = 0;
+    let inStr = false;
+    const buf: string[] = [];
+    let j = i;
+    let closed = false;
+    for (; j < lines.length; j++) {
+      buf.push(lines[j]);
+      for (const ch of lines[j]) {
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '(') depth++;
+        else if (ch === ')') { depth--; if (depth === 0) { closed = true; } }
+      }
+      if (closed) break;
+    }
+    if (!closed) { out.push(line); continue; }
+    // Подзапрос внутри списка — не сплющиваем (страховка).
+    if (buf.some(b => /(?:^|[^\p{L}\p{N}_])ВЫБРАТЬ(?![\p{L}\p{N}_])/u.test(b))) {
+      out.push(line); continue;
+    }
+    // Сохраняем ведущий отступ первой строки, сплющиваем содержимое.
+    const indent = (buf[0].match(/^\t*/u) ?? [''])[0];
+    out.push(indent + flattenLeafText(buf.join('\n').replace(/^\t*/u, '')));
+    i = j;
+  }
+  return out.join('\n');
+}
+
 export function reindentLeafSubquery(text: string, base: number): string {
+  if (!text.includes('\n')) return text;
+  // Многострочный СПИСОК ЗНАЧЕНИЙ оператора `В (\n a,\n b)` внутри тела подзапроса
+  // конструктор печатает инлайн на одной строке (фаза 6.15.20, MCP). Списки
+  // подзапроса (`В (ВЫБРАТЬ …)`) НЕ трогаем (после `(` идёт ВЫБРАТЬ).
+  text = flattenInlineValueLists(text);
   if (!text.includes('\n')) return text;
   const lines = text.split('\n');
   // Склеенная открывающая скобка `… В (` в конце строки, когда `ВЫБРАТЬ` стоит на
