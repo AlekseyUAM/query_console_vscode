@@ -56,6 +56,7 @@ import type { QueryDocument, UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
 import type { MetadataResolver } from './metadataResolver';
 import { expandStarFields } from './expandStarFields';
+import { expandTabSectionFields } from './expandTabSectionFields';
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
 const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
@@ -2898,6 +2899,9 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     // Развёртка `*` по метаданным (фаза 6.15.15): до назначения автопсевдонимов
     // `ПолеN`, чтобы развёрнутые/удалённые звёзды не получали лишний `Поле1`.
     expandStarFields(model, resolver);
+    // Развёртка простого поля-ссылки на табличную часть в проекцию её колонок
+    // (фаза 6.15.23). После звёздной развёртки, до назначения автопсевдонимов.
+    expandTabSectionFields(model, resolver);
     return model;
   });
 
