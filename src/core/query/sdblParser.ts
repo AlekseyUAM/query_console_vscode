@@ -808,6 +808,7 @@ function parseTableSource(cur: Cursor, index: number): SelectedTable {
   // отсутствует, но дальше идёт голый идентификатор-псевдоним — берём его;
   // иначе синтезируем псевдоним по умолчанию (как генератор/resolveAliases).
   let alias: string | undefined;
+  let aliasSynthesized = false;
   if (cur.matchKeyword('КАК')) {
     const aliasTok = cur.peek();
     if (aliasTok.type !== 'ident' && aliasTok.type !== 'keyword') {
@@ -819,6 +820,7 @@ function parseTableSource(cur: Cursor, index: number): SelectedTable {
     alias = cur.next().text;
   } else {
     alias = defaultTableAlias({ id: '', fullName });
+    aliasSynthesized = true;
   }
 
   const table: SelectedTable = {
@@ -826,6 +828,7 @@ function parseTableSource(cur: Cursor, index: number): SelectedTable {
     fullName,
     alias,
   };
+  if (aliasSynthesized) table.aliasSynthesized = true;
   if (virtual) table.virtual = virtual;
   return table;
 }

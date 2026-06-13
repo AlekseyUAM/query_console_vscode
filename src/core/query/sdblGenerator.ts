@@ -382,8 +382,16 @@ function renderJoinCondition(join: Join, aliases: Map<string, string>, depth = 0
  *   после неё через запятую (последняя строка цепочки получает запятую).
  */
 function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
-  const sourceLine = (t: SelectedTable): string =>
-    `${renderSource(t)} КАК ${aliases.get(t.id) ?? t.id}`;
+  const sourceLine = (t: SelectedTable): string => {
+    // ВНУТРИ подзапроса-операнда условия (`В (ВЫБРАТЬ … ИЗ ВТ)`) конструктор 1С НЕ
+    // печатает `КАК <имя>` для источника с СИНТЕЗИРОВАННЫМ псевдонимом (во вводе не
+    // было явного `КАК`/голого псевдонима) — источник остаётся голым (`ИЗ ВТ`).
+    // На верхнем уровне конструктор такой `КАК` добавляет (фаза 6.15.11c, MCP).
+    if (inConditionSubquery && t.aliasSynthesized && !t.subquery) {
+      return renderSource(t);
+    }
+    return `${renderSource(t)} КАК ${aliases.get(t.id) ?? t.id}`;
+  };
 
   const joins = model.joins ?? [];
   if (joins.length === 0) {
