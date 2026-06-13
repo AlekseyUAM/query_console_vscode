@@ -310,18 +310,26 @@ function parseSingleQuery(
     }
   }
   let sawTabSection = false;
+  // selectOrder проставляем ТОЛЬКО когда в выборке есть проекция ТЧ — генератор по
+  // нему восстанавливает исходное перемежение скалярных полей и проекций ТЧ, чтобы
+  // проекция ТЧ после скалярных полей не «всплывала» в общий блок ТЧ (фаза 6.15.20).
+  // В отсутствие ТЧ модель остаётся без лишнего поля (round-trip/UI-инварианты).
+  const tagOrder = items.some(it => it.kind === 'tabSection');
+  let selectOrder = 0;
   for (const item of items) {
     if (item.kind === 'tabSection') {
+      const ts = resolveTabSection(item.ts, aliasToId, tables);
+      if (tagOrder) ts.selectOrder = selectOrder;
+      selectOrder++;
       sawTabSection = true;
-      tabSectionFields.push(resolveTabSection(item.ts, aliasToId, tables));
+      tabSectionFields.push(ts);
       continue;
     }
-    if (sawTabSection) {
-      // Поле после табличной части → trailingFields (порядок генератора).
-      interpretField(item.field, aliasToId, trailingFields, aggregates, resolveOwner);
-    } else {
-      interpretField(item.field, aliasToId, fields, aggregates, resolveOwner);
-    }
+    const target = sawTabSection ? trailingFields : fields;
+    const before = target.length;
+    interpretField(item.field, aliasToId, target, aggregates, resolveOwner);
+    if (tagOrder) for (let k = before; k < target.length; k++) target[k].selectOrder = selectOrder;
+    selectOrder++;
   }
 
   // Соединения: достроить ссылки на таблицы по псевдонимам.

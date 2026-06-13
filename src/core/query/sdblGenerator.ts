@@ -1,4 +1,4 @@
-import type { QueryModel, SelectedTable, SelectedField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField, Indexing } from './queryModel';
+import type { QueryModel, SelectedTable, SelectedField, SelectedTabSectionField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField, Indexing } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
@@ -711,17 +711,14 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
   const aggregateFunc = (tableId: string, path: string): AggregateFunction | undefined =>
     fieldsCarryFunc ? undefined : aggregates.find(a => a.tableId === tableId && a.path === path)?.func;
 
-  const allLines: string[] = [];
   // Счётчик автопсевдонимов произвольных полей. Не проверяет коллизии с явными
   // псевдонимами — допустимо для фазы 4.2 (UI не смешивает их с полями «Поле{n}»).
   let exprCounter = 0;
 
-  for (const f of model.fields) {
+  const fieldLine = (f: SelectedField): string => {
     if (f.expression) {
       const alias = f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
-      const expr = formatSelectExpression(f.expression);
-      allLines.push(`\t${expr} КАК ${alias}`);
-      continue;
+      return `\t${formatSelectExpression(f.expression)} КАК ${alias}`;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
     // Функция агрегата берётся ПРЯМО с поля (различает два агрегата одного
@@ -735,39 +732,43 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     // без явного псевдонима оставляем как есть.
     const autoAlias = !func && !suppressAutoAlias ? (f.path.split('.').pop() ?? f.path) : undefined;
     const effAlias = f.alias ?? autoAlias;
-    const expr = effAlias ? `${lhs} КАК ${effAlias}` : lhs;
-    allLines.push(`\t${expr}`);
-  }
+    return effAlias ? `\t${lhs} КАК ${effAlias}` : `\t${lhs}`;
+  };
 
-  for (const tsf of model.tabSectionFields ?? []) {
+  const tsLine = (tsf: SelectedTabSectionField): string => {
     const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
     const subLines = tsf.fields.map((f, i) =>
       `\t\t${f} КАК ${f}${i < tsf.fields.length - 1 ? ',' : ''}`
     );
-    allLines.push(`\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.alias ?? tsf.tsName}`);
-  }
+    return `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.alias ?? tsf.tsName}`;
+  };
 
-  // Поля, которые должны появляться после табличных частей (Предопределенный, ИмяПредопределенныхДанных).
+  // Поля до первой ТЧ (`model.fields`) — всегда первыми и в своём порядке.
+  const headLines = model.fields.map(fieldLine);
+
+  // Остальные элементы (проекции ТЧ + поля после них) конструктор печатает в
+  // ИСХОДНОМ порядке выборки (selectOrder, фаза 6.15.20): проекция ТЧ, стоящая
+  // ПОСЛЕ скалярных полей, остаётся на своём месте, а не всплывает в общий блок ТЧ.
+  // Старые (UI) модели без selectOrder сохраняют прежний порядок: все ТЧ, затем
+  // хвостовые поля.
+  type Item = { order: number | undefined; seq: number; render: () => string };
+  const rest: Item[] = [];
+  let seq = 0;
+  for (const tsf of model.tabSectionFields ?? []) {
+    rest.push({ order: tsf.selectOrder, seq: seq++, render: () => tsLine(tsf) });
+  }
   for (const f of model.trailingFields ?? []) {
-    if (f.expression) {
-      const alias = f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
-      const expr = formatSelectExpression(f.expression);
-      allLines.push(`\t${expr} КАК ${alias}`);
-      continue;
-    }
-    const tableAlias = aliases.get(f.tableId) ?? f.tableId;
-    const func = f.func ?? aggregateFunc(f.tableId, f.path);
-    const lhs = func
-      ? wrapAggregate(func, `${tableAlias}.${f.path}`)
-      : `${tableAlias}.${f.path}`;
-    // Тот же авто-псевдоним по последнему сегменту пути, что и для обычных полей.
-    const autoAlias = !func && !suppressAutoAlias ? (f.path.split('.').pop() ?? f.path) : undefined;
-    const effAlias = f.alias ?? autoAlias;
-    const expr = effAlias ? `${lhs} КАК ${effAlias}` : lhs;
-    allLines.push(`\t${expr}`);
+    rest.push({ order: f.selectOrder, seq: seq++, render: () => fieldLine(f) });
+  }
+  // Перемежение по selectOrder применяем ТОЛЬКО когда он задан у ВСЕХ элементов
+  // (чистая парсерная модель). Если хоть у одного нет — это UI-модель или результат
+  // развёртки звезды (которая формирует собственный порядок); сохраняем прежний
+  // бакет-порядок: все ТЧ, затем хвостовые поля (фаза 6.15.20).
+  if (rest.every(it => it.order !== undefined)) {
+    rest.sort((a, b) => (a.order! - b.order!) || (a.seq - b.seq));
   }
 
-  return allLines;
+  return [...headLines, ...rest.map(it => it.render())];
 }
 
 /**
