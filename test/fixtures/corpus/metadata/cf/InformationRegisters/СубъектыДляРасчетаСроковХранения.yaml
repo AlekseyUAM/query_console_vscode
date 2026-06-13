@@ -1,0 +1,17 @@
+version: 1
+kind: РегистрСведений
+name: СубъектыДляРасчетаСроковХранения
+fullName: РегистрСведений.СубъектыДляРасчетаСроковХранения
+uuid: 9378d484-2143-45eb-a71e-651055611789
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Субъект
+    category: dimension
+    types: []
+  - name: ДатаСобытия
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+source: InformationRegisters/СубъектыДляРасчетаСроковХранения.xml

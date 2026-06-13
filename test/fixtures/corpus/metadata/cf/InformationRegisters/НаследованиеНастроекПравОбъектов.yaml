@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: НаследованиеНастроекПравОбъектов
+fullName: РегистрСведений.НаследованиеНастроекПравОбъектов
+uuid: 4d84bb11-e06e-4ed9-915b-76ee0e385a8b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types: []
+  - name: Родитель
+    category: dimension
+    types: []
+  - name: Наследовать
+    category: resource
+    types:
+      - kind: Булево
+  - name: УровеньИспользования
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: InformationRegisters/НаследованиеНастроекПравОбъектов.xml

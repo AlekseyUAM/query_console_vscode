@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПараметрыЦентраМониторинга
+fullName: Константа.ПараметрыЦентраМониторинга
+uuid: c971e0ba-53b8-4454-92f7-40b0d639058a
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ПараметрыЦентраМониторинга.xml

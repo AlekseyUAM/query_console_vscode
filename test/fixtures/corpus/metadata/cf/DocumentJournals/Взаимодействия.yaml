@@ -1,0 +1,79 @@
+version: 1
+kind: ЖурналДокументов
+name: Взаимодействия
+fullName: ЖурналДокументов.Взаимодействия
+uuid: 7da57c89-af2c-445a-96f7-39250f70306f
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ЖурналДокументов.Взаимодействия
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+  - name: ТипДокумента
+    category: standard
+    types:
+      - kind: unknown
+  - name: Автор
+    category: attribute
+    types: []
+  - name: Входящий
+    category: attribute
+    types: []
+  - name: Ответственный
+    category: attribute
+    types: []
+  - name: Тема
+    category: attribute
+    types: []
+  - name: Участники
+    category: attribute
+    types: []
+  - name: СтатусИсходящегоПисьма
+    category: attribute
+    types: []
+  - name: УчетнаяЗапись
+    category: attribute
+    types: []
+  - name: ЕстьВложения
+    category: attribute
+    types: []
+  - name: ВзаимодействиеОснование
+    category: attribute
+    types: []
+  - name: ПолученоОтправлено
+    category: attribute
+    types: []
+  - name: Размер
+    category: attribute
+    types: []
+  - name: Важность
+    category: attribute
+    types: []
+  - name: ДатаКогдаОтправить
+    category: attribute
+    types: []
+  - name: ДатаАктуальностиОтправки
+    category: attribute
+    types: []
+  - name: ИдентификаторСообщения
+    category: attribute
+    types: []
+source: DocumentJournals/Взаимодействия.xml

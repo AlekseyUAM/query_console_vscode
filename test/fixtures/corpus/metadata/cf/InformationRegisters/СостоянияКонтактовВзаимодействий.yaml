@@ -1,0 +1,24 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияКонтактовВзаимодействий
+fullName: РегистрСведений.СостоянияКонтактовВзаимодействий
+uuid: 4770398f-8013-4d43-93ce-ec1165e40c4e
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Контакт
+    category: dimension
+    types: []
+  - name: КоличествоНеРассмотрено
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ДатаПоследнегоВзаимодействия
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/СостоянияКонтактовВзаимодействий.xml

@@ -1,0 +1,58 @@
+version: 1
+kind: РегистрСведений
+name: ОтветыНаВопросыАнкет
+fullName: РегистрСведений.ОтветыНаВопросыАнкет
+uuid: 0b09cf2f-1759-4362-b997-29e09ac00445
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Активность
+    category: standard
+    types:
+      - kind: Булево
+  - name: Анкета
+    category: dimension
+    types:
+      - kind: ref
+        ref: Документ.Анкета
+  - name: Вопрос
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВопросыШаблонаАнкеты
+  - name: ЭлементарныйВопрос
+    category: dimension
+    types:
+      - kind: unknown
+        raw: cfg:ChartOfCharacteristicTypesRef.ВопросыДляАнкетирования
+  - name: НомерЯчейки
+    category: dimension
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Ответ
+    category: resource
+    types: []
+  - name: ОткрытыйОтвет
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: БезОтвета
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/ОтветыНаВопросыАнкет.xml

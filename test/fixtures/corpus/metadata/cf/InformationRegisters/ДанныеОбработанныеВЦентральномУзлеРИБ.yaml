@@ -1,0 +1,37 @@
+version: 1
+kind: РегистрСведений
+name: ДанныеОбработанныеВЦентральномУзлеРИБ
+fullName: РегистрСведений.ДанныеОбработанныеВЦентральномУзлеРИБ
+uuid: 436b558e-6547-4ba6-8cee-954fe36743ea
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелПланаОбмена
+    category: dimension
+    types: []
+  - name: ОбъектМетаданных
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Данные
+    category: dimension
+    types: []
+  - name: Очередь
+    category: dimension
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: КлючУникальности
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ЗначенияОтборовНезависимогоРегистра
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ДанныеОбработанныеВЦентральномУзлеРИБ.xml

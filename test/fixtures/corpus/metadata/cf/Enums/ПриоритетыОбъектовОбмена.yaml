@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ПриоритетыОбъектовОбмена
+fullName: Перечисление.ПриоритетыОбъектовОбмена
+uuid: 6aa819d3-c56d-4561-a2e4-a1188ab1295a
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ПриоритетыОбъектовОбмена
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ПриоритетОбъектаОбменаНиже
+  - name: ПриоритетОбъектаОбменаСовпадает
+  - name: ПриоритетОбъектаОбменаВыше
+source: Enums/ПриоритетыОбъектовОбмена.xml

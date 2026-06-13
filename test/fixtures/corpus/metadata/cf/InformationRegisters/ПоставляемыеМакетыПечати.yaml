@@ -1,0 +1,40 @@
+version: 1
+kind: РегистрСведений
+name: ПоставляемыеМакетыПечати
+fullName: РегистрСведений.ПоставляемыеМакетыПечати
+uuid: f6d79449-eca9-4d13-9ddc-8b36ae9e729e
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ИмяМакета
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: КонтрольнаяСумма
+    category: resource
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+  - name: ПредыдущаяКонтрольнаяСумма
+    category: resource
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+  - name: ВерсияМакета
+    category: resource
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+source: InformationRegisters/ПоставляемыеМакетыПечати.xml

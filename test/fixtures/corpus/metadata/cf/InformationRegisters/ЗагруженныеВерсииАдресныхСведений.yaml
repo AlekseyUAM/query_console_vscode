@@ -1,0 +1,33 @@
+version: 1
+kind: РегистрСведений
+name: ЗагруженныеВерсииАдресныхСведений
+fullName: РегистрСведений.ЗагруженныеВерсииАдресныхСведений
+uuid: 5225b4da-431e-469d-a30c-31fa434b7e86
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Версия
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ДатаВерсии
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаЗагрузки
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ЗагруженныеВерсииАдресныхСведений.xml

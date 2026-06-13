@@ -1,0 +1,17 @@
+version: 1
+kind: РегистрСведений
+name: УдалитьДвоичныеДанныеФайлов
+fullName: РегистрСведений.УдалитьДвоичныеДанныеФайлов
+uuid: ecaba9aa-fca7-42f5-a4fe-d8176cf875b9
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Файл
+    category: dimension
+    types: []
+  - name: ДвоичныеДанныеФайла
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/УдалитьДвоичныеДанныеФайлов.xml

@@ -1,0 +1,8 @@
+version: 1
+kind: Константа
+name: ИспользоватьЗаметки
+fullName: Константа.ИспользоватьЗаметки
+uuid: c67fab0a-704f-43ae-bd03-4b5b1a880b24
+types:
+  - kind: Булево
+source: Constants/ИспользоватьЗаметки.xml

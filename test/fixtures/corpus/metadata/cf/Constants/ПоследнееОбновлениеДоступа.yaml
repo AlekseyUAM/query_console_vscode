@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПоследнееОбновлениеДоступа
+fullName: Константа.ПоследнееОбновлениеДоступа
+uuid: e7a63151-fc1a-4563-8768-26d854ab012b
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ПоследнееОбновлениеДоступа.xml

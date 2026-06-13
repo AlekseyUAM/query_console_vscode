@@ -1,0 +1,43 @@
+version: 1
+kind: РегистрСведений
+name: КлючиДоступаКРегистрам
+fullName: РегистрСведений.КлючиДоступаКРегистрам
+uuid: d74a37c2-7f50-40da-b7f8-29f79ae7230c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Регистр
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ВариантДоступа
+    category: dimension
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Поле1
+    category: dimension
+    types: []
+  - name: Поле2
+    category: dimension
+    types: []
+  - name: Поле3
+    category: dimension
+    types: []
+  - name: Поле4
+    category: dimension
+    types: []
+  - name: Поле5
+    category: dimension
+    types: []
+  - name: КлючДоступа
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.КлючиДоступа
+source: InformationRegisters/КлючиДоступаКРегистрам.xml

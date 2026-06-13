@@ -1,0 +1,32 @@
+version: 1
+kind: РегистрСведений
+name: ОсновныеПечатныеФормыОбъектов
+fullName: РегистрСведений.ОсновныеПечатныеФормыОбъектов
+uuid: bf1c6099-2d52-44ea-b873-d3e7d2e94c1e
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types: []
+  - name: Идентификатор
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: НаименованиеПечатнойФормы
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Пользователь
+    category: resource
+    types: []
+  - name: Дата
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ОсновныеПечатныеФормыОбъектов.xml

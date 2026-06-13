@@ -1,0 +1,41 @@
+version: 1
+kind: РегистрСведений
+name: ЗамерыКомментарииСтатистики
+fullName: РегистрСведений.ЗамерыКомментарииСтатистики
+uuid: 0cc63813-cf16-4a99-b3bd-18a773091230
+properties:
+  periodicity: Second
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ПериодОкончание
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ОперацияСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КомментарийСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИдентификаторУдаления
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: КоличествоЗначений
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/ЗамерыКомментарииСтатистики.xml

@@ -1,0 +1,77 @@
+version: 1
+kind: РегистрСведений
+name: ДополнительныеАдресныеСведения
+fullName: РегистрСведений.ДополнительныеАдресныеСведения
+uuid: 8264b98b-7eec-4651-96fc-02620c87f274
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПочтовыйИндекс
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ОКТМО
+    category: attribute
+    types:
+      - kind: Число
+        digits: 11
+        fractionDigits: 0
+        allowedSign: Any
+  - name: OKATO
+    category: attribute
+    types:
+      - kind: Число
+        digits: 11
+        fractionDigits: 0
+        allowedSign: Any
+  - name: КодУчасткаИФНСЮЛ
+    category: attribute
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Any
+  - name: КодУчасткаИФНСФЛ
+    category: attribute
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Any
+  - name: КодИФНСЮЛ
+    category: attribute
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ОКТМОБюджетополучателя
+    category: attribute
+    types:
+      - kind: Число
+        digits: 8
+        fractionDigits: 0
+        allowedSign: Any
+  - name: КодИФНСФЛ
+    category: attribute
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/ДополнительныеАдресныеСведения.xml

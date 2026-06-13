@@ -1,0 +1,93 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиПравОбъектов
+fullName: РегистрСведений.НастройкиПравОбъектов
+uuid: 91af7a52-0825-4af5-94df-cc501e0123cd
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types: []
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.ГруппыВнешнихПользователей
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Право
+    category: dimension
+    types:
+      - kind: Строка
+        length: 60
+        allowedLength: Variable
+  - name: Таблица
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ПравоЗапрещено
+    category: resource
+    types:
+      - kind: Булево
+  - name: НаследованиеРазрешено
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПорядокНастройки
+    category: attribute
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: УровеньРазрешенияПрава
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: УровеньЗапрещенияПрава
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: УровеньРазрешенияЧтения
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: УровеньЗапрещенияЧтения
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: УровеньРазрешенияИзменения
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: УровеньЗапрещенияИзменения
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: InformationRegisters/НастройкиПравОбъектов.xml

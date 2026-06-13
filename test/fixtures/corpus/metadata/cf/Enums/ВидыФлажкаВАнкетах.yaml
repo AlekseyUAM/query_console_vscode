@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВидыФлажкаВАнкетах
+fullName: Перечисление.ВидыФлажкаВАнкетах
+uuid: 504280a1-a451-4547-ae71-e217f8fdf8f6
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыФлажкаВАнкетах
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ПолеВвода
+  - name: Флажок
+source: Enums/ВидыФлажкаВАнкетах.xml

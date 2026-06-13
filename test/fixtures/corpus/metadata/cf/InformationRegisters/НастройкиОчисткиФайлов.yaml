@@ -1,0 +1,38 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиОчисткиФайлов
+fullName: РегистрСведений.НастройкиОчисткиФайлов
+uuid: a6be80f7-d6aa-4371-a180-3d355080d849
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ВладелецФайла
+    category: dimension
+    types: []
+  - name: ТипВладельцаФайла
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ПравилоОтбора
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Действие
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыОчисткиФайлов
+  - name: ПериодОчистки
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ПериодОчисткиФайлов
+  - name: ЭтоФайл
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/НастройкиОчисткиФайлов.xml

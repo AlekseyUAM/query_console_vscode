@@ -1,0 +1,41 @@
+version: 1
+kind: РегистрНакопления
+name: РегистрНакопленияОбор
+fullName: РегистрНакопления.РегистрНакопленияОбор
+uuid: 25d0f9a1-9492-47d4-a68a-db40b0a0c7d2
+properties:
+  registerType: Turnovers
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Активность
+    category: standard
+    types:
+      - kind: Булево
+  - name: Измерение1
+    category: dimension
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Ресурс1
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+source: AccumulationRegisters/РегистрНакопленияОбор.xml

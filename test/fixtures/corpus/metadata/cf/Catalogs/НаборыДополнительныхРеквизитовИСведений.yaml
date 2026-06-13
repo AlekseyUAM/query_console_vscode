@@ -1,0 +1,146 @@
+version: 1
+kind: Справочник
+name: НаборыДополнительныхРеквизитовИСведений
+fullName: Справочник.НаборыДополнительныхРеквизитовИСведений
+uuid: 0a136ad9-22ad-4ba7-a31a-40a193b49d26
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.НаборыДополнительныхРеквизитовИСведений
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.НаборыДополнительныхРеквизитовИСведений
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: КоличествоРеквизитов
+    category: attribute
+    types:
+      - kind: Строка
+        length: 5
+        allowedLength: Variable
+  - name: КоличествоСведений
+    category: attribute
+    types:
+      - kind: Строка
+        length: 5
+        allowedLength: Variable
+  - name: КоличествоМеток
+    category: attribute
+    types:
+      - kind: Строка
+        length: 5
+        allowedLength: Variable
+  - name: Используется
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенногоНабора
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+tabularSections:
+  - name: ДополнительныеРеквизиты
+    uuid: b456d820-8034-4381-960d-66d9f86b0a4b
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: ПометкаУдаления
+        category: attribute
+        types:
+          - kind: Булево
+      - name: ИмяПредопределенногоНабора
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+  - name: ДополнительныеСведения
+    uuid: 1a7c774d-5b86-4051-b797-3081e19fa30a
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: ПометкаУдаления
+        category: attribute
+        types:
+          - kind: Булево
+      - name: ИмяПредопределенногоНабора
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+  - name: Представления
+    uuid: 4cde6fdc-85fa-4c00-896c-51a68f5f10a5
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+source: Catalogs/НаборыДополнительныхРеквизитовИСведений.xml

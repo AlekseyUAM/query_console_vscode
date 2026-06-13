@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: УсовершенствоватьПодписиСДаты
+fullName: Константа.УсовершенствоватьПодписиСДаты
+uuid: fa61df43-49e7-4d5f-a0b9-f35af199f9f5
+types:
+  - kind: Дата
+    dateFractions: Date
+source: Constants/УсовершенствоватьПодписиСДаты.xml

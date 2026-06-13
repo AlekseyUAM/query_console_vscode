@@ -1,0 +1,30 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиВерсионированияОбъектов
+fullName: РегистрСведений.НастройкиВерсионированияОбъектов
+uuid: 45af8f5d-d505-466b-a798-19f2219a180c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ТипОбъекта
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Вариант
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВерсионированияОбъектов
+  - name: Использовать
+    category: resource
+    types:
+      - kind: Булево
+  - name: СрокХраненияВерсий
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СрокиХраненияВерсий
+source: InformationRegisters/НастройкиВерсионированияОбъектов.xml

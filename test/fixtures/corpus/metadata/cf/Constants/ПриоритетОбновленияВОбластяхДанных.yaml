@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: ПриоритетОбновленияВОбластяхДанных
+fullName: Константа.ПриоритетОбновленияВОбластяхДанных
+uuid: 73c7750f-8291-4e19-8551-635cd6b94215
+types:
+  - kind: Строка
+    length: 32
+    allowedLength: Variable
+source: Constants/ПриоритетОбновленияВОбластяхДанных.xml

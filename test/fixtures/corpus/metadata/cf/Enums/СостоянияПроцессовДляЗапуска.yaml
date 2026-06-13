@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СостоянияПроцессовДляЗапуска
+fullName: Перечисление.СостоянияПроцессовДляЗапуска
+uuid: 4d72bd30-8d60-4f84-9ad8-83489d9cb3fb
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияПроцессовДляЗапуска
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ГотовКСтарту
+  - name: СтартОтменен
+source: Enums/СостоянияПроцессовДляЗапуска.xml

@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: МуниципальнаяИерархия
+fullName: РегистрСведений.МуниципальнаяИерархия
+uuid: 88fafb0d-d624-4b91-8c68-c354817ccddb
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: РодительскийИдентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/МуниципальнаяИерархия.xml

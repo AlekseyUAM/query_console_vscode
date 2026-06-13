@@ -1,0 +1,46 @@
+version: 1
+kind: РегистрСведений
+name: УничтоженныеПерсональныеДанные
+fullName: РегистрСведений.УничтоженныеПерсональныеДанные
+uuid: c49054f1-3a96-4bf1-917e-f11407c67b5b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Субъект
+    category: dimension
+    types: []
+  - name: КатегорияДанных
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ДатаУничтожения
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ПричинаУничтожения
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: СпособУничтожения
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ПредставлениеСубъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Основание
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.АктОбУничтоженииПерсональныхДанных
+source: InformationRegisters/УничтоженныеПерсональныеДанные.xml

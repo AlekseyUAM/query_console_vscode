@@ -1,0 +1,30 @@
+version: 1
+kind: РегистрСведений
+name: ПериодическиеСерверныеОповещения
+fullName: РегистрСведений.ПериодическиеСерверныеОповещения
+uuid: b65954b9-39f9-4f7c-8af2-939af0694368
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: КлючСеанса
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ИдентификаторПользователяИБ
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Оповещения
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ДатаДобавления
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ПериодическиеСерверныеОповещения.xml

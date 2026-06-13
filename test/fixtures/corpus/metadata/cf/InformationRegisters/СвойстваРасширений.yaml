@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: СвойстваРасширений
+fullName: РегистрСведений.СвойстваРасширений
+uuid: cb2245e0-f9fe-4571-9fb4-3f8744e60f14
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторРасширения
+    category: dimension
+    types:
+      - kind: Строка
+        length: 38
+        allowedLength: Variable
+  - name: Ответственный
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Комментарий
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/СвойстваРасширений.xml

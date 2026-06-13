@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: СтатусыТранзакцииСРеестромМЧД
+fullName: Перечисление.СтатусыТранзакцииСРеестромМЧД
+uuid: 43b8af02-21f6-41c0-8e6d-758411f5188e
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыТранзакцииСРеестромМЧД
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Успешно
+  - name: ОжидаетОбработки
+  - name: Ошибка
+source: Enums/СтатусыТранзакцииСРеестромМЧД.xml

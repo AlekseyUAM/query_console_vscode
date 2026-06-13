@@ -1,0 +1,43 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиСинхронизацииФайлов
+fullName: РегистрСведений.НастройкиСинхронизацииФайлов
+uuid: 2e233e3c-687c-4516-87c6-5d6c5f9f04a2
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ВладелецФайла
+    category: dimension
+    types: []
+  - name: ТипВладельцаФайла
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: УчетнаяЗапись
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+  - name: ПравилоОтбора
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Синхронизировать
+    category: resource
+    types:
+      - kind: Булево
+  - name: ЭтоФайл
+    category: resource
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+source: InformationRegisters/НастройкиСинхронизацииФайлов.xml

@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВидыПравилДляОбменаДанными
+fullName: Перечисление.ВидыПравилДляОбменаДанными
+uuid: adf9304c-ccf8-492e-95b1-0754764586a2
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыПравилДляОбменаДанными
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ПравилаКонвертацииОбъектов
+  - name: ПравилаРегистрацииОбъектов
+source: Enums/ВидыПравилДляОбменаДанными.xml

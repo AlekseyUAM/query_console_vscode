@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: ОсновныеПечатныеФормыКонтрагентов
+fullName: РегистрСведений.ОсновныеПечатныеФормыКонтрагентов
+uuid: 62c4aa38-8768-4a3e-84d1-94fa65b23686
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Организация
+    category: dimension
+    types: []
+  - name: Получатель
+    category: dimension
+    types: []
+  - name: ТипОбъекта
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Идентификатор
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+source: InformationRegisters/ОсновныеПечатныеФормыКонтрагентов.xml

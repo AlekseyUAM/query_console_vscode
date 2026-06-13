@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: СписокРасширенийТекстовыхФайлов
+fullName: Константа.СписокРасширенийТекстовыхФайлов
+uuid: 4fcc7278-2fec-49ee-b0ef-c7d5f5f698a4
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/СписокРасширенийТекстовыхФайлов.xml

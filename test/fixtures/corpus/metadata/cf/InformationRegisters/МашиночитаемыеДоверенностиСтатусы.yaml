@@ -1,0 +1,60 @@
+version: 1
+kind: РегистрСведений
+name: МашиночитаемыеДоверенностиСтатусы
+fullName: РегистрСведений.МашиночитаемыеДоверенностиСтатусы
+uuid: 796a2fcd-caa8-431c-8d22-320479ecc5fd
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: МашиночитаемаяДоверенность
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенности
+  - name: ТехническийСтатус
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ТехническиеСтатусыМЧД
+  - name: ИдентификаторТранзакции
+    category: resource
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: СтатусТранзакции
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыТранзакцииСРеестромМЧД
+  - name: ТипТранзакции
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыТранзакцийСРеестромМЧД
+  - name: ДатаТранзакции
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаЗапросаСтатуса
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: РезультатЗапросаСтатуса
+    category: resource
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+  - name: ДанныеОшибкиЗапросаСтатуса
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Подписана
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/МашиночитаемыеДоверенностиСтатусы.xml

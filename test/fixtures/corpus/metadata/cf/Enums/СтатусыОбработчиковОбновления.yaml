@@ -1,0 +1,22 @@
+version: 1
+kind: Перечисление
+name: СтатусыОбработчиковОбновления
+fullName: Перечисление.СтатусыОбработчиковОбновления
+uuid: 36b15776-5211-4afa-9b6c-c042121218c0
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыОбработчиковОбновления
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Выполнен
+  - name: НеВыполнялся
+  - name: Выполняется
+  - name: Приостановлен
+  - name: Ошибка
+source: Enums/СтатусыОбработчиковОбновления.xml

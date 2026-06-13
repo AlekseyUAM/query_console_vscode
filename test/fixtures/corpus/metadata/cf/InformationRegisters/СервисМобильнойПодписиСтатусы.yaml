@@ -1,0 +1,68 @@
+version: 1
+kind: РегистрСведений
+name: СервисМобильнойПодписиСтатусы
+fullName: РегистрСведений.СервисМобильнойПодписиСтатусы
+uuid: 29af5a21-4a97-4abe-8b77-6c29b1901e93
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторДокумента
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Результат
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Статус
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СервисМобильнойПодписиСтатусы
+  - name: ИдентификаторВСервисе
+    category: attribute
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: Подписант
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ПодписантыСервисаМобильнойПодписи
+  - name: Отправитель
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДатаОтправки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: НаименованиеДокумента
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: ПодписанныйОбъект
+    category: attribute
+    types: []
+  - name: Операция
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СервисМобильнойПодписиОперации
+  - name: Доверенность
+    category: attribute
+    types: []
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/СервисМобильнойПодписиСтатусы.xml

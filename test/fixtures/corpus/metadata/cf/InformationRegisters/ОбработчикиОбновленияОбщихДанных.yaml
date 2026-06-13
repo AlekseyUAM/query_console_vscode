@@ -1,0 +1,62 @@
+version: 1
+kind: РегистрСведений
+name: ОбработчикиОбновленияОбщихДанных
+fullName: РегистрСведений.ОбработчикиОбновленияОбщихДанных
+uuid: ecaf5d2f-0cea-4ad0-8550-51be37cead5c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяОбработчика
+    category: dimension
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Статус
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыОбработчиковОбновления
+  - name: Версия
+    category: resource
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: ИмяБиблиотеки
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ДлительностьОбработки
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: РежимВыполнения
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыВыполненияОбработчиков
+  - name: ВерсияРегистрации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ИнформацияОбОшибке
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/ОбработчикиОбновленияОбщихДанных.xml

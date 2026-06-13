@@ -1,0 +1,26 @@
+version: 1
+kind: Перечисление
+name: ДополнительныеЗначенияДоступа
+fullName: Перечисление.ДополнительныеЗначенияДоступа
+uuid: fad26b16-8638-496b-bd12-381fc6f5b71f
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ДополнительныеЗначенияДоступа
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ДоступРазрешен
+  - name: ДоступЗапрещен
+  - name: Истина
+  - name: Ложь
+  - name: ПустаяСсылкаЛюбогоТипа
+  - name: Неопределено
+  - name: "Null"
+  - name: ТипРазрешенный
+  - name: ТипЗапрещенный
+source: Enums/ДополнительныеЗначенияДоступа.xml

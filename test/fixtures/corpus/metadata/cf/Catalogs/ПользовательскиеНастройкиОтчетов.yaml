@@ -1,0 +1,57 @@
+version: 1
+kind: Справочник
+name: ПользовательскиеНастройкиОтчетов
+fullName: Справочник.ПользовательскиеНастройкиОтчетов
+uuid: 5eb4ca7f-027a-4860-a167-e6b424527e7a
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПользовательскиеНастройкиОтчетов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Вариант
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВариантыОтчетов
+  - name: Пользователь
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: КлючПользовательскойНастройки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+source: Catalogs/ПользовательскиеНастройкиОтчетов.xml

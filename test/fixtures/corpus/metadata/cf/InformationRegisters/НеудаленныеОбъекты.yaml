@@ -1,0 +1,24 @@
+version: 1
+kind: РегистрСведений
+name: НеудаленныеОбъекты
+fullName: РегистрСведений.НеудаленныеОбъекты
+uuid: 0e45c53e-7571-49bf-b673-cff53d32af89
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types: []
+  - name: КоличествоПопыток
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ВремяПоследнейПопытки
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/НеудаленныеОбъекты.xml

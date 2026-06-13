@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: НастройкаПроксиСервера
+fullName: Константа.НастройкаПроксиСервера
+uuid: 1333101b-82e8-41a9-a793-5af5dcd6f68a
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/НастройкаПроксиСервера.xml

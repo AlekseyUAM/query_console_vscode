@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: УчетнаяЗаписьДляВосстановленияПароля
+fullName: Константа.УчетнаяЗаписьДляВосстановленияПароля
+uuid: 0b92cced-d818-400c-82b6-7726e912a478
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/УчетнаяЗаписьДляВосстановленияПароля.xml

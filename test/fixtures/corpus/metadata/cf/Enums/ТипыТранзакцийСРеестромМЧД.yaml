@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ТипыТранзакцийСРеестромМЧД
+fullName: Перечисление.ТипыТранзакцийСРеестромМЧД
+uuid: dc72eb52-527f-438d-8750-c9f8f885d4ca
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыТранзакцийСРеестромМЧД
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Регистрация
+  - name: Отмена
+source: Enums/ТипыТранзакцийСРеестромМЧД.xml

@@ -1,0 +1,136 @@
+version: 1
+kind: Справочник
+name: ГруппыДоступа
+fullName: Справочник.ГруппыДоступа
+uuid: d0106f3a-8490-4277-a278-75c318ec252c
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыДоступа
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыДоступа
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Профиль
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ПрофилиГруппДоступа
+  - name: Пользователь
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ОсновнаяГруппаДоступаПоставляемогоПрофиля
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: Пользователи
+    uuid: 0132e564-2cd3-4930-8962-1068532f4be4
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Пользователь
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ВнешниеПользователи
+          - kind: ref
+            ref: Справочник.ГруппыВнешнихПользователей
+          - kind: ref
+            ref: Справочник.ГруппыПользователей
+          - kind: ref
+            ref: Справочник.Пользователи
+      - name: СрокДействия
+        category: attribute
+        types:
+          - kind: Дата
+            dateFractions: Date
+  - name: ВидыДоступа
+    uuid: 3a7cfd4c-c943-43c2-a8d5-6d8ab3a10fc9
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ВидДоступа
+        category: attribute
+        types: []
+      - name: ВсеРазрешены
+        category: attribute
+        types:
+          - kind: Булево
+  - name: ЗначенияДоступа
+    uuid: 9fd16d51-91bb-4973-a7c4-cf4db87da8bf
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ВидДоступа
+        category: attribute
+        types: []
+      - name: ЗначениеДоступа
+        category: attribute
+        types: []
+      - name: ВключаяНижестоящие
+        category: attribute
+        types:
+          - kind: Булево
+source: Catalogs/ГруппыДоступа.xml

@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: КомментарииОперацииСтатистики
+fullName: РегистрСведений.КомментарииОперацииСтатистики
+uuid: ee0412d3-58e7-4715-8774-d49778e1ef73
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторОперации
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИдентификаторКомментария
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+source: InformationRegisters/КомментарииОперацииСтатистики.xml

@@ -1,0 +1,153 @@
+version: 1
+kind: Справочник
+name: ЭкземплярыСервераDSS
+fullName: Справочник.ЭкземплярыСервераDSS
+uuid: 041c364f-0498-494f-9e41-82cb416c0862
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЭкземплярыСервераDSS
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: АдресЛичногоКабинета
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: АдресСервера
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: ВерсияАПИ
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: ВнутреннийИдентификатор
+    category: attribute
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: ЗащищенноеСоединениеГОСТ
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИдентификаторСЭП
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ИдентификаторЦИ
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: Используется
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: СервисАудита
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: СервисИдентификации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: СервисныйКлиент
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: СервисОбработкиДокументов
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: СервисПодписи
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: СервисПроверки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: ТаймАут
+    category: attribute
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ШаблонПодтверждения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 30
+        allowedLength: Variable
+tabularSections:
+  - name: ОграничениеАвторизации
+    uuid: 32371dfd-c890-4bed-bd68-45db299c9caf
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: СпособАвторизации
+        category: attribute
+        types:
+          - kind: ref
+            ref: Перечисление.СпособыАвторизацииDSS
+source: Catalogs/ЭкземплярыСервераDSS.xml

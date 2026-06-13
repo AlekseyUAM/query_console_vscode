@@ -1,0 +1,8 @@
+version: 1
+kind: Константа
+name: ИспользоватьСервисDSS
+fullName: Константа.ИспользоватьСервисDSS
+uuid: 83e30f0b-67b2-411b-9624-ac4c4bd7f94a
+types:
+  - kind: Булево
+source: Constants/ИспользоватьСервисDSS.xml

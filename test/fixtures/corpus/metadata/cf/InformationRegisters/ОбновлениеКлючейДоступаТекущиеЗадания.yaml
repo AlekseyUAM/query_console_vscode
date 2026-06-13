@@ -1,0 +1,33 @@
+version: 1
+kind: РегистрСведений
+name: ОбновлениеКлючейДоступаТекущиеЗадания
+fullName: РегистрСведений.ОбновлениеКлючейДоступаТекущиеЗадания
+uuid: 84ba4ba7-2743-438a-8b65-cc14090f8a92
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторПотока
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Параметры
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Результат
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ЭтоЗапуск
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ДатаИзмененияЗаписиРегистра
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ОбновлениеКлючейДоступаТекущиеЗадания.xml

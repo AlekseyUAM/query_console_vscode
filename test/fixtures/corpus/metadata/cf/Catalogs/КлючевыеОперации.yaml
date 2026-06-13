@@ -1,0 +1,78 @@
+version: 1
+kind: Справочник
+name: КлючевыеОперации
+fullName: Справочник.КлючевыеОперации
+uuid: 344cb0de-315d-4d05-93f8-8a1f53208470
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.КлючевыеОперации
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Имя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+  - name: МинимальноДопустимыйУровень
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.УровниПроизводительности
+  - name: Приоритет
+    category: attribute
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ЦелевоеВремя
+    category: attribute
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 2
+        allowedSign: Nonnegative
+  - name: ИмяХеш
+    category: attribute
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: ВыполненаСОшибкой
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Длительная
+    category: attribute
+    types:
+      - kind: Булево
+source: Catalogs/КлючевыеОперации.xml

@@ -1,0 +1,23 @@
+version: 1
+kind: Перечисление
+name: ВидыДнейПроизводственногоКалендаря
+fullName: Перечисление.ВидыДнейПроизводственногоКалендаря
+uuid: 9f7290dd-19f4-4163-9795-fe562e84f06d
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыДнейПроизводственногоКалендаря
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Рабочий
+  - name: Суббота
+  - name: Воскресенье
+  - name: Предпраздничный
+  - name: Праздник
+  - name: Нерабочий
+source: Enums/ВидыДнейПроизводственногоКалендаря.xml

@@ -1,0 +1,89 @@
+version: 1
+kind: ПланСчетов
+name: ПланСчетов1
+fullName: ПланСчетов.ПланСчетов1
+uuid: 163a8c77-5ef5-40ba-b58a-d5c01a1cf1f3
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланСчетов.ПланСчетов1
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланСчетов.ПланСчетов1
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 25
+  - name: Вид
+    category: standard
+    types:
+      - kind: unknown
+  - name: Забалансовый
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: ПР
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВР
+    category: attribute
+    types:
+      - kind: Булево
+  - name: НУ
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: ВидыСубконто
+    uuid: ""
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ВидСубконто
+        category: standard
+        types:
+          - kind: unknown
+      - name: Предопределенное
+        category: standard
+        types:
+          - kind: Булево
+      - name: ТолькоОбороты
+        category: standard
+        types:
+          - kind: Булево
+properties:
+  maxExtDimensionCount: 3
+  extDimensionTypes: ВидыСубконто
+source: ChartsOfAccounts/ПланСчетов1.xml

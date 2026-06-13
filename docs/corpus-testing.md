@@ -141,3 +141,25 @@ npm run corpus:test
 поэтому запускать её на «боевой» (другой) конфигурации следует только осознанно: для
 проверки текущего gate используйте `accept:oracle` (или `corpus:test --skip-harvest`
 с уже собранным golden).
+
+## Закоммиченный эталон (регресс-тест в `npm run test:unit`)
+
+Рабочие каталоги (`tmp/query1c`, `tmp/parser_data`) — в `.gitignore`, поэтому на
+свежем checkout'е воспроизвести gate через `accept:oracle` нельзя. Чтобы корпус из
+1976 запросов был частью обычного прогона тестов, его эталон закоммичен в
+`test/fixtures/corpus/`:
+
+- `golden.jsonl` — `{file, valid, input, query_text}` по каждому запросу;
+- `metadata/cf/` — YAML-кэш метаданных для развёртки `ВЫБРАТЬ *` (нужен 27 запросам).
+
+Тест `test/unit/corpusRegression.test.ts` прогоняет весь корпус
+(`generateBatch(parseBatch(input, resolver)) === query_text`) и падает при любом
+расхождении. Он не зависит ни от `tmp/`, ни от MCP — поэтому
+**`npm run test:unit` воспроизводит gate 1976/1976 на любом checkout'е**.
+
+Обновлять эталон после ОСОЗНАННОГО изменения конструктора (когда живой
+`accept:oracle` снова даёт 1976/1976):
+
+```bash
+npm run corpus:snapshot   # перельёт свежие golden.jsonl + metadata/cf в test/fixtures/corpus
+```

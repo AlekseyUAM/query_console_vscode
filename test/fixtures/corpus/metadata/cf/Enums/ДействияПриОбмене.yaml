@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ДействияПриОбмене
+fullName: Перечисление.ДействияПриОбмене
+uuid: 458e9c6b-b828-404b-be5a-c6c0aeea34c9
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ДействияПриОбмене
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ЗагрузкаДанных
+  - name: ВыгрузкаДанных
+source: Enums/ДействияПриОбмене.xml

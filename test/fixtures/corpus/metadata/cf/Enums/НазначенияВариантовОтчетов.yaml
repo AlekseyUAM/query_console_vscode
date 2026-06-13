@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: НазначенияВариантовОтчетов
+fullName: Перечисление.НазначенияВариантовОтчетов
+uuid: c0049c93-a264-44f6-8740-36a055a5b472
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.НазначенияВариантовОтчетов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ДляКомпьютеровИПланшетов
+  - name: ДляСмартфонов
+  - name: ДляЛюбыхУстройств
+source: Enums/НазначенияВариантовОтчетов.xml

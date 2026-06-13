@@ -1,0 +1,37 @@
+version: 1
+kind: РегистрСведений
+name: КалендарныеГрафики
+fullName: РегистрСведений.КалендарныеГрафики
+uuid: 17aadd5f-cda2-4785-a07f-3ab4b04434a6
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Календарь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Календари
+  - name: Год
+    category: dimension
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ДатаГрафика
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ДеньВключенВГрафик
+    category: resource
+    types:
+      - kind: Булево
+  - name: КоличествоДнейВГрафикеСНачалаГода
+    category: resource
+    types:
+      - kind: Число
+        digits: 3
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: InformationRegisters/КалендарныеГрафики.xml

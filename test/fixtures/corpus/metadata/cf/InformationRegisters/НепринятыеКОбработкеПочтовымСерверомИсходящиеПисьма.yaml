@@ -1,0 +1,27 @@
+version: 1
+kind: РегистрСведений
+name: НепринятыеКОбработкеПочтовымСерверомИсходящиеПисьма
+fullName: РегистрСведений.НепринятыеКОбработкеПочтовымСерверомИсходящиеПисьма
+uuid: 0f2ec7ac-6d3f-4fcf-af3d-b0bfaa187a4b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Письмо
+    category: dimension
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+  - name: КоличествоПопыток
+    category: resource
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИнформацияООшибке
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/НепринятыеКОбработкеПочтовымСерверомИсходящиеПисьма.xml

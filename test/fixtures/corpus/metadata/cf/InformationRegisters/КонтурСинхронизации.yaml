@@ -1,0 +1,55 @@
+version: 1
+kind: РегистрСведений
+name: КонтурСинхронизации
+fullName: РегистрСведений.КонтурСинхронизации
+uuid: 851118bb-7e22-4c3c-a050-51b89216df86
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: КодУзла
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: КодУзлаКорреспондента
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ИмяУзла
+    category: resource
+    types:
+      - kind: Строка
+        length: 125
+        allowedLength: Variable
+  - name: ИмяУзлаКорреспондента
+    category: resource
+    types:
+      - kind: Строка
+        length: 125
+        allowedLength: Variable
+  - name: СинхронизацияУдалена
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПоследнееОбновление
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Префикс
+    category: resource
+    types:
+      - kind: Строка
+        length: 2
+        allowedLength: Variable
+  - name: Зацикливание
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/КонтурСинхронизации.xml

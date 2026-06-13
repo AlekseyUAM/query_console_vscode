@@ -1,0 +1,103 @@
+version: 1
+kind: РегистрСведений
+name: ДлительныеОперации
+fullName: РегистрСведений.ДлительныеОперации
+uuid: 90a7425e-3fc9-41ec-9373-f410936e1b53
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторПроцесса
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИдентификаторПотока
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: АдресРезультата
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ДатаСоздания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ИдентификаторЗадания
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИмяМетода
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИмяПользователя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: КлючПотока
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: КраткоеПредставлениеОшибки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Наименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: НомерПопытки
+    category: attribute
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПараметрыВыполнения
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПараметрыМетода
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПараметрыПотока
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПодробноеПредставлениеОшибки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Результат
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Статус
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+source: InformationRegisters/ДлительныеОперации.xml

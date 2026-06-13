@@ -1,0 +1,156 @@
+version: 1
+kind: Справочник
+name: УчетныеЗаписиЭлектроннойПочты
+fullName: Справочник.УчетныеЗаписиЭлектроннойПочты
+uuid: 6b2340d7-687f-43a3-8eb8-8ddb86712466
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 50
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 50
+  - name: АдресЭлектроннойПочты
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ВремяОжидания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 3
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИмяПользователя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ИспользоватьДляОтправки
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьДляПолучения
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьЗащищенноеСоединениеДляВходящейПочты
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьЗащищенноеСоединениеДляИсходящейПочты
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОставлятьКопииСообщенийНаСервере
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПериодХраненияСообщенийНаСервере
+    category: attribute
+    types:
+      - kind: Число
+        digits: 3
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Пользователь
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ПользовательSMTP
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ПортСервераВходящейПочты
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПортСервераИсходящейПочты
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПротоколВходящейПочты
+    category: attribute
+    types:
+      - kind: Строка
+        length: 4
+        allowedLength: Variable
+  - name: СерверВходящейПочты
+    category: attribute
+    types:
+      - kind: Строка
+        length: 300
+        allowedLength: Variable
+  - name: СерверИсходящейПочты
+    category: attribute
+    types:
+      - kind: Строка
+        length: 300
+        allowedLength: Variable
+  - name: ТребуетсяВходНаСерверПередОтправкой
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОтправлятьСкрытыеКопииПисемНаЭтотАдрес
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВладелецУчетнойЗаписи
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ПриОтправкеПисемТребуетсяАвторизация
+    category: attribute
+    types:
+      - kind: Булево
+  - name: АвторизацияСПомощьюПочтовогоСервиса
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИмяПочтовогоСервиса
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+source: Catalogs/УчетныеЗаписиЭлектроннойПочты.xml

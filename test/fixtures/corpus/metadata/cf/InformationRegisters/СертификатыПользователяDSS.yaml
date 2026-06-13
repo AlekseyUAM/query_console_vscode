@@ -1,0 +1,83 @@
+version: 1
+kind: РегистрСведений
+name: СертификатыПользователяDSS
+fullName: РегистрСведений.СертификатыПользователяDSS
+uuid: ab1efcef-f81b-45e5-893d-56e75c1e0a6f
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УчетнаяЗаписьDSS
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиDSS
+  - name: Отпечаток
+    category: dimension
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: Идентификатор
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: СерийныйНомер
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ДатаНачала
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаОкончания
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Наименование
+    category: resource
+    types:
+      - kind: Строка
+        length: 256
+        allowedLength: Variable
+  - name: АлгоритмКлюча
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: АлгоритмПодписи
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: АлгоритмХеширования
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ДанныеСертификата
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ИдентификаторСертификата
+    category: resource
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: ДатаДобавления
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/СертификатыПользователяDSS.xml

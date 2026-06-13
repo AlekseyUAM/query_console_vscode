@@ -1,0 +1,54 @@
+version: 1
+kind: РегистрСведений
+name: СклоненияПредставленийОбъектов
+fullName: РегистрСведений.СклоненияПредставленийОбъектов
+uuid: 7bf36370-3761-4fd5-bea5-90fa142a9d57
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ХешПредставления
+    category: dimension
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: Объект
+    category: dimension
+    types: []
+  - name: ИменительныйПадеж
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: РодительныйПадеж
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДательныйПадеж
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ВинительныйПадеж
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТворительныйПадеж
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПредложныйПадеж
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/СклоненияПредставленийОбъектов.xml

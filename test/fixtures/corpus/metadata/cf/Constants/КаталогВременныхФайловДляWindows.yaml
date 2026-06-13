@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: КаталогВременныхФайловДляWindows
+fullName: Константа.КаталогВременныхФайловДляWindows
+uuid: bf20e6ce-bbe6-4523-9381-f9cb6cad348c
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/КаталогВременныхФайловДляWindows.xml

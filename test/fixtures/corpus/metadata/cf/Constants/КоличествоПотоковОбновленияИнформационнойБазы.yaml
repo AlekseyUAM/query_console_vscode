@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: КоличествоПотоковОбновленияИнформационнойБазы
+fullName: Константа.КоличествоПотоковОбновленияИнформационнойБазы
+uuid: d416cc2a-425f-4c01-a550-5a755ed78cc8
+types:
+  - kind: Число
+    digits: 5
+    fractionDigits: 0
+    allowedSign: Nonnegative
+source: Constants/КоличествоПотоковОбновленияИнформационнойБазы.xml

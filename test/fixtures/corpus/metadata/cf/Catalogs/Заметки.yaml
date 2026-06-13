@@ -1,0 +1,87 @@
+version: 1
+kind: Справочник
+name: Заметки
+fullName: Справочник.Заметки
+uuid: 3805ee39-a48a-499a-9ef8-9c2a5985404f
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Заметки
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Заметки
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Предмет
+    category: attribute
+    types: []
+  - name: Содержание
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ТекстСодержания
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДляРабочегоСтола
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Пометка
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ЦветаЗаметок
+  - name: ДатаИзменения
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ПредставлениеПредмета
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+source: Catalogs/Заметки.xml

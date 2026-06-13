@@ -1,0 +1,33 @@
+version: 1
+kind: РегистрСведений
+name: ИсторияМуниципальнойИерархии
+fullName: РегистрСведений.ИсторияМуниципальнойИерархии
+uuid: 9728fd22-163c-443d-a89f-79d15c51c086
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: РодительскийИдентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИдентификаторЗаписи
+    category: dimension
+    types:
+      - kind: Число
+        digits: 19
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/ИсторияМуниципальнойИерархии.xml

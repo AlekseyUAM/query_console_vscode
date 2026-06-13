@@ -1,0 +1,61 @@
+version: 1
+kind: ПланОбмена
+name: ОбновлениеИнформационнойБазы
+fullName: ПланОбмена.ОбновлениеИнформационнойБазы
+uuid: 3fc019d1-aec8-4835-96c5-3bbf43da0b94
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланОбмена.ОбновлениеИнформационнойБазы
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: ЭтотУзел
+    category: standard
+    types:
+      - kind: Булево
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 25
+  - name: НомерОтправленного
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: НомерПринятого
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: ДатаОбмена
+    category: standard
+    types:
+      - kind: Дата
+  - name: Очередь
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Временная
+    category: attribute
+    types:
+      - kind: Булево
+source: ExchangePlans/ОбновлениеИнформационнойБазы.xml

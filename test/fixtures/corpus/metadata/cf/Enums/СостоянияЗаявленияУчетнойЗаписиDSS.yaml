@@ -1,0 +1,22 @@
+version: 1
+kind: Перечисление
+name: СостоянияЗаявленияУчетнойЗаписиDSS
+fullName: Перечисление.СостоянияЗаявленияУчетнойЗаписиDSS
+uuid: 929e9199-dfd5-497d-ad77-6638d20c7336
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияЗаявленияУчетнойЗаписиDSS
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Исполнено
+  - name: НеПодготовлено
+  - name: Отклонено
+  - name: Отправлено
+  - name: Подготовлено
+source: Enums/СостоянияЗаявленияУчетнойЗаписиDSS.xml

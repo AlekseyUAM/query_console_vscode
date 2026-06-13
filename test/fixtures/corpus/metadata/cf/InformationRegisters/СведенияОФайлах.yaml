@@ -1,0 +1,92 @@
+version: 1
+kind: РегистрСведений
+name: СведенияОФайлах
+fullName: РегистрСведений.СведенияОФайлах
+uuid: 84e09840-8d67-416f-87a2-7f03c04180c9
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Файл
+    category: dimension
+    types: []
+  - name: Автор
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДатаСоздания
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ВладелецФайла
+    category: resource
+    types: []
+  - name: ИндексКартинки
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: НомерКартинкиПодписанЗашифрован
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Наименование
+    category: resource
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: Описание
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПометкаУдаления
+    category: resource
+    types:
+      - kind: Булево
+  - name: Размер
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Расширение
+    category: resource
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Редактирует
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Служебный
+    category: resource
+    types:
+      - kind: Булево
+  - name: ТипХраненияФайла
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыХраненияФайлов
+  - name: ХранитьВерсии
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/СведенияОФайлах.xml

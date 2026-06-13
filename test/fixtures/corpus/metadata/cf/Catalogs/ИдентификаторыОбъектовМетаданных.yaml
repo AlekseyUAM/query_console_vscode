@@ -1,0 +1,92 @@
+version: 1
+kind: Справочник
+name: ИдентификаторыОбъектовМетаданных
+fullName: Справочник.ИдентификаторыОбъектовМетаданных
+uuid: 4062674a-4a81-494d-82bc-4984cd7c7903
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ПорядокКоллекции
+    category: attribute
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Имя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Синоним
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ПолноеИмя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 430
+        allowedLength: Variable
+  - name: ПолныйСиноним
+    category: attribute
+    types:
+      - kind: Строка
+        length: 430
+        allowedLength: Variable
+  - name: БезДанных
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЗначениеПустойСсылки
+    category: attribute
+    types: []
+  - name: КлючОбъектаМетаданных
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: НоваяСсылка
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+source: Catalogs/ИдентификаторыОбъектовМетаданных.xml

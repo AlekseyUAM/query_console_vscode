@@ -1,0 +1,304 @@
+version: 1
+kind: Справочник
+name: РассылкиОтчетов
+fullName: Справочник.РассылкиОтчетов
+uuid: 8ce6cc1a-8570-4704-b9a3-44e815b2e753
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.РассылкиОтчетов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.РассылкиОтчетов
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: FTPКаталог
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: FTPЛогин
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: FTPПассивноеСоединение
+    category: attribute
+    types:
+      - kind: Булево
+  - name: FTPПорт
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: FTPСервер
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: АдресОтвета
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Архивировать
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВидПочтовогоАдресаПолучателей
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВидыКонтактнойИнформации
+  - name: ВыполнятьПоРасписанию
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИмяАрхива
+    category: attribute
+    types:
+      - kind: Строка
+        length: 75
+        allowedLength: Variable
+  - name: ИспользоватьFTPРесурс
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьПапку
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьСетевойКаталог
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьЭлектроннуюПочту
+    category: attribute
+    types:
+      - kind: Булево
+  - name: КартинкиПисьмаВФорматеHTML
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Личная
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Папка
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ПапкиФайлов
+  - name: ПериодичностьРасписания
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ПериодичностиРасписанийРассылокОтчетов
+  - name: Персонализирована
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПисьмоВФорматеHTML
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Подготовлена
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РегламентноеЗадание
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: СетевойКаталогLinux
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: СетевойКаталогWindows
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: СкрытыеКопии
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТекстПисьма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТекстПисьмаВФорматеHTML
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТемаПисьма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТипПолучателейРассылки
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ТолькоУведомить
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТранслитерироватьИменаФайлов
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УчетнаяЗапись
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: УдалитьВключатьДатуВИмяФайла
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВажностьПисьма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: ВставлятьОтчетыВТекстПисьма
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПрикреплятьОтчетыВоВложения
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УстановитьПаролиЗашифровать
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: Отчеты
+    uuid: 9b7051d5-abc4-416c-a0e6-515d120d78e4
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Отчет
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ДополнительныеОтчетыИОбработки
+          - kind: ref
+            ref: Справочник.ВариантыОтчетов
+      - name: ОтправлятьЕслиПустой
+        category: attribute
+        types:
+          - kind: Булево
+      - name: Настройки
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: ШаблонНаименования
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+  - name: ФорматыОтчетов
+    uuid: a156521a-ece1-49d3-8056-1c3508273c45
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Отчет
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ДополнительныеОтчетыИОбработки
+          - kind: ref
+            ref: Справочник.ВариантыОтчетов
+      - name: Формат
+        category: attribute
+        types:
+          - kind: ref
+            ref: Перечисление.ФорматыСохраненияОтчетов
+  - name: Получатели
+    uuid: 43aba109-4b7f-45ef-9c30-8b754e81911b
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Получатель
+        category: attribute
+        types: []
+      - name: Исключен
+        category: attribute
+        types:
+          - kind: Булево
+source: Catalogs/РассылкиОтчетов.xml

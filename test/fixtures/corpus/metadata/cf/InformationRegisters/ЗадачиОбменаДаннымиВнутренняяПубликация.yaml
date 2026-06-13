@@ -1,0 +1,83 @@
+version: 1
+kind: РегистрСведений
+name: ЗадачиОбменаДаннымиВнутренняяПубликация
+fullName: РегистрСведений.ЗадачиОбменаДаннымиВнутренняяПубликация
+uuid: 2197147c-f67c-4e92-9e69-2c9900144e82
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ДатаСоздания
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: НомерЗадачи
+    category: dimension
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИдентификаторОбмена
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ИдентификаторЗадачи
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: Сценарий
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.СценарииОбменовДанными
+  - name: Действие
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ДействияПриОбменеВнутренняяПубликация
+  - name: ЗавершенаУспешно
+    category: resource
+    types:
+      - kind: Булево
+  - name: ЗавершенаСОшибкой
+    category: resource
+    types:
+      - kind: Булево
+  - name: Ошибка
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ВремяПроверкиЗадачи
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Режим
+    category: resource
+    types:
+      - kind: Строка
+        length: 15
+        allowedLength: Variable
+  - name: ОбластьДанныхКорреспондента
+    category: resource
+    types:
+      - kind: Число
+        digits: 7
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Параметры
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ЗадачиОбменаДаннымиВнутренняяПубликация.xml

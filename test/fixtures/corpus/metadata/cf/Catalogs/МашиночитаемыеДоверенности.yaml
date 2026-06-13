@@ -1,0 +1,333 @@
+version: 1
+kind: Справочник
+name: МашиночитаемыеДоверенности
+fullName: Справочник.МашиночитаемыеДоверенности
+uuid: 46af6cac-4731-4ac0-a38e-fcc8a45d06bf
+properties:
+  hierarchical: false
+  codeLength: 11
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенности
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ФайлДоверенности
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенностиПрисоединенныеФайлы
+  - name: НомерДоверенности
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: ДатаВыдачи
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ДатаОкончания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ДляНалоговыхОрганов
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РегистрироватьВРеестре
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВозможностьПередоверия
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВозможностьПередоверияМЧД
+  - name: РодительскаяДоверенность
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенности
+  - name: РодительскаяДоверенностьНомер
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: ВерсияФормата
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: КодНалоговогоОрганаПредставления
+    category: attribute
+    types:
+      - kind: Строка
+        length: 4
+        allowedLength: Variable
+  - name: Статус
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыМЧД
+  - name: ПолномочияВТекстовомВиде
+    category: attribute
+    types:
+      - kind: Булево
+  - name: СовместныеПолномочия
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПолномочияУтрачиваютсяПриПередоверии
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТекстПолномочий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Верна
+    category: attribute
+    types:
+      - kind: Булево
+  - name: СтатусВернаУстановленВручную
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УстановившийСтатусВерна
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ИныеСведения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДатаПроверки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаОтмены
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ФайлЗаявленияНаОтмену
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенностиПрисоединенныеФайлы
+  - name: Нотариальная
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РеквизитыНотариальнойДоверенности
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: НомерВРеестреНотариальныхДействий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 28
+        allowedLength: Variable
+tabularSections:
+  - name: Доверители
+    uuid: 60f2c9f3-3090-442c-8991-0396b8f8b195
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Доверитель
+        category: attribute
+        types: []
+      - name: ДоверительРеквизиты
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: Идентификатор
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:UUID
+      - name: ИдентификаторРодителя
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:UUID
+      - name: ЭтоФизЛицо
+        category: attribute
+        types:
+          - kind: Булево
+      - name: СовместныеПолномочия
+        category: attribute
+        types:
+          - kind: Булево
+  - name: Представители
+    uuid: 1490798d-5cd9-4448-be69-10773ab486ee
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Представитель
+        category: attribute
+        types: []
+      - name: ПредставительРеквизиты
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: Идентификатор
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:UUID
+      - name: ИдентификаторРодителя
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:UUID
+  - name: Полномочия
+    uuid: ce877e78-2e91-471e-831f-171fc5b72d54
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Код
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: ИдентификаторПолномочия
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:UUID
+      - name: Мнемокод
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+  - name: Ограничения
+    uuid: 4fcb5267-e015-4da1-8871-23944f21a0c5
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ИдентификаторПолномочия
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:UUID
+      - name: Код
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: НаименованиеЗначения
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: КодЗначения
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: ТекстовоеЗначение
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+  - name: НалоговыеОрганыДействия
+    uuid: ddca48c8-3254-4683-93db-c4939a2d6e72
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодНалоговогоОргана
+        category: attribute
+        types:
+          - kind: Строка
+            length: 4
+            allowedLength: Variable
+source: Catalogs/МашиночитаемыеДоверенности.xml

@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: СтатусыИзвлеченияТекстаФайлов
+fullName: Перечисление.СтатусыИзвлеченияТекстаФайлов
+uuid: ecd8772d-e33f-426f-a87a-e28bd94d5fdf
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыИзвлеченияТекстаФайлов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: НеИзвлечен
+  - name: Извлечен
+  - name: ИзвлечьНеУдалось
+source: Enums/СтатусыИзвлеченияТекстаФайлов.xml

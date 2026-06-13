@@ -1,0 +1,61 @@
+version: 1
+kind: РегистрСведений
+name: ЭлектронныеПодписиМЧД
+fullName: РегистрСведений.ЭлектронныеПодписиМЧД
+uuid: a680795f-a870-4642-b45d-12ed24a12395
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПодписанныйОбъект
+    category: dimension
+    types: []
+  - name: ИдентификаторПодписи
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: МашиночитаемаяДоверенность
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенности
+  - name: ТребуетсяПроверка
+    category: resource
+    types:
+      - kind: Булево
+  - name: ДатаПроверки
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: Верна
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПодписантСоответствуетПредставителю
+    category: resource
+    types:
+      - kind: Булево
+  - name: СовместныеПолномочия
+    category: resource
+    types:
+      - kind: Булево
+  - name: СовместныеПолномочияВерны
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПротоколПроверки
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: СтатусВернаУстановленВручную
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УстановившийСтатусВерна
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+source: InformationRegisters/ЭлектронныеПодписиМЧД.xml

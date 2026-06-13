@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: МаксимальныйРазмерФайла
+fullName: Константа.МаксимальныйРазмерФайла
+uuid: 6b70f7e1-8bdb-4fc4-9b95-0e045bfa288c
+types:
+  - kind: Число
+    digits: 10
+    fractionDigits: 0
+    allowedSign: Any
+source: Constants/МаксимальныйРазмерФайла.xml

@@ -1,0 +1,58 @@
+version: 1
+kind: Справочник
+name: СостоянияОригиналовПервичныхДокументов
+fullName: Справочник.СостоянияОригиналовПервичныхДокументов
+uuid: 8b5358e9-5810-45a7-a49e-fe7fe63c73f3
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 50
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.СостоянияОригиналовПервичныхДокументов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 50
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: РеквизитДопУпорядочивания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: Catalogs/СостоянияОригиналовПервичныхДокументов.xml

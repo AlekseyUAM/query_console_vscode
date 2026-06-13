@@ -1,0 +1,43 @@
+version: 1
+kind: РегистрСведений
+name: СоответствияОбъектовИнформационныхБаз
+fullName: РегистрСведений.СоответствияОбъектовИнформационныхБаз
+uuid: 20d655a7-788c-48bc-83ae-25003106bedb
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УникальныйИдентификаторПриемника
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: УникальныйИдентификаторИсточника
+    category: dimension
+    types: []
+  - name: ТипПриемника
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ТипИсточника
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: УникальныйИдентификаторИсточникаСтрокой
+    category: resource
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ОбъектВыгруженПоСсылке
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/СоответствияОбъектовИнформационныхБаз.xml

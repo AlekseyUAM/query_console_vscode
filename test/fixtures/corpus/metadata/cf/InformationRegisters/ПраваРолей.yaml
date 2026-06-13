@@ -1,0 +1,51 @@
+version: 1
+kind: РегистрСведений
+name: ПраваРолей
+fullName: РегистрСведений.ПраваРолей
+uuid: 52ab6aea-e6a0-43f0-9cc8-f7c9126635cc
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ОбъектМетаданных
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Роль
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ПравоИзменение
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоДобавление
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоЧтениеБезОграничения
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоИзменениеБезОграничения
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоДобавлениеБезОграничения
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоПросмотр
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоРедактирование
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоИнтерактивноеДобавление
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/ПраваРолей.xml

@@ -1,0 +1,43 @@
+version: 1
+kind: ПланВидовХарактеристик
+name: ВидыСубконто
+fullName: ПланВидовХарактеристик.ВидыСубконто
+uuid: 06f29be8-1104-4f62-a015-5cefd100b771
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланВидовХарактеристик.ВидыСубконто
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 25
+  - name: ТипЗначения
+    category: standard
+    types:
+      - kind: unknown
+source: ChartsOfCharacteristicTypes/ВидыСубконто.xml

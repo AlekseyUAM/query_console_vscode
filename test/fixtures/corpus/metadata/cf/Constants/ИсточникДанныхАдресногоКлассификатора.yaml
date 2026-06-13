@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: ИсточникДанныхАдресногоКлассификатора
+fullName: Константа.ИсточникДанныхАдресногоКлассификатора
+uuid: e7e78b7e-b103-40d6-8064-f84e2d86ca3d
+types:
+  - kind: Строка
+    length: 10
+    allowedLength: Variable
+source: Constants/ИсточникДанныхАдресногоКлассификатора.xml

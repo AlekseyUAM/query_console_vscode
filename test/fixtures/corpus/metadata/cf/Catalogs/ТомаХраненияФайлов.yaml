@@ -1,0 +1,82 @@
+version: 1
+kind: Справочник
+name: ТомаХраненияФайлов
+fullName: Справочник.ТомаХраненияФайлов
+uuid: d912e472-9553-4b96-8b16-7aaff6c14239
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ТомаХраненияФайлов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: МаксимальныйРазмер
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПолныйПутьLinux
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПолныйПутьWindows
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПорядокЗаполнения
+    category: attribute
+    types:
+      - kind: Число
+        digits: 3
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ВремяПоследнейОчисткиФайлов
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: Catalogs/ТомаХраненияФайлов.xml

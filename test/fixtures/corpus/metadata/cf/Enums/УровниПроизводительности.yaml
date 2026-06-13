@@ -1,0 +1,22 @@
+version: 1
+kind: Перечисление
+name: УровниПроизводительности
+fullName: Перечисление.УровниПроизводительности
+uuid: a3b0494c-f436-45ea-9577-4c0c86b057c9
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.УровниПроизводительности
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Отлично
+  - name: Хорошо
+  - name: Плохо
+  - name: ОченьПлохо
+  - name: Неприемлемо
+source: Enums/УровниПроизводительности.xml

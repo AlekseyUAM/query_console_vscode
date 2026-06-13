@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: КоличествоЗамеровВПакетеЭкспорта
+fullName: Константа.КоличествоЗамеровВПакетеЭкспорта
+uuid: 657b8663-713c-4a80-81e1-8c0166742a35
+types:
+  - kind: Число
+    digits: 10
+    fractionDigits: 0
+    allowedSign: Nonnegative
+source: Constants/КоличествоЗамеровВПакетеЭкспорта.xml

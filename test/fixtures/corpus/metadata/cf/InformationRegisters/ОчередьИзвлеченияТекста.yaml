@@ -1,0 +1,12 @@
+version: 1
+kind: РегистрСведений
+name: ОчередьИзвлеченияТекста
+fullName: РегистрСведений.ОчередьИзвлеченияТекста
+uuid: 6a947b2d-3e6b-42c8-a9fd-4c5a71d600a9
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИсточникТекста
+    category: dimension
+    types: []
+source: InformationRegisters/ОчередьИзвлеченияТекста.xml

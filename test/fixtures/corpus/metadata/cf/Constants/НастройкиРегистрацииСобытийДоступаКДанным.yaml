@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: НастройкиРегистрацииСобытийДоступаКДанным
+fullName: Константа.НастройкиРегистрацииСобытийДоступаКДанным
+uuid: 2b43d8e1-86b1-4f3a-aad8-f0f6eb1f1de9
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/НастройкиРегистрацииСобытийДоступаКДанным.xml

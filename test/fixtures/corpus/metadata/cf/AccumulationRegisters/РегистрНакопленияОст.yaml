@@ -1,0 +1,45 @@
+version: 1
+kind: РегистрНакопления
+name: РегистрНакопленияОст
+fullName: РегистрНакопления.РегистрНакопленияОст
+uuid: 3f45ab04-06be-4958-8375-b56274c9c31f
+properties:
+  registerType: Balance
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Активность
+    category: standard
+    types:
+      - kind: Булево
+  - name: ВидДвижения
+    category: standard
+    types:
+      - kind: unknown
+  - name: Измерение1
+    category: dimension
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Ресурс1
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+source: AccumulationRegisters/РегистрНакопленияОст.xml

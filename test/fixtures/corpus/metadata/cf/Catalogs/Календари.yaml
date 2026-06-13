@@ -1,0 +1,137 @@
+version: 1
+kind: Справочник
+name: Календари
+fullName: Справочник.Календари
+uuid: 1c09bf33-9b54-4bfd-bc92-e7324025fab0
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Календари
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Календари
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: ПроизводственныйКалендарь
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ПроизводственныеКалендари
+  - name: СпособЗаполнения
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыЗаполненияГрафикаРаботы
+  - name: ДатаНачала
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ДатаОкончания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ДатаОтсчета
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: УчитыватьПраздники
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УчитыватьНерабочиеПериоды
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ГоризонтПланирования
+    category: attribute
+    types:
+      - kind: Число
+        digits: 3
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ВладелецГрафика
+    category: attribute
+    types: []
+tabularSections:
+  - name: ШаблонЗаполнения
+    uuid: ad08b104-01f8-4900-a06c-baa1d55eba84
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ДеньВключенВГрафик
+        category: attribute
+        types:
+          - kind: Булево
+  - name: РасписаниеРаботы
+    uuid: 1933634a-6f10-48e7-99f0-60ac338f7832
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: НомерДня
+        category: attribute
+        types:
+          - kind: Число
+            digits: 7
+            fractionDigits: 0
+            allowedSign: Nonnegative
+      - name: ВремяНачала
+        category: attribute
+        types:
+          - kind: Дата
+            dateFractions: Time
+      - name: ВремяОкончания
+        category: attribute
+        types:
+          - kind: Дата
+            dateFractions: Time
+source: Catalogs/Календари.xml

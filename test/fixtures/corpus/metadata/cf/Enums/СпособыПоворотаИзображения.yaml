@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: СпособыПоворотаИзображения
+fullName: Перечисление.СпособыПоворотаИзображения
+uuid: 766208a3-2780-427b-a7d3-93abe99d236b
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыПоворотаИзображения
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: НетПоворота
+  - name: ВправоНа90
+  - name: ВправоНа180
+  - name: ВлевоНа90
+source: Enums/СпособыПоворотаИзображения.xml

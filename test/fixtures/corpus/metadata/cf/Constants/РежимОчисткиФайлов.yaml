@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: РежимОчисткиФайлов
+fullName: Константа.РежимОчисткиФайлов
+uuid: 99c5e87a-f096-4315-8fbe-f596ea9c176f
+types:
+  - kind: ref
+    ref: Перечисление.РежимыОчисткиФайлов
+source: Constants/РежимОчисткиФайлов.xml

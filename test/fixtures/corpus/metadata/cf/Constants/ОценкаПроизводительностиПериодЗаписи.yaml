@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: ОценкаПроизводительностиПериодЗаписи
+fullName: Константа.ОценкаПроизводительностиПериодЗаписи
+uuid: 9fe30414-8261-4403-a854-f22b61824f69
+types:
+  - kind: Число
+    digits: 10
+    fractionDigits: 1
+    allowedSign: Nonnegative
+source: Constants/ОценкаПроизводительностиПериодЗаписи.xml

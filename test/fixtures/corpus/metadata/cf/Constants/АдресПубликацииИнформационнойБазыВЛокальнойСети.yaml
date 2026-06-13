@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: АдресПубликацииИнформационнойБазыВЛокальнойСети
+fullName: Константа.АдресПубликацииИнформационнойБазыВЛокальнойСети
+uuid: e693cdd0-8ead-4ba5-adec-86bab74ee7cd
+types:
+  - kind: Строка
+    length: 250
+    allowedLength: Variable
+source: Constants/АдресПубликацииИнформационнойБазыВЛокальнойСети.xml

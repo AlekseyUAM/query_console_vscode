@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: ИзмененияОбщихДанныхУзлов
+fullName: РегистрСведений.ИзмененияОбщихДанныхУзлов
+uuid: 8b83bb54-4c23-4bd8-bd00-374a7a101cfa
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: НомерСообщения
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: InformationRegisters/ИзмененияОбщихДанныхУзлов.xml

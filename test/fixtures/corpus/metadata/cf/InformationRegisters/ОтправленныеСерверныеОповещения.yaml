@@ -1,0 +1,69 @@
+version: 1
+kind: РегистрСведений
+name: ОтправленныеСерверныеОповещения
+fullName: РегистрСведений.ОтправленныеСерверныеОповещения
+uuid: c91f630a-286c-4eb8-b87e-6e6bc7670482
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторОповещения
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: СодержимоеОповещения
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ДатаДобавления
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаДобавленияМиллисекунды
+    category: attribute
+    types:
+      - kind: Число
+        digits: 3
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ОтсрочкаЗаписиВСистемуВзаимодействия
+    category: attribute
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 1
+        allowedSign: Nonnegative
+  - name: ДатаЗаписиВСистемуВзаимодействия
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаЗаписиВСистемуВзаимодействияМиллисекунды
+    category: attribute
+    types:
+      - kind: Число
+        digits: 3
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ИдентификаторГруппы
+    category: attribute
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ВидОповещенияВГруппе
+    category: attribute
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: Адресаты
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+source: InformationRegisters/ОтправленныеСерверныеОповещения.xml

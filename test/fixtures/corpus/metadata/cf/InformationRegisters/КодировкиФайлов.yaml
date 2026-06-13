@@ -1,0 +1,18 @@
+version: 1
+kind: РегистрСведений
+name: КодировкиФайлов
+fullName: РегистрСведений.КодировкиФайлов
+uuid: e73a6a9d-8ddd-4531-9f17-745117d9da9b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Файл
+    category: dimension
+    types: []
+  - name: Кодировка
+    category: resource
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+source: InformationRegisters/КодировкиФайлов.xml

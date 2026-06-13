@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: КаталогСообщенийОбменаДаннымиДляWindows
+fullName: Константа.КаталогСообщенийОбменаДаннымиДляWindows
+uuid: 98153b59-8cc6-4dc7-b945-99c1146d07da
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/КаталогСообщенийОбменаДаннымиДляWindows.xml

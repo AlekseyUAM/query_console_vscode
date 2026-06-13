@@ -1,0 +1,25 @@
+version: 1
+kind: РегистрСведений
+name: ИдентификаторыПолученныхЭлектронныхПисем
+fullName: РегистрСведений.ИдентификаторыПолученныхЭлектронныхПисем
+uuid: 1c1e01f2-b2b3-480d-ae51-2db27b82dedd
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УчетнаяЗапись
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ДатаПолучения
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ИдентификаторыПолученныхЭлектронныхПисем.xml

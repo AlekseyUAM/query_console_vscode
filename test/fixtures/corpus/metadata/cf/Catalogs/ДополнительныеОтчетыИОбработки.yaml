@@ -1,0 +1,255 @@
+version: 1
+kind: Справочник
+name: ДополнительныеОтчетыИОбработки
+fullName: Справочник.ДополнительныеОтчетыИОбработки
+uuid: 92707138-5004-4378-8477-f909166d319d
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ДополнительныеОтчетыИОбработки
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ДополнительныеОтчетыИОбработки
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: БезопасныйРежим
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Версия
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Вид
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыДополнительныхОтчетовИОбработок
+  - name: ИмяОбъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 256
+        allowedLength: Variable
+  - name: ИмяФайла
+    category: attribute
+    types:
+      - kind: Строка
+        length: 260
+        allowedLength: Variable
+  - name: Информация
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ИспользоватьДляФормыОбъекта
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьДляФормыСписка
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Публикация
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыПубликацииДополнительныхОтчетовИОбработок
+  - name: ХранилищеНастроек
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ХранилищеОбработки
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ИспользуетХранилищеВариантов
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТеснаяИнтеграцияСФормойОтчета
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РежимСовместимостиРазрешений
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыСовместимостиРазрешенийДополнительныхОтчетовИОбработок
+tabularSections:
+  - name: Команды
+    uuid: 0481bc65-6a32-46b9-ae87-993ba52a29a5
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Идентификатор
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: ВариантЗапуска
+        category: attribute
+        types:
+          - kind: ref
+            ref: Перечисление.СпособыВызоваДополнительныхОбработок
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 200
+            allowedLength: Variable
+      - name: ПоказыватьОповещение
+        category: attribute
+        types:
+          - kind: Булево
+      - name: Модификатор
+        category: attribute
+        types:
+          - kind: Строка
+            length: 256
+            allowedLength: Variable
+      - name: РегламентноеЗаданиеGUID
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:UUID
+      - name: Скрыть
+        category: attribute
+        types:
+          - kind: Булево
+      - name: ЗаменяемыеКоманды
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+  - name: Назначение
+    uuid: 7a34f723-cd14-4949-a40f-7ce579bf0449
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ОбъектНазначения
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовРасширений
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Разделы
+    uuid: 86c22871-6d1c-44e0-8ade-ce4bdeb23321
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Раздел
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовРасширений
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Разрешения
+    uuid: c2a8c2d3-ff13-4a13-acd4-797118c4e767
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ВидРазрешения
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: Параметры
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+  - name: ДополнительныеРеквизиты
+    uuid: 07629bf6-5544-4de9-b1d8-851cb03766cb
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Catalogs/ДополнительныеОтчетыИОбработки.xml

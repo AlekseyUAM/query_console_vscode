@@ -1,0 +1,22 @@
+version: 1
+kind: РегистрСведений
+name: КлючиДоступаКОбъектам
+fullName: РегистрСведений.КлючиДоступаКОбъектам
+uuid: d7fdb3d5-3c18-4d9c-938a-2fbe8a96e877
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types: []
+  - name: КлючДоступаПользователей
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.КлючиДоступа
+  - name: КлючДоступаВнешнихПользователей
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.КлючиДоступа
+source: InformationRegisters/КлючиДоступаКОбъектам.xml

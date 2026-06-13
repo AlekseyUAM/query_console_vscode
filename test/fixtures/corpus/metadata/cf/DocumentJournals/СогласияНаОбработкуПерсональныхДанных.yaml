@@ -1,0 +1,55 @@
+version: 1
+kind: ЖурналДокументов
+name: СогласияНаОбработкуПерсональныхДанных
+fullName: ЖурналДокументов.СогласияНаОбработкуПерсональныхДанных
+uuid: 1d3b9eff-5d0b-437b-932f-0ec466e092b2
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ЖурналДокументов.СогласияНаОбработкуПерсональныхДанных
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+  - name: ТипДокумента
+    category: standard
+    types:
+      - kind: unknown
+  - name: Организация
+    category: attribute
+    types: []
+  - name: ОтветственныйЗаОбработкуПерсональныхДанных
+    category: attribute
+    types: []
+  - name: Субъект
+    category: attribute
+    types: []
+  - name: ДатаРегистрации
+    category: attribute
+    types: []
+  - name: СрокДействия
+    category: attribute
+    types: []
+  - name: Ответственный
+    category: attribute
+    types: []
+  - name: Комментарий
+    category: attribute
+    types: []
+source: DocumentJournals/СогласияНаОбработкуПерсональныхДанных.xml

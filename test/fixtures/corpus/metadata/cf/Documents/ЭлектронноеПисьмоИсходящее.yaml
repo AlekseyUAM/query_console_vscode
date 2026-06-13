@@ -1,0 +1,418 @@
+version: 1
+kind: Документ
+name: ЭлектронноеПисьмоИсходящее
+fullName: Документ.ЭлектронноеПисьмоИсходящее
+uuid: 8f2b8a8e-4cd3-45e3-89ae-1cc4bd0ff30a
+properties:
+  numberLength: 11
+  numberType: String
+  posting: Deny
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Fixed
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВнутреннийЗаголовок
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Важность
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВажностиВзаимодействия
+  - name: ДатаОтправления
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ЕстьВложения
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИдентификаторНаСервере
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИдентификаторОснования
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИдентификаторСообщения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИдентификаторСообщенияОтправкаIMAP
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИдентификаторыОснований
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Кодировка
+    category: attribute
+    types:
+      - kind: Строка
+        length: 25
+        allowedLength: Variable
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ОтправительПредставление
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: СписокПолучателейКопий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: СписокПолучателейПисьма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: СписокПолучателейСкрытыхКопий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: СтатусПисьма
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыИсходящегоЭлектронногоПисьма
+  - name: Текст
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТекстHTML
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Тема
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ТипТекста
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыТекстовЭлектронныхПисем
+  - name: УчетнаяЗапись
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: ВзаимодействиеОснование
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+      - kind: ref
+        ref: Документ.ЗапланированноеВзаимодействие
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоВходящее
+      - kind: ref
+        ref: Документ.ТелефонныйЗвонок
+      - kind: ref
+        ref: Документ.Встреча
+      - kind: ref
+        ref: Документ.СообщениеSMS
+  - name: УведомитьОДоставке
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УведомитьОПрочтении
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОтображатьТелоИсходногоПисьма
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВключатьТелоИсходногоПисьма
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УдалятьПослеОтправки
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Размер
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДатаКогдаОтправить
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаАктуальностиОтправки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УдалитьИдентификаторСообщенияОтправкаIMAP
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: ХешСумма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+tabularSections:
+  - name: ПолучателиПисьма
+    uuid: 64c91eaa-084f-4801-8dbf-4e075c689c2b
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Адрес
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Контакт
+        category: attribute
+        types: []
+  - name: ПолучателиКопий
+    uuid: 87d53573-f266-4b74-94af-041ae4b6518f
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Адрес
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Контакт
+        category: attribute
+        types: []
+  - name: ПолучателиОтвета
+    uuid: 29c2bc01-8838-4459-8ac2-79862aa1dbc9
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Адрес
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Контакт
+        category: attribute
+        types: []
+  - name: ПолучателиСкрытыхКопий
+    uuid: 977bc9d8-9843-4343-85af-11a3d91f9966
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Адрес
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Контакт
+        category: attribute
+        types: []
+  - name: НаборыЗначенийДоступа
+    uuid: 6a0b9a91-51a0-4ef4-b630-4f1b5a1da2b7
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: НомерНабора
+        category: attribute
+        types:
+          - kind: Число
+            digits: 4
+            fractionDigits: 0
+            allowedSign: Nonnegative
+      - name: ЗначениеДоступа
+        category: attribute
+        types: []
+      - name: Уточнение
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+      - name: Чтение
+        category: attribute
+        types:
+          - kind: Булево
+      - name: Изменение
+        category: attribute
+        types:
+          - kind: Булево
+  - name: ДополнительныеРеквизиты
+    uuid: 10472d2c-18ca-49b0-bd9d-c750db8498c5
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+  - name: НепринятыеВложения
+    uuid: f9229c3e-4a47-49a4-8b14-908218012ff7
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ИмяВложение
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+  - name: ПисьмаВложения
+    uuid: b9743978-ba6d-4892-bb32-f24d4a47dd50
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Письмо
+        category: attribute
+        types:
+          - kind: ref
+            ref: Документ.ЭлектронноеПисьмоИсходящее
+          - kind: ref
+            ref: Документ.ЭлектронноеПисьмоВходящее
+      - name: ПорядковыйНомерВоВложениях
+        category: attribute
+        types:
+          - kind: Число
+            digits: 3
+            fractionDigits: 0
+            allowedSign: Any
+source: Documents/ЭлектронноеПисьмоИсходящее.xml

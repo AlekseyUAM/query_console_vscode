@@ -1,0 +1,17 @@
+version: 1
+kind: РегистрСведений
+name: ЗависимостиПравДоступа
+fullName: РегистрСведений.ЗависимостиПравДоступа
+uuid: 1ea3178b-73dd-4063-9140-c61687a4b1b8
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПодчиненнаяТаблица
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ТипВедущейТаблицы
+    category: dimension
+    types: []
+source: InformationRegisters/ЗависимостиПравДоступа.xml

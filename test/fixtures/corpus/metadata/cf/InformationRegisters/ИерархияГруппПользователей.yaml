@@ -1,0 +1,37 @@
+version: 1
+kind: РегистрСведений
+name: ИерархияГруппПользователей
+fullName: РегистрСведений.ИерархияГруппПользователей
+uuid: 28bb77d5-cc8e-4f91-830e-d5052224ed97
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ГруппаПользователей
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыВнешнихПользователей
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+  - name: Родитель
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыВнешнихПользователей
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+  - name: УровеньРодителя
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: УровеньГруппы
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: InformationRegisters/ИерархияГруппПользователей.xml

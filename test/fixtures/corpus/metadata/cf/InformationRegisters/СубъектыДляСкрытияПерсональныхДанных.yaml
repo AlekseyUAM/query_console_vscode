@@ -1,0 +1,35 @@
+version: 1
+kind: РегистрСведений
+name: СубъектыДляСкрытияПерсональныхДанных
+fullName: РегистрСведений.СубъектыДляСкрытияПерсональныхДанных
+uuid: 2bb5c23c-ad87-4b66-b766-d2e3f82715bd
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Субъект
+    category: dimension
+    types: []
+  - name: ДатаСкрытия
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: Состояние
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияСубъектовДляСкрытия
+  - name: ПричинаОтменыСкрытия
+    category: attribute
+    types:
+      - kind: Строка
+        length: 300
+        allowedLength: Variable
+  - name: Основание
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.СогласиеНаОбработкуПерсональныхДанных
+      - kind: ref
+        ref: Документ.ОтзывСогласияНаОбработкуПерсональныхДанных
+source: InformationRegisters/СубъектыДляСкрытияПерсональныхДанных.xml

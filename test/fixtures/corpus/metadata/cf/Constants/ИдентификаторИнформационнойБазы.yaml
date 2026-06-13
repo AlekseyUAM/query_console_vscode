@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: ИдентификаторИнформационнойБазы
+fullName: Константа.ИдентификаторИнформационнойБазы
+uuid: f60cb71a-f451-426a-aa3a-aa266b8da149
+types:
+  - kind: Строка
+    length: 36
+    allowedLength: Fixed
+source: Constants/ИдентификаторИнформационнойБазы.xml

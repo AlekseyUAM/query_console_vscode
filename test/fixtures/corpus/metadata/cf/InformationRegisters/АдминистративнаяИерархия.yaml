@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: АдминистративнаяИерархия
+fullName: РегистрСведений.АдминистративнаяИерархия
+uuid: ab4dbaff-cee6-47b3-9d69-13ac5c906f95
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: РодительскийИдентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/АдминистративнаяИерархия.xml

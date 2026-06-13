@@ -1,0 +1,33 @@
+version: 1
+kind: РегистрСведений
+name: ПакетыДляОтправки
+fullName: РегистрСведений.ПакетыДляОтправки
+uuid: f0b0608c-178f-4dea-b461-0d8f00d79d30
+properties:
+  periodicity: Second
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: НомерПакета
+    category: dimension
+    types:
+      - kind: Число
+        digits: 11
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ТелоПакета
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ХешПакета
+    category: attribute
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+source: InformationRegisters/ПакетыДляОтправки.xml

@@ -1,0 +1,25 @@
+version: 1
+kind: РегистрСведений
+name: ПараметрыРаботыВерсийРасширений
+fullName: РегистрСведений.ПараметрыРаботыВерсийРасширений
+uuid: bf070420-9eb7-4372-96a6-b0d00ac3ce8c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ВерсияРасширений
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВерсииРасширений
+  - name: ИмяПараметра
+    category: dimension
+    types:
+      - kind: Строка
+        length: 128
+        allowedLength: Variable
+  - name: ХранилищеПараметра
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ПараметрыРаботыВерсийРасширений.xml

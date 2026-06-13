@@ -1,0 +1,165 @@
+version: 1
+kind: ПланВидовХарактеристик
+name: ВопросыДляАнкетирования
+fullName: ПланВидовХарактеристик.ВопросыДляАнкетирования
+uuid: dabae379-6356-497a-aab5-cf102f16a72a
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланВидовХарактеристик.ВопросыДляАнкетирования
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланВидовХарактеристик.ВопросыДляАнкетирования
+  - name: ТипЗначения
+    category: standard
+    types:
+      - kind: unknown
+  - name: Формулировка
+    category: attribute
+    types:
+      - kind: Строка
+        length: 300
+        allowedLength: Variable
+  - name: ТипОтвета
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыОтветовНаВопрос
+  - name: ТребуетсяКомментарий
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПояснениеКомментария
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ЗаполнятьАвтоматически
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Длина
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: МинимальноеЗначение
+    category: attribute
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Any
+  - name: МаксимальноеЗначение
+    category: attribute
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Точность
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: АгрегироватьСуммуВОтчетах
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВидПереключателя
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыПереключателяВАнкетах
+  - name: ВидФлажка
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыФлажкаВАнкетах
+  - name: ИспользоватьМинимальноеЗначение
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьМаксимальноеЗначение
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПоказыватьПолосуРегулирования
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ШагПолосыРегулирования
+    category: attribute
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 2
+        allowedSign: Nonnegative
+  - name: ВыводитьПодсказкуУЧисловыхВопросов
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: ДиапазонПодсказокЧисловогоВопроса
+    uuid: 511727f3-b757-4e5b-b7d7-166917029787
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ЗначениеДо
+        category: attribute
+        types:
+          - kind: Число
+            digits: 15
+            fractionDigits: 2
+            allowedSign: Any
+      - name: Подсказка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 250
+            allowedLength: Variable
+source: ChartsOfCharacteristicTypes/ВопросыДляАнкетирования.xml

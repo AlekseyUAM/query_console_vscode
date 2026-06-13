@@ -1,0 +1,119 @@
+version: 1
+kind: РегистрСведений
+name: ЭлектронныеПодписи
+fullName: РегистрСведений.ЭлектронныеПодписи
+uuid: b50f3157-3c3a-4553-a16a-7fcd660e2824
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПодписанныйОбъект
+    category: dimension
+    types: []
+  - name: ПорядковыйНомер
+    category: dimension
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ТребуетсяПроверка
+    category: resource
+    types:
+      - kind: Булево
+  - name: ТипПодписи
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыПодписиКриптографии
+  - name: СрокДействияПоследнейМеткиВремени
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаПроверкиПодписи
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Комментарий
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: КомуВыданСертификат
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Отпечаток
+    category: resource
+    types:
+      - kind: Строка
+        length: 28
+        allowedLength: Variable
+  - name: Подпись
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПодписьВерна
+    category: resource
+    types:
+      - kind: Булево
+  - name: ДатаПодписи
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УстановившийПодпись
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ОшибкаПриАвтоматическомПродлении
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПропуститьПриПродлении
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИдентификаторПодписи
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ПодписьМатематическиВерна
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОшибкаМатематическойПроверкиПодписи
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ОшибкаПроверкиДополнительныхАтрибутов
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДополнительныеАтрибутыПровереныВручную
+    category: attribute
+    types:
+      - kind: Булево
+  - name: АвторРучнойПроверкиДополнительныхАтрибутов
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ОбоснованиеРучнойПроверкиДополнительныхАтрибутов
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/ЭлектронныеПодписи.xml

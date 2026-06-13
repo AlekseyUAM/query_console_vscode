@@ -1,0 +1,21 @@
+version: 1
+kind: РегистрСведений
+name: ЗначенияГруппДоступа
+fullName: РегистрСведений.ЗначенияГруппДоступа
+uuid: 96fe619a-b819-4f96-9788-e1f4ef57833a
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ГруппаДоступа
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыДоступа
+  - name: ЗначениеДоступа
+    category: dimension
+    types: []
+  - name: ЗначениеРазрешено
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/ЗначенияГруппДоступа.xml

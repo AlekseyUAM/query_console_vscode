@@ -1,0 +1,158 @@
+version: 1
+kind: Документ
+name: ТелефонныйЗвонок
+fullName: Документ.ТелефонныйЗвонок
+uuid: 457578ab-dfe2-4419-8d8a-64283b341f42
+properties:
+  numberLength: 11
+  numberType: String
+  posting: Deny
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Документ.ТелефонныйЗвонок
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Fixed
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: АбонентКакСвязаться
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: АбонентКонтакт
+    category: attribute
+    types: []
+  - name: АбонентПредставление
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Важность
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВажностиВзаимодействия
+  - name: Входящий
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВзаимодействиеОснование
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+      - kind: ref
+        ref: Документ.ЗапланированноеВзаимодействие
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоВходящее
+      - kind: ref
+        ref: Документ.ТелефонныйЗвонок
+      - kind: ref
+        ref: Документ.Встреча
+      - kind: ref
+        ref: Документ.СообщениеSMS
+  - name: Тема
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+tabularSections:
+  - name: НаборыЗначенийДоступа
+    uuid: 6a4972f1-012c-438b-b1d3-81e7f6da3ddd
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: НомерНабора
+        category: attribute
+        types:
+          - kind: Число
+            digits: 4
+            fractionDigits: 0
+            allowedSign: Nonnegative
+      - name: ЗначениеДоступа
+        category: attribute
+        types: []
+      - name: Уточнение
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+      - name: Чтение
+        category: attribute
+        types:
+          - kind: Булево
+      - name: Изменение
+        category: attribute
+        types:
+          - kind: Булево
+  - name: ДополнительныеРеквизиты
+    uuid: faffa228-4f4f-43f6-99b9-ed8c93af85c0
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Documents/ТелефонныйЗвонок.xml

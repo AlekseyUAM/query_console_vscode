@@ -1,0 +1,27 @@
+version: 1
+kind: Перечисление
+name: ЦветаСвойств
+fullName: Перечисление.ЦветаСвойств
+uuid: c2f246fa-81a3-436c-9f7d-4c8eb7103bf1
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ЦветаСвойств
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Серый
+  - name: Зеленый
+  - name: Желтый
+  - name: Оранжевый
+  - name: Красный
+  - name: Фиолетовый
+  - name: Синий
+  - name: Лаймовый
+  - name: Розовый
+  - name: Голубой
+source: Enums/ЦветаСвойств.xml

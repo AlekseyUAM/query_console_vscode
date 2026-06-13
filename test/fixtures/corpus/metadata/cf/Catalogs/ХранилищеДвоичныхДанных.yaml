@@ -1,0 +1,52 @@
+version: 1
+kind: Справочник
+name: ХранилищеДвоичныхДанных
+fullName: Справочник.ХранилищеДвоичныхДанных
+uuid: bf1ab189-634d-4b31-82e3-35fb15305da9
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 0
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ХранилищеДвоичныхДанных
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Размер
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Хеш
+    category: attribute
+    types:
+      - kind: Строка
+        length: 44
+        allowedLength: Variable
+  - name: ДвоичныеДанные
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: Catalogs/ХранилищеДвоичныхДанных.xml

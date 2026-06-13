@@ -1,0 +1,21 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиТранспортаОбменаОбластиДанных
+fullName: РегистрСведений.НастройкиТранспортаОбменаОбластиДанных
+uuid: bf428e7a-2970-4bab-8c8e-35ea16151c0e
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Корреспондент
+    category: dimension
+    types: []
+  - name: КонечнаяТочкаКорреспондента
+    category: resource
+    types: []
+  - name: КаталогОбменаИнформацией
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/НастройкиТранспортаОбменаОбластиДанных.xml

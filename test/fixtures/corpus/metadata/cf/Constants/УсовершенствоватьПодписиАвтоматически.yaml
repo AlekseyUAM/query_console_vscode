@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: УсовершенствоватьПодписиАвтоматически
+fullName: Константа.УсовершенствоватьПодписиАвтоматически
+uuid: 5465466d-48be-493a-aadc-e97046b010cc
+types:
+  - kind: Число
+    digits: 1
+    fractionDigits: 0
+    allowedSign: Any
+source: Constants/УсовершенствоватьПодписиАвтоматически.xml

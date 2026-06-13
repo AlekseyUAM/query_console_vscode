@@ -1,0 +1,24 @@
+version: 1
+kind: Перечисление
+name: ВидыТранспортаСообщенийОбмена
+fullName: Перечисление.ВидыТранспортаСообщенийОбмена
+uuid: df76a1b7-312a-4e77-bac1-79befadb4495
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыТранспортаСообщенийОбмена
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: EMAIL
+  - name: FILE
+  - name: FTP
+  - name: WS
+  - name: COM
+  - name: WSПассивныйРежим
+  - name: ВнешняяСистема
+source: Enums/ВидыТранспортаСообщенийОбмена.xml

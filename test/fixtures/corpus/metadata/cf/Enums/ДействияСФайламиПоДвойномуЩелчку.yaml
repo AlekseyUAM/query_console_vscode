@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ДействияСФайламиПоДвойномуЩелчку
+fullName: Перечисление.ДействияСФайламиПоДвойномуЩелчку
+uuid: 49221b2f-aae2-4bee-9a1a-18263fc74244
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ДействияСФайламиПоДвойномуЩелчку
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ОткрыватьФайл
+  - name: ОткрыватьКарточку
+source: Enums/ДействияСФайламиПоДвойномуЩелчку.xml

@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ДанныеДляОтложенногоОбновления
+fullName: Константа.ДанныеДляОтложенногоОбновления
+uuid: 9b4b7424-1af7-4d80-8404-8819fcfeae75
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ДанныеДляОтложенногоОбновления.xml

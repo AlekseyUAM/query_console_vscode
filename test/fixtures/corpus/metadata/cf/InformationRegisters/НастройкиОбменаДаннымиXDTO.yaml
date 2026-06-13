@@ -1,0 +1,38 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиОбменаДаннымиXDTO
+fullName: РегистрСведений.НастройкиОбменаДаннымиXDTO
+uuid: 28dd22df-07cc-4e6d-89b2-b15a13f76615
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: Настройки
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: НастройкиКорреспондента
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПропускатьОбъектыСОшибкамиПроверкиПоСхеме
+    category: resource
+    types:
+      - kind: Булево
+  - name: РасширениеФормата
+    category: resource
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: ИмяПланаОбменаКорреспондента
+    category: attribute
+    types:
+      - kind: Строка
+        length: 80
+        allowedLength: Variable
+source: InformationRegisters/НастройкиОбменаДаннымиXDTO.xml

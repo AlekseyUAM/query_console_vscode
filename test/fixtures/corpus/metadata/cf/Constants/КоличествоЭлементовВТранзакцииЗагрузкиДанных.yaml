@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: КоличествоЭлементовВТранзакцииЗагрузкиДанных
+fullName: Константа.КоличествоЭлементовВТранзакцииЗагрузкиДанных
+uuid: df9db8d5-c5c2-4a9d-88fe-77247b2c417e
+types:
+  - kind: Число
+    digits: 5
+    fractionDigits: 0
+    allowedSign: Nonnegative
+source: Constants/КоличествоЭлементовВТранзакцииЗагрузкиДанных.xml

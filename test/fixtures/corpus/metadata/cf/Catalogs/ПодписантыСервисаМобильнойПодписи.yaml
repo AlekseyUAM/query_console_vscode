@@ -1,0 +1,123 @@
+version: 1
+kind: Справочник
+name: ПодписантыСервисаМобильнойПодписи
+fullName: Справочник.ПодписантыСервисаМобильнойПодписи
+uuid: 25c6d686-9bc6-43c8-86db-1710766bc1ee
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПодписантыСервисаМобильнойПодписи
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: НомерТелефона
+    category: attribute
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: ИНН
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: ИННФЛ
+    category: attribute
+    types:
+      - kind: Строка
+        length: 12
+        allowedLength: Variable
+  - name: Фамилия
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Имя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Отчество
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: НаименованиеОрганизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Должность
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ОГРН
+    category: attribute
+    types:
+      - kind: Строка
+        length: 15
+        allowedLength: Variable
+  - name: Организация
+    category: attribute
+    types: []
+  - name: ОтправленВСервис
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ФизическоеЛицо
+    category: attribute
+    types: []
+  - name: Добавил
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+tabularSections:
+  - name: Пользователи
+    uuid: 5e55970c-677a-4a7c-b680-c9031a0f67b4
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Пользователь
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.Пользователи
+source: Catalogs/ПодписантыСервисаМобильнойПодписи.xml

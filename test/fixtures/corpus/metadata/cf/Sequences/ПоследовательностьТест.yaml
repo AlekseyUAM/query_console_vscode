@@ -1,0 +1,28 @@
+version: 1
+kind: Последовательность
+name: ПоследовательностьТест
+fullName: Последовательность.ПоследовательностьТест
+uuid: 46864975-6432-43dc-b390-569b22f952f0
+fields:
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: Измерение1
+    category: dimension
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+source: Sequences/ПоследовательностьТест.xml

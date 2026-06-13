@@ -1,0 +1,30 @@
+version: 1
+kind: РегистрСведений
+name: РежимыПодключенияВнешнихМодулей
+fullName: РегистрСведений.РежимыПодключенияВнешнихМодулей
+uuid: f7cf3b42-39c0-48db-b8ca-fe9ea267a45a
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ТипПрограммногоМодуля
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ИдентификаторПрограммногоМодуля
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: БезопасныйРежим
+    category: resource
+    types: []
+  - name: ПредставлениеПрограммногоМодуля
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/РежимыПодключенияВнешнихМодулей.xml

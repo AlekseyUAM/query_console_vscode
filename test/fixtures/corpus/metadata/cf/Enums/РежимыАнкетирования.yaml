@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: РежимыАнкетирования
+fullName: Перечисление.РежимыАнкетирования
+uuid: 3e44d463-f253-4a64-8d68-631fcb66935c
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыАнкетирования
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Анкета
+  - name: Интервью
+source: Enums/РежимыАнкетирования.xml

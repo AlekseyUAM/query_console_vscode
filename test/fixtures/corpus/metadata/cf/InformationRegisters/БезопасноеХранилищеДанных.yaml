@@ -1,0 +1,20 @@
+version: 1
+kind: РегистрСведений
+name: БезопасноеХранилищеДанных
+fullName: РегистрСведений.БезопасноеХранилищеДанных
+uuid: f9f021ca-8b3e-4d10-9538-1bce7e851fdd
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Владелец
+    category: dimension
+    types:
+      - kind: Строка
+        length: 128
+        allowedLength: Variable
+  - name: Данные
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/БезопасноеХранилищеДанных.xml

@@ -1,0 +1,169 @@
+version: 1
+kind: Документ
+name: ЗапланированноеВзаимодействие
+fullName: Документ.ЗапланированноеВзаимодействие
+uuid: 53c4c3b2-9257-4d02-8df8-6b55fe9abdae
+properties:
+  numberLength: 11
+  numberType: String
+  posting: Deny
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Документ.ЗапланированноеВзаимодействие
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Fixed
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Важность
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВажностиВзаимодействия
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: СписокУчастников
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ВзаимодействиеОснование
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+      - kind: ref
+        ref: Документ.ЗапланированноеВзаимодействие
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоВходящее
+      - kind: ref
+        ref: Документ.ТелефонныйЗвонок
+      - kind: ref
+        ref: Документ.Встреча
+      - kind: ref
+        ref: Документ.СообщениеSMS
+  - name: Тема
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+tabularSections:
+  - name: Участники
+    uuid: 23b46ecd-14dc-4cc5-8ff0-c676a8337aee
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Контакт
+        category: attribute
+        types: []
+      - name: ПредставлениеКонтакта
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: КакСвязаться
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+  - name: НаборыЗначенийДоступа
+    uuid: e4476f09-909b-49f7-8e01-72eea8ceaca6
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: НомерНабора
+        category: attribute
+        types:
+          - kind: Число
+            digits: 4
+            fractionDigits: 0
+            allowedSign: Nonnegative
+      - name: ЗначениеДоступа
+        category: attribute
+        types: []
+      - name: Уточнение
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+      - name: Чтение
+        category: attribute
+        types:
+          - kind: Булево
+      - name: Изменение
+        category: attribute
+        types:
+          - kind: Булево
+  - name: ДополнительныеРеквизиты
+    uuid: 966b1bde-5b0c-446d-b38b-dc037e2ff7ad
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Documents/ЗапланированноеВзаимодействие.xml

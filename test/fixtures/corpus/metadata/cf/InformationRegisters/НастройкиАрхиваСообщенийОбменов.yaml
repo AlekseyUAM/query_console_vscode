@@ -1,0 +1,33 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиАрхиваСообщенийОбменов
+fullName: РегистрСведений.НастройкиАрхиваСообщенийОбменов
+uuid: db5fde74-275f-4d82-825c-5c245a7fef6b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: КоличествоФайлов
+    category: resource
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ХранитьНаДиске
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПолныйПуть
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: СжиматьФайлы
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/НастройкиАрхиваСообщенийОбменов.xml

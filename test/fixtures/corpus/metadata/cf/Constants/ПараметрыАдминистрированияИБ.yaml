@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПараметрыАдминистрированияИБ
+fullName: Константа.ПараметрыАдминистрированияИБ
+uuid: 07bb26ac-bd97-465f-a192-db7fedbb579b
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ПараметрыАдминистрированияИБ.xml

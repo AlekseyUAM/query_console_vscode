@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиКомандПечати
+fullName: РегистрСведений.НастройкиКомандПечати
+uuid: 9b46a2b4-223d-4527-a94e-37ecd4fe72d7
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Владелец
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: УникальныйИдентификатор
+    category: dimension
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+  - name: Видимость
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/НастройкиКомандПечати.xml

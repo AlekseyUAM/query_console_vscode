@@ -1,0 +1,15 @@
+version: 1
+kind: РегистрСведений
+name: ДанныеОбъектовДляРегистрацииВОбменах
+fullName: РегистрСведений.ДанныеОбъектовДляРегистрацииВОбменах
+uuid: 8ede4c18-ebf0-4c39-9e82-c59df8d62ca7
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Ссылка
+    category: dimension
+    types: []
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+source: InformationRegisters/ДанныеОбъектовДляРегистрацииВОбменах.xml

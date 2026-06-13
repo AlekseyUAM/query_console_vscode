@@ -1,0 +1,43 @@
+version: 1
+kind: РегистрСведений
+name: СогласияНаОбработкуПерсональныхДанных
+fullName: РегистрСведений.СогласияНаОбработкуПерсональныхДанных
+uuid: 7c3463c8-ea36-415a-8e9d-dc7bd927b9d1
+properties:
+  periodicity: Day
+fields:
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Активность
+    category: standard
+    types:
+      - kind: Булево
+  - name: Субъект
+    category: dimension
+    types: []
+  - name: Организация
+    category: dimension
+    types: []
+  - name: Действует
+    category: resource
+    types:
+      - kind: Булево
+  - name: СрокДействия
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: Date
+source: InformationRegisters/СогласияНаОбработкуПерсональныхДанных.xml

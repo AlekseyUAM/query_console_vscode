@@ -1,0 +1,14 @@
+version: 1
+kind: РегистрСведений
+name: ФиксацияОбработкиДанныхОбработчиками
+fullName: РегистрСведений.ФиксацияОбработкиДанныхОбработчиками
+uuid: dea1f169-5426-4623-9e5e-3c8c2360858f
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторТранзакции
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+source: InformationRegisters/ФиксацияОбработкиДанныхОбработчиками.xml

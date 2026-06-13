@@ -1,0 +1,17 @@
+version: 1
+kind: Перечисление
+name: Перечисление1
+fullName: Перечисление.Перечисление1
+uuid: 4fba9bb5-1e44-455e-bf89-e311364dd270
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.Перечисление1
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values: []
+source: Enums/Перечисление1.xml

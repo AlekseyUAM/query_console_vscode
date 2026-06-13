@@ -1,0 +1,46 @@
+version: 1
+kind: РегистрСведений
+name: СпискиОтзываСертификатов
+fullName: РегистрСведений.СпискиОтзываСертификатов
+uuid: 9016988e-1aea-460a-b5eb-644dc5923d87
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: АдресВнутренний
+    category: dimension
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: СписокОтзыва
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ДатаПроверки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаПоследнегоИзменения
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: АдресСпискаОтзыва
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДатаНачалаДействия
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаОкончанияДействия
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/СпискиОтзываСертификатов.xml

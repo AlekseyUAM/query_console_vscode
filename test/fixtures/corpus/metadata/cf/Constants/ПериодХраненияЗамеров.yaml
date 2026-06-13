@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: ПериодХраненияЗамеров
+fullName: Константа.ПериодХраненияЗамеров
+uuid: 0f0456a8-ca04-4de4-9d9b-e8b0fdb8b860
+types:
+  - kind: Число
+    digits: 5
+    fractionDigits: 0
+    allowedSign: Nonnegative
+source: Constants/ПериодХраненияЗамеров.xml

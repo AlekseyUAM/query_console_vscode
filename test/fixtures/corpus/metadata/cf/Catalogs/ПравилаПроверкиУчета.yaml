@@ -1,0 +1,124 @@
+version: 1
+kind: Справочник
+name: ПравилаПроверкиУчета
+fullName: Справочник.ПравилаПроверкиУчета
+uuid: 55bce105-51c0-452e-9eec-b960fe740db2
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПравилаПроверкиУчета
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПравилаПроверкиУчета
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ВажностьПроблемы
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВажностьПроблемыУчета
+  - name: Идентификатор
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Использование
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Причины
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Рекомендация
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: СпособВыполнения
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыВыполненияПроверки
+  - name: ИдентификаторРегламентногоЗадания
+    category: attribute
+    types:
+      - kind: Строка
+        length: 128
+        allowedLength: Variable
+  - name: ДополнительныеПараметры
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ДатаНачалаПроверки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ЛимитПроблем
+    category: attribute
+    types:
+      - kind: Число
+        digits: 8
+        fractionDigits: 0
+        allowedSign: Any
+  - name: РасписаниеВыполненияПроверки
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: КонтекстПроверокВеденияУчета
+    category: attribute
+    types: []
+  - name: УточнениеКонтекстаПроверокВеденияУчета
+    category: attribute
+    types: []
+  - name: ПроверкаВеденияУчетаИзменена
+    category: attribute
+    types:
+      - kind: Булево
+source: Catalogs/ПравилаПроверкиУчета.xml

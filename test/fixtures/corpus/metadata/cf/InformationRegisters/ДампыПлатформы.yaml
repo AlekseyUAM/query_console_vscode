@@ -1,0 +1,35 @@
+version: 1
+kind: РегистрСведений
+name: ДампыПлатформы
+fullName: РегистрСведений.ДампыПлатформы
+uuid: e67dff00-92e2-4f58-a950-d5bbca9291c5
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ДатаРегистрации
+    category: dimension
+    types:
+      - kind: Число
+        digits: 14
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ВариантДампа
+    category: dimension
+    types:
+      - kind: Строка
+        length: 45
+        allowedLength: Variable
+  - name: ВерсияПлатформы
+    category: dimension
+    types:
+      - kind: Число
+        digits: 24
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ИмяФайла
+    category: resource
+    types:
+      - kind: Строка
+        length: 392
+        allowedLength: Variable
+source: InformationRegisters/ДампыПлатформы.xml

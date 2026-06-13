@@ -1,0 +1,67 @@
+version: 1
+kind: РегистрСведений
+name: РезультатыПроверкиУчета
+fullName: РегистрСведений.РезультатыПроверкиУчета
+uuid: fb9c08ee-92e9-4bd9-8794-ef0f221eee99
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПроблемныйОбъект
+    category: dimension
+    types: []
+  - name: ПравилоПроверки
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПравилаПроверкиУчета
+  - name: ВидПроверки
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВидыПроверок
+  - name: КлючУникальности
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИгнорироватьПроблему
+    category: dimension
+    types:
+      - kind: Булево
+  - name: УточнениеПроблемы
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ВажностьПроблемы
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ВажностьПроблемыУчета
+  - name: Ответственный
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДополнительнаяИнформация
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Выявлено
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УдалитьИгнорироватьПроблему
+    category: resource
+    types:
+      - kind: Булево
+  - name: КонтрольнаяСумма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+source: InformationRegisters/РезультатыПроверкиУчета.xml

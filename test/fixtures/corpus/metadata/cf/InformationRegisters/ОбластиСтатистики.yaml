@@ -1,0 +1,30 @@
+version: 1
+kind: РегистрСведений
+name: ОбластиСтатистики
+fullName: РегистрСведений.ОбластиСтатистики
+uuid: afde7867-15d3-43fa-b439-6d9e40df580b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторОбласти
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ХешНаименования
+    category: dimension
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: СобиратьСтатистикуКонфигурации
+    category: dimension
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: resource
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+source: InformationRegisters/ОбластиСтатистики.xml

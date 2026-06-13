@@ -1,0 +1,22 @@
+version: 1
+kind: РегистрСведений
+name: ГруппыЗначенийДоступа
+fullName: РегистрСведений.ГруппыЗначенийДоступа
+uuid: 9a6bfcbe-6ac7-4839-bfb9-a11b97e64185
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ЗначениеДоступа
+    category: dimension
+    types: []
+  - name: ГруппаЗначенийДоступа
+    category: dimension
+    types: []
+  - name: ГруппаДанных
+    category: dimension
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: InformationRegisters/ГруппыЗначенийДоступа.xml

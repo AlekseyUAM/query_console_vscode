@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ВариантыВажностиВзаимодействия
+fullName: Перечисление.ВариантыВажностиВзаимодействия
+uuid: 97e853dc-065f-4c6d-84cb-3d3aff367b22
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВажностиВзаимодействия
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Низкая
+  - name: Обычная
+  - name: Высокая
+source: Enums/ВариантыВажностиВзаимодействия.xml

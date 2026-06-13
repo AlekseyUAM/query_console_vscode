@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: СпособыВыполненияПроверки
+fullName: Перечисление.СпособыВыполненияПроверки
+uuid: fc65918a-2ad1-47b1-980d-5afe63579964
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыВыполненияПроверки
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ПоОбщемуРасписанию
+  - name: ПоОтдельномуРасписанию
+  - name: Вручную
+source: Enums/СпособыВыполненияПроверки.xml

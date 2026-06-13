@@ -1,0 +1,20 @@
+version: 1
+kind: РегистрСведений
+name: УдалитьБезопасноеХранилищеДанныхОбластейДанных
+fullName: РегистрСведений.УдалитьБезопасноеХранилищеДанныхОбластейДанных
+uuid: 8842c0e3-2e20-4f37-ae7c-f5449004994b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Владелец
+    category: dimension
+    types:
+      - kind: Строка
+        length: 128
+        allowedLength: Variable
+  - name: Данные
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/УдалитьБезопасноеХранилищеДанныхОбластейДанных.xml

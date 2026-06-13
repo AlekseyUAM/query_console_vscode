@@ -1,0 +1,12 @@
+version: 1
+kind: КритерийОтбора
+name: СвязанныеДокументы
+fullName: КритерийОтбора.СвязанныеДокументы
+uuid: 18bf6916-83cc-41e5-a35b-1489450ae632
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: КритерийОтбора.СвязанныеДокументы
+source: FilterCriteria/СвязанныеДокументы.xml

@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СпособыОтображенияПодсказок
+fullName: Перечисление.СпособыОтображенияПодсказок
+uuid: 00605607-03ab-43fc-ba08-9fc32f582d0a
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыОтображенияПодсказок
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ЗнакВопросаСправа
+  - name: КонтекстнаяПодсказка
+source: Enums/СпособыОтображенияПодсказок.xml

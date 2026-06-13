@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: РазрешенияСканированногоИзображения
+fullName: Перечисление.РазрешенияСканированногоИзображения
+uuid: d33df51c-3dcd-496c-90f2-7ee05582bdf7
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.РазрешенияСканированногоИзображения
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: dpi200
+  - name: dpi300
+  - name: dpi600
+  - name: dpi1200
+source: Enums/РазрешенияСканированногоИзображения.xml

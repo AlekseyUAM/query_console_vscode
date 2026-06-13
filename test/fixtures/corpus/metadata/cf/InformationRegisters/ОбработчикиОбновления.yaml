@@ -1,0 +1,177 @@
+version: 1
+kind: РегистрСведений
+name: ОбработчикиОбновления
+fullName: РегистрСведений.ОбработчикиОбновления
+uuid: 43bbf87f-8f21-49b9-be2f-eceb64c2c650
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяОбработчика
+    category: dimension
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Статус
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыОбработчиковОбновления
+  - name: Версия
+    category: resource
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: ИмяБиблиотеки
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ДлительностьРегистрацииДанных
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ДлительностьОбработки
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: РежимВыполнения
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыВыполненияОбработчиков
+  - name: Порядок
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ПорядокОбработчиковОбновления
+  - name: ВерсияРегистрации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: ВерсияПорядок
+    category: attribute
+    types:
+      - kind: Число
+        digits: 11
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Идентификатор
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ЧислоПопыток
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: СтатистикаВыполнения
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ИнформацияОбОшибке
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: Приоритет
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ПроцедураПроверки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ПроцедураЗаполненияДанныхОбновления
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ОчередьОтложеннойОбработки
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ЗапускатьТолькоВГлавномУзле
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЗапускатьИВПодчиненномУзлеРИБСФильтрами
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Многопоточный
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОбработкаПорцииЗавершена
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ГруппаОбновления
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИтерацияЗапуска
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ОбрабатываемыеДанные
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: РежимВыполненияОтложенногоОбработчика
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыВыполненияОтложенныхОбработчиков
+  - name: ИзменяемыеОбъекты
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ИспользуетсяРазделениеПоКритичности
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОбработаныАктуальныеДанные
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/ОбработчикиОбновления.xml

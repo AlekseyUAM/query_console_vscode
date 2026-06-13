@@ -1,0 +1,17 @@
+version: 1
+kind: РегистрСведений
+name: СертификатыПолучателейРассылкиОтчетов
+fullName: РегистрСведений.СертификатыПолучателейРассылкиОтчетов
+uuid: 735eb95a-f4a9-4a90-a9a0-ab269b89f4de
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПолучательРассылки
+    category: dimension
+    types: []
+  - name: СертификатДляШифрования
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.СертификатыКлючейЭлектроннойПодписиИШифрования
+source: InformationRegisters/СертификатыПолучателейРассылкиОтчетов.xml

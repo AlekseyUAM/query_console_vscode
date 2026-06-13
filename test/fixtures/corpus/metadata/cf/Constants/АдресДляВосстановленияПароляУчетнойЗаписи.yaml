@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: АдресДляВосстановленияПароляУчетнойЗаписи
+fullName: Константа.АдресДляВосстановленияПароляУчетнойЗаписи
+uuid: 387d3bbf-cddd-4506-b14f-89c1f37adbbc
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/АдресДляВосстановленияПароляУчетнойЗаписи.xml

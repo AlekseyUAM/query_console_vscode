@@ -1,0 +1,134 @@
+version: 1
+kind: Справочник
+name: КлассификаторБанков
+fullName: Справочник.КлассификаторБанков
+uuid: b56f25d2-72a9-4d80-8998-77ac3097c873
+properties:
+  hierarchical: true
+  codeLength: 9
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.КлассификаторБанков
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.КлассификаторБанков
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Fixed
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: КоррСчет
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: Город
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: Адрес
+    category: attribute
+    types:
+      - kind: Строка
+        length: 500
+        allowedLength: Variable
+  - name: Телефоны
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: ДеятельностьПрекращена
+    category: attribute
+    types:
+      - kind: Булево
+  - name: СВИФТБИК
+    category: attribute
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: ИНН
+    category: attribute
+    types:
+      - kind: Строка
+        length: 12
+        allowedLength: Variable
+  - name: УдалитьСтрана
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.СтраныМира
+  - name: МеждународноеНаименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ГородМеждународный
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: АдресМеждународный
+    category: attribute
+    types:
+      - kind: Строка
+        length: 500
+        allowedLength: Variable
+  - name: БИКРКЦ
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.КлассификаторБанков
+  - name: ВнутреннийКодЦБ
+    category: attribute
+    types:
+      - kind: Строка
+        length: 15
+        allowedLength: Variable
+  - name: КодСтраны
+    category: attribute
+    types:
+      - kind: Строка
+        length: 3
+        allowedLength: Variable
+source: Catalogs/КлассификаторБанков.xml

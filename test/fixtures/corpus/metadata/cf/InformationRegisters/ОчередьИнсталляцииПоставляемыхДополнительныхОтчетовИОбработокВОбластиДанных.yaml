@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: ОчередьИнсталляцииПоставляемыхДополнительныхОтчетовИОбработокВОбластиДанных
+fullName: РегистрСведений.ОчередьИнсталляцииПоставляемыхДополнительныхОтчетовИОбработокВОбластиДанных
+uuid: c6bf0d10-5406-44e8-b3f3-74b7db2b71e6
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПоставляемаяОбработка
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПоставляемыеДополнительныеОтчетыИОбработки
+  - name: ПараметрыИнсталляции
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ОчередьИнсталляцииПоставляемыхДополнительныхОтчетовИОбработокВОбластиДанных.xml

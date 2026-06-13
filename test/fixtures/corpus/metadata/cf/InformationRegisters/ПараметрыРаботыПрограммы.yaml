@@ -1,0 +1,20 @@
+version: 1
+kind: РегистрСведений
+name: ПараметрыРаботыПрограммы
+fullName: РегистрСведений.ПараметрыРаботыПрограммы
+uuid: a9a05a66-0a1c-4e53-9d09-1abe8f45e354
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяПараметра
+    category: dimension
+    types:
+      - kind: Строка
+        length: 128
+        allowedLength: Variable
+  - name: ХранилищеПараметра
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ПараметрыРаботыПрограммы.xml

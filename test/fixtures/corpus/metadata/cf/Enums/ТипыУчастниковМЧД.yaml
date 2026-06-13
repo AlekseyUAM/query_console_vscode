@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ТипыУчастниковМЧД
+fullName: Перечисление.ТипыУчастниковМЧД
+uuid: a75aa04b-a04e-4c21-8a4c-c8cfefcd7c52
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыУчастниковМЧД
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Доверитель
+  - name: Представитель
+  - name: Нотариус
+source: Enums/ТипыУчастниковМЧД.xml

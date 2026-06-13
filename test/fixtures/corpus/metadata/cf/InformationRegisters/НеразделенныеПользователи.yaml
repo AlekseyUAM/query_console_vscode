@@ -1,0 +1,27 @@
+version: 1
+kind: РегистрСведений
+name: НеразделенныеПользователи
+fullName: РегистрСведений.НеразделенныеПользователи
+uuid: 8e07a76d-db30-491c-b296-181c8e689382
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторПользователяИБ
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ПорядковыйНомер
+    category: resource
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ИмяПользователя
+    category: resource
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+source: InformationRegisters/НеразделенныеПользователи.xml

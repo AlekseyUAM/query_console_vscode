@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ТипыОтчетов
+fullName: Перечисление.ТипыОтчетов
+uuid: a835a3a7-989b-4247-b836-d23bba2f391a
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыОтчетов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Внутренний
+  - name: Дополнительный
+  - name: Расширение
+  - name: Внешний
+source: Enums/ТипыОтчетов.xml

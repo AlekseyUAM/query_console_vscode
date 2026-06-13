@@ -1,0 +1,22 @@
+version: 1
+kind: Перечисление
+name: РежимыВыгрузкиОбъектовОбмена
+fullName: Перечисление.РежимыВыгрузкиОбъектовОбмена
+uuid: efefebea-2032-4006-b9ca-50a23b7da1ef
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыВыгрузкиОбъектовОбмена
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ВыгружатьВсегда
+  - name: ВыгружатьПоУсловию
+  - name: ВыгружатьПриНеобходимости
+  - name: ВыгружатьВручную
+  - name: НеВыгружать
+source: Enums/РежимыВыгрузкиОбъектовОбмена.xml

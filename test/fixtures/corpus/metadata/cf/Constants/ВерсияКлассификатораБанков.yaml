@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ВерсияКлассификатораБанков
+fullName: Константа.ВерсияКлассификатораБанков
+uuid: 230722e6-942f-4594-be89-eff59c6572bf
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ВерсияКлассификатораБанков.xml

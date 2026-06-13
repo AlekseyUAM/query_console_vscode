@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ТипыХраненияФайлов
+fullName: Перечисление.ТипыХраненияФайлов
+uuid: 0f211e73-5be9-4015-93e7-ccf63e793cb6
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыХраненияФайлов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ВИнформационнойБазе
+  - name: ВТомахНаДиске
+source: Enums/ТипыХраненияФайлов.xml

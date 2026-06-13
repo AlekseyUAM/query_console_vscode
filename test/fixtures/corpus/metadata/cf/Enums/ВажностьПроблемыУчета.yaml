@@ -1,0 +1,22 @@
+version: 1
+kind: Перечисление
+name: ВажностьПроблемыУчета
+fullName: Перечисление.ВажностьПроблемыУчета
+uuid: 67e85b9a-a138-49ea-b474-04475f0f8c90
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВажностьПроблемыУчета
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Ошибка
+  - name: Предупреждение
+  - name: ВажнаяИнформация
+  - name: Информация
+  - name: ПолезныйСовет
+source: Enums/ВажностьПроблемыУчета.xml

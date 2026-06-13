@@ -1,0 +1,58 @@
+version: 1
+kind: РегистрСведений
+name: СнимкиОтчетов
+fullName: РегистрСведений.СнимкиОтчетов
+uuid: 3bce82a2-efba-4866-950c-5804853b5fe2
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Отчет
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ДополнительныеОтчетыИОбработки
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Вариант
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВариантыОтчетов
+  - name: ХешПользовательскойНастройки
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: РезультатОтчета
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ДатаАктуальности
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаПоследнегоПросмотра
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ПользовательскаяНастройка
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ОшибкаОбновленияОтчета
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/СнимкиОтчетов.xml

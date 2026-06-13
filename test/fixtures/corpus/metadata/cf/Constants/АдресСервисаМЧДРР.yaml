@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: АдресСервисаМЧДРР
+fullName: Константа.АдресСервисаМЧДРР
+uuid: a12c0e81-00c3-4126-a001-b4441fd63030
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/АдресСервисаМЧДРР.xml

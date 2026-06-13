@@ -1,0 +1,22 @@
+version: 1
+kind: РегистрСведений
+name: НаличиеФайлов
+fullName: РегистрСведений.НаличиеФайлов
+uuid: 060b2bb4-ca03-4da9-930f-7f91f6299a35
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ОбъектСФайлами
+    category: dimension
+    types: []
+  - name: ЕстьФайлы
+    category: resource
+    types:
+      - kind: Булево
+  - name: ИдентификаторОбъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+source: InformationRegisters/НаличиеФайлов.xml

@@ -1,0 +1,22 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияУспешныхОбменовДаннымиОбластейДанных
+fullName: РегистрСведений.СостоянияУспешныхОбменовДаннымиОбластейДанных
+uuid: aec7df6a-21a1-495d-b0a9-3769e1069888
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: ДействиеПриОбмене
+    category: dimension
+    types:
+      - kind: ref
+        ref: Перечисление.ДействияПриОбмене
+  - name: ДатаОкончания
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/СостоянияУспешныхОбменовДаннымиОбластейДанных.xml

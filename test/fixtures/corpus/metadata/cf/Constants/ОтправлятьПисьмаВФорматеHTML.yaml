@@ -1,0 +1,8 @@
+version: 1
+kind: Константа
+name: ОтправлятьПисьмаВФорматеHTML
+fullName: Константа.ОтправлятьПисьмаВФорматеHTML
+uuid: 472ce1c2-9e83-418b-b1ec-e15e126bc919
+types:
+  - kind: Булево
+source: Constants/ОтправлятьПисьмаВФорматеHTML.xml

@@ -1,0 +1,34 @@
+version: 1
+kind: РегистрСведений
+name: СлужебныеАдресныеСведения
+fullName: РегистрСведений.СлужебныеАдресныеСведения
+uuid: 1f03420b-0480-451a-9263-8431ff0b0c73
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Тип
+    category: dimension
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Ключ
+    category: dimension
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: Значение
+    category: resource
+    types:
+      - kind: Строка
+        length: 300
+        allowedLength: Variable
+source: InformationRegisters/СлужебныеАдресныеСведения.xml

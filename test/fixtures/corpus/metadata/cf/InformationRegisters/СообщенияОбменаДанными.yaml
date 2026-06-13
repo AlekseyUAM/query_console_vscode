@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: СообщенияОбменаДанными
+fullName: РегистрСведений.СообщенияОбменаДанными
+uuid: 091cb921-c7e3-4a5f-97b7-34e625159b9c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторСообщения
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ИмяФайлаСообщения
+    category: resource
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ДатаЗакладкиСообщения
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/СообщенияОбменаДанными.xml

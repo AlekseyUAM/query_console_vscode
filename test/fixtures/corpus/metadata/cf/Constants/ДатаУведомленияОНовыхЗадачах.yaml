@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ДатаУведомленияОНовыхЗадачах
+fullName: Константа.ДатаУведомленияОНовыхЗадачах
+uuid: 0b3088c9-7fb9-4979-acce-16d7ae7ba6b7
+types:
+  - kind: Дата
+    dateFractions: DateTime
+source: Constants/ДатаУведомленияОНовыхЗадачах.xml

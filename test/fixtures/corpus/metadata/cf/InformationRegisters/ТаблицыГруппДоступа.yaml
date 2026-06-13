@@ -1,0 +1,44 @@
+version: 1
+kind: РегистрСведений
+name: ТаблицыГруппДоступа
+fullName: РегистрСведений.ТаблицыГруппДоступа
+uuid: 8a0d4f7f-7a80-4e5d-8238-05fc169e0319
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Таблица
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ГруппаДоступа
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыДоступа
+  - name: ПравоИзменение
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоДобавление
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоЧтениеБезОграничения
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоИзменениеБезОграничения
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоДобавлениеБезОграничения
+    category: resource
+    types:
+      - kind: Булево
+  - name: ТипТаблицы
+    category: attribute
+    types: []
+source: InformationRegisters/ТаблицыГруппДоступа.xml

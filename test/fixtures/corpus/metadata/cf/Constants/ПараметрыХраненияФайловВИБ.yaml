@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПараметрыХраненияФайловВИБ
+fullName: Константа.ПараметрыХраненияФайловВИБ
+uuid: ea2e9a4e-eca1-4a6e-b7a6-8922a11334aa
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ПараметрыХраненияФайловВИБ.xml

@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ВерсияДатЗапретаИзменения
+fullName: Константа.ВерсияДатЗапретаИзменения
+uuid: 10db9f99-c7d1-4b16-9ea2-9bfc2aa4ddb5
+types:
+  - kind: unknown
+    raw: v8:UUID
+source: Constants/ВерсияДатЗапретаИзменения.xml

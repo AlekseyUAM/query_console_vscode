@@ -1,0 +1,29 @@
+version: 1
+kind: РегистрСведений
+name: КурсыВалют
+fullName: РегистрСведений.КурсыВалют
+uuid: 105cd740-1f60-45e1-871c-adeecd291b0d
+properties:
+  periodicity: Day
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Валюта
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Валюты
+  - name: Курс
+    category: resource
+    types: []
+  - name: Кратность
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+source: InformationRegisters/КурсыВалют.xml

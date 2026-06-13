@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияПроверокВеденияУчета
+fullName: РегистрСведений.СостоянияПроверокВеденияУчета
+uuid: 3d140a17-40b4-46a7-a846-78f2f77d49f2
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Проверка
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПравилаПроверкиУчета
+  - name: ПоследнийЗапуск
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/СостоянияПроверокВеденияУчета.xml

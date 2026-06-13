@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ВозможностьПередоверияМЧД
+fullName: Перечисление.ВозможностьПередоверияМЧД
+uuid: 68deecfd-7564-487f-aaa5-e3cbe122475d
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВозможностьПередоверияМЧД
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: БезПередоверия
+  - name: ОднократноеПередоверие
+  - name: МногократноеПередоверие
+source: Enums/ВозможностьПередоверияМЧД.xml

@@ -1,0 +1,73 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиТранспортаОбменаОбластейДанных
+fullName: РегистрСведений.НастройкиТранспортаОбменаОбластейДанных
+uuid: 46c3341c-352c-43fb-b338-15c8ad487fbf
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: КонечнаяТочкаКорреспондента
+    category: dimension
+    types: []
+  - name: FILEКаталогОбменаИнформацией
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: FILEСжиматьФайлИсходящегоСообщения
+    category: resource
+    types:
+      - kind: Булево
+  - name: FTPСжиматьФайлИсходящегоСообщения
+    category: resource
+    types:
+      - kind: Булево
+  - name: FTPСоединениеМаксимальныйДопустимыйРазмерСообщения
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: FTPСоединениеПассивноеСоединение
+    category: resource
+    types:
+      - kind: Булево
+  - name: FTPСоединениеПользователь
+    category: resource
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: FTPСоединениеПорт
+    category: resource
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: FTPСоединениеПуть
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ВидТранспортаСообщенийОбменаПоУмолчанию
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыТранспортаСообщенийОбмена
+  - name: УдалитьFTPСоединениеПароль
+    category: resource
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: УдалитьПарольАрхиваСообщенияОбмена
+    category: resource
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+source: InformationRegisters/НастройкиТранспортаОбменаОбластейДанных.xml

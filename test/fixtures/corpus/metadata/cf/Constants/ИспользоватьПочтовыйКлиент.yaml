@@ -1,0 +1,8 @@
+version: 1
+kind: Константа
+name: ИспользоватьПочтовыйКлиент
+fullName: Константа.ИспользоватьПочтовыйКлиент
+uuid: 074e34f2-e9be-4bd3-beca-8b916772e2be
+types:
+  - kind: Булево
+source: Constants/ИспользоватьПочтовыйКлиент.xml

@@ -1,0 +1,68 @@
+version: 1
+kind: РегистрСведений
+name: НапоминанияПользователя
+fullName: РегистрСведений.НапоминанияПользователя
+uuid: 94b2e060-53b7-4b40-af05-30bea3520330
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВремяСобытия
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Источник
+    category: dimension
+    types: []
+  - name: СрокНапоминания
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: СпособУстановкиВремениНапоминания
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыУстановкиВремениНапоминания
+  - name: ИнтервалВремениНапоминания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИмяРеквизитаИсточника
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Расписание
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПредставлениеИсточника
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Идентификатор
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+source: InformationRegisters/НапоминанияПользователя.xml

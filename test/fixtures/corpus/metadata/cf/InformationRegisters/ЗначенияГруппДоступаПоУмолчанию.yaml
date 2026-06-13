@@ -1,0 +1,29 @@
+version: 1
+kind: РегистрСведений
+name: ЗначенияГруппДоступаПоУмолчанию
+fullName: РегистрСведений.ЗначенияГруппДоступаПоУмолчанию
+uuid: 62903794-3b41-4d21-b800-1c26dbeda3ce
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ГруппаДоступа
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыДоступа
+  - name: ТипЗначенийДоступа
+    category: dimension
+    types: []
+  - name: ВсеРазрешены
+    category: resource
+    types:
+      - kind: Булево
+  - name: ВсеРазрешеныБезИсключений
+    category: attribute
+    types:
+      - kind: Булево
+  - name: БезНастройки
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/ЗначенияГруппДоступаПоУмолчанию.xml

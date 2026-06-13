@@ -1,0 +1,31 @@
+version: 1
+kind: РегистрСведений
+name: СоставыГруппПользователей
+fullName: РегистрСведений.СоставыГруппПользователей
+uuid: 86a871da-3725-43a1-a7c3-98acd187011b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ГруппаПользователей
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.ГруппыВнешнихПользователей
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Используется
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/СоставыГруппПользователей.xml

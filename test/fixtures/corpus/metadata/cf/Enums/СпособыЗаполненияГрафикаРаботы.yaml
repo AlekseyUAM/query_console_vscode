@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СпособыЗаполненияГрафикаРаботы
+fullName: Перечисление.СпособыЗаполненияГрафикаРаботы
+uuid: 0c0bbfba-c1c4-4bb5-a813-10da4bef7911
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыЗаполненияГрафикаРаботы
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ПоНеделям
+  - name: ПоЦикламПроизвольнойДлины
+source: Enums/СпособыЗаполненияГрафикаРаботы.xml

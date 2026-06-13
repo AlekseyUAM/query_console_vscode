@@ -1,0 +1,52 @@
+version: 1
+kind: РегистрСведений
+name: АдресныеОбъекты
+fullName: РегистрСведений.АдресныеОбъекты
+uuid: caa287fe-4f60-4243-a6fe-8b2bd607205f
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Наименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 120
+        allowedLength: Variable
+  - name: ТипОбъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: КодКЛАДР
+    category: attribute
+    types:
+      - kind: Число
+        digits: 17
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ДополнительныеАдресныеСведения
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Уровень
+    category: attribute
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/АдресныеОбъекты.xml

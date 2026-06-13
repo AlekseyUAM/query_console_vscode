@@ -1,0 +1,27 @@
+version: 1
+kind: Перечисление
+name: ФорматыСохраненияОтчетов
+fullName: Перечисление.ФорматыСохраненияОтчетов
+uuid: bd32a863-3090-432d-89c4-356ba86a0bdc
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ФорматыСохраненияОтчетов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: HTML
+  - name: HTML4
+  - name: XLS
+  - name: XLSX
+  - name: PDF
+  - name: MXL
+  - name: ODS
+  - name: DOCX
+  - name: TXT
+  - name: ANSITXT
+source: Enums/ФорматыСохраненияОтчетов.xml

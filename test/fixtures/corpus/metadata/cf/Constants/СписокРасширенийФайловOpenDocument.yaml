@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: СписокРасширенийФайловOpenDocument
+fullName: Константа.СписокРасширенийФайловOpenDocument
+uuid: 547a6dec-6fe8-439d-a8d9-ac2612af20d2
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/СписокРасширенийФайловOpenDocument.xml

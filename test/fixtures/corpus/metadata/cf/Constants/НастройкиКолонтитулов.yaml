@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: НастройкиКолонтитулов
+fullName: Константа.НастройкиКолонтитулов
+uuid: aaaa7d41-3399-41b5-b882-58af38121494
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/НастройкиКолонтитулов.xml

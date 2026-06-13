@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: КаталогСообщенийОбменаДаннымиДляLinux
+fullName: Константа.КаталогСообщенийОбменаДаннымиДляLinux
+uuid: 9c443dd3-4acb-4c5a-9c4b-af8b0c87e861
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/КаталогСообщенийОбменаДаннымиДляLinux.xml

@@ -1,0 +1,68 @@
+version: 1
+kind: РегистрСведений
+name: ЗапросыРазрешенийНаИспользованиеВнешнихРесурсов
+fullName: РегистрСведений.ЗапросыРазрешенийНаИспользованиеВнешнихРесурсов
+uuid: 6d015113-1e32-4f5e-aacd-8134d7307125
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторЗапроса
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ТипПрограммногоМодуля
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ИдентификаторПрограммногоМодуля
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ТипВладельца
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ИдентификаторВладельца
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: БезопасныйРежим
+    category: resource
+    types: []
+  - name: Операция
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ОперацииАдминистрированияПрофилейБезопасности
+  - name: Имя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: РежимЗамещения
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ДобавляемыеРазрешения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: УдаляемыеРазрешения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ЗапросАдминистрирования
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/ЗапросыРазрешенийНаИспользованиеВнешнихРесурсов.xml

@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ЦветностиИзображения
+fullName: Перечисление.ЦветностиИзображения
+uuid: 884c28de-434f-440a-8c63-67e659c097ad
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ЦветностиИзображения
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Монохромное
+  - name: ГрадацииСерого
+  - name: Цветное
+source: Enums/ЦветностиИзображения.xml

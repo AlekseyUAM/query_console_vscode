@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: СостоянияСубъектовДляСкрытия
+fullName: Перечисление.СостоянияСубъектовДляСкрытия
+uuid: f5c4d4ad-dda6-4dc3-b112-61f776006f3c
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияСубъектовДляСкрытия
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ГотовКСкрытию
+  - name: СкрытиеВыполнено
+  - name: СкрытиеОтменено
+source: Enums/СостоянияСубъектовДляСкрытия.xml

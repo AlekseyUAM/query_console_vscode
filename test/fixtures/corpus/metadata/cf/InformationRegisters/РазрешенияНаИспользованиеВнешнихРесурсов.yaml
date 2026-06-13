@@ -1,0 +1,59 @@
+version: 1
+kind: РегистрСведений
+name: РазрешенияНаИспользованиеВнешнихРесурсов
+fullName: РегистрСведений.РазрешенияНаИспользованиеВнешнихРесурсов
+uuid: 2ded5135-b6c3-46dd-b563-7b6fab986d23
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ТипПрограммногоМодуля
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ИдентификаторПрограммногоМодуля
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ТипВладельца
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ИдентификаторВладельца
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КлючРазрешения
+    category: dimension
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+  - name: ТелоРазрешения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДополнениеРазрешения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПредставлениеПрограммногоМодуля
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПредставлениеВладельца
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/РазрешенияНаИспользованиеВнешнихРесурсов.xml

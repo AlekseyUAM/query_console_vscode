@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: СведенияОбОбновленииИБ
+fullName: Константа.СведенияОбОбновленииИБ
+uuid: ce6d1259-af90-482b-b19a-405512321bd9
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/СведенияОбОбновленииИБ.xml

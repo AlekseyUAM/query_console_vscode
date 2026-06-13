@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: СообщениеОбменаДаннымиИзГлавногоУзла
+fullName: Константа.СообщениеОбменаДаннымиИзГлавногоУзла
+uuid: c5e9f987-4466-4161-8e36-278b0b3ce056
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/СообщениеОбменаДаннымиИзГлавногоУзла.xml

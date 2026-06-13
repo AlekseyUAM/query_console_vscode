@@ -1,0 +1,33 @@
+version: 1
+kind: РегистрСведений
+name: СтатистикаКонфигурации
+fullName: РегистрСведений.СтатистикаКонфигурации
+uuid: 0db78226-37d0-4016-b4c9-5134af1aabc7
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ВидСтатистики
+    category: dimension
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИдентификаторОбластиСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ОперацияСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Значение
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 3
+        allowedSign: Any
+source: InformationRegisters/СтатистикаКонфигурации.xml

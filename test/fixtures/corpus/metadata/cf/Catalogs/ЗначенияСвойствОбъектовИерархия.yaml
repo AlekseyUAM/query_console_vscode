@@ -1,0 +1,84 @@
+version: 1
+kind: Справочник
+name: ЗначенияСвойствОбъектовИерархия
+fullName: Справочник.ЗначенияСвойствОбъектовИерархия
+uuid: a747ec6b-f230-49b4-a929-7ed1ba87b078
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЗначенияСвойствОбъектовИерархия
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: unknown
+        raw: ChartOfCharacteristicTypes.ДополнительныеРеквизитыИСведения
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЗначенияСвойствОбъектовИерархия
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: Вес
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 2
+        allowedSign: Any
+  - name: ПолноеНаименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+tabularSections:
+  - name: Представления
+    uuid: 26e58429-1e08-454a-b4d7-2470390149fb
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+source: Catalogs/ЗначенияСвойствОбъектовИерархия.xml

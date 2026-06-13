@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ИсточникиПравилДляОбменаДанными
+fullName: Перечисление.ИсточникиПравилДляОбменаДанными
+uuid: e754ad5c-cf3c-4198-af81-128475924cb0
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ИсточникиПравилДляОбменаДанными
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: МакетКонфигурации
+  - name: Файл
+  - name: МенеджерТиповой
+  - name: МенеджерПользовательский
+source: Enums/ИсточникиПравилДляОбменаДанными.xml

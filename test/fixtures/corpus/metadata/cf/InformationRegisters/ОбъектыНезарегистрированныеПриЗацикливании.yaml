@@ -1,0 +1,38 @@
+version: 1
+kind: РегистрСведений
+name: ОбъектыНезарегистрированныеПриЗацикливании
+fullName: РегистрСведений.ОбъектыНезарегистрированныеПриЗацикливании
+uuid: 1117fce9-6e77-4d1d-aa86-49e7baddfe4b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: Объект
+    category: dimension
+    types: []
+  - name: КлючРегистраСведений
+    category: dimension
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ИмяРегистраСведений
+    category: resource
+    types:
+      - kind: Строка
+        length: 80
+        allowedLength: Variable
+  - name: ИзмеренияРегистраСведений
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПредставлениеОбъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/ОбъектыНезарегистрированныеПриЗацикливании.xml

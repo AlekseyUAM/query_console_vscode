@@ -1,0 +1,28 @@
+version: 1
+kind: РегистрСведений
+name: ПроцессыДляЗапуска
+fullName: РегистрСведений.ПроцессыДляЗапуска
+uuid: 05c27c89-2c26-4252-842d-9aa43ba0ea2f
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Владелец
+    category: dimension
+    types: []
+  - name: ДатаОтложенногоСтарта
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Состояние
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияПроцессовДляЗапуска
+  - name: ПричинаОтменыСтарта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 500
+        allowedLength: Variable
+source: InformationRegisters/ПроцессыДляЗапуска.xml

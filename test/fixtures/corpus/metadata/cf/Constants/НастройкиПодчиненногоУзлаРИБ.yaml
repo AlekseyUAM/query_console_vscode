@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: НастройкиПодчиненногоУзлаРИБ
+fullName: Константа.НастройкиПодчиненногоУзлаРИБ
+uuid: 0f25646a-90f9-4747-a778-7efdaabc284c
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/НастройкиПодчиненногоУзлаРИБ.xml

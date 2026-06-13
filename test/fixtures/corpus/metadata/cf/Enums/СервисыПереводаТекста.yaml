@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СервисыПереводаТекста
+fullName: Перечисление.СервисыПереводаТекста
+uuid: 05507f2b-eed8-4da4-8efc-77d9d8e2daca
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СервисыПереводаТекста
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ЯндексПереводчик
+  - name: GoogleПереводчик
+source: Enums/СервисыПереводаТекста.xml

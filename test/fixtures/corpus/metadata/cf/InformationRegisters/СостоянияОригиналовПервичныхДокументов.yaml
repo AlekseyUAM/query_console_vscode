@@ -1,0 +1,50 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияОригиналовПервичныхДокументов
+fullName: РегистрСведений.СостоянияОригиналовПервичныхДокументов
+uuid: 2093344a-47d4-43ac-98df-29c4dff7fca9
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Владелец
+    category: dimension
+    types: []
+  - name: ПервичныйДокумент
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ОбщееСостояние
+    category: dimension
+    types:
+      - kind: Булево
+  - name: ФормаИзвне
+    category: dimension
+    types:
+      - kind: Булево
+  - name: Сотрудник
+    category: dimension
+    types: []
+  - name: Состояние
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.СостоянияОригиналовПервичныхДокументов
+  - name: ДатаПоследнегоИзменения
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: АвторИзменения
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ПервичныйДокументПредставление
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+source: InformationRegisters/СостоянияОригиналовПервичныхДокументов.xml

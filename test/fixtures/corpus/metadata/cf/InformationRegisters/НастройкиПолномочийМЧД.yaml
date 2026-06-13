@@ -1,0 +1,25 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиПолномочийМЧД
+fullName: РегистрСведений.НастройкиПолномочийМЧД
+uuid: 96229b23-74a9-4fe1-a89e-b71f499cd65a
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Наименование
+    category: dimension
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Настройка
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/НастройкиПолномочийМЧД.xml

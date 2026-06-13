@@ -1,0 +1,25 @@
+version: 1
+kind: РегистрСведений
+name: РабочиеКаталогиФайлов
+fullName: РегистрСведений.РабочиеКаталогиФайлов
+uuid: f03cdb56-ef3f-461f-91b1-cdcaed2786e8
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Папка
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПапкиФайлов
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Путь
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/РабочиеКаталогиФайлов.xml

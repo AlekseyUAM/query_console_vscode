@@ -1,0 +1,21 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияПапокПисем
+fullName: РегистрСведений.СостоянияПапокПисем
+uuid: aa89881f-f111-4384-911c-847b04bb56dd
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Папка
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПапкиЭлектронныхПисем
+  - name: КоличествоНеРассмотрено
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/СостоянияПапокПисем.xml

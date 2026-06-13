@@ -1,0 +1,76 @@
+version: 1
+kind: Справочник
+name: ШаблоныАнкет
+fullName: Справочник.ШаблоныАнкет
+uuid: 05bc8b4e-8c90-4502-8b16-7b1e7625d569
+properties:
+  hierarchical: true
+  codeLength: 9
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ШаблоныАнкет
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ШаблоныАнкет
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: Заголовок
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: Вступление
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Заключение
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: РедактированиеШаблонаЗавершено
+    category: attribute
+    types:
+      - kind: Булево
+source: Catalogs/ШаблоныАнкет.xml

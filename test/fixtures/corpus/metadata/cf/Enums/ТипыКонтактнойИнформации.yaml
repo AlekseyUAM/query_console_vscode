@@ -1,0 +1,24 @@
+version: 1
+kind: Перечисление
+name: ТипыКонтактнойИнформации
+fullName: Перечисление.ТипыКонтактнойИнформации
+uuid: 8d080f3c-06ed-48bf-9709-eea73d676741
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыКонтактнойИнформации
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Адрес
+  - name: Телефон
+  - name: АдресЭлектроннойПочты
+  - name: Skype
+  - name: ВебСтраница
+  - name: Факс
+  - name: Другое
+source: Enums/ТипыКонтактнойИнформации.xml

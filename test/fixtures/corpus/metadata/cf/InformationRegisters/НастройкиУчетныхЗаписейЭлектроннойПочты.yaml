@@ -1,0 +1,93 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиУчетныхЗаписейЭлектроннойПочты
+fullName: РегистрСведений.НастройкиУчетныхЗаписейЭлектроннойПочты
+uuid: 1731708f-53cb-4b00-b90e-f581b4baa845
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УчетнаяЗаписьЭлектроннойПочты
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: ВключатьПодписьДляНовыхСообщений
+    category: resource
+    types:
+      - kind: Булево
+  - name: ФорматПодписиДляНовыхСообщений
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыРедактированияЭлектронныхПисем
+  - name: ПодписьДляНовыхСообщенийПростойТекст
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПодписьДляНовыхСообщенийФорматированныйДокумент
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ВключатьПодписьПриОтветеПересылке
+    category: resource
+    types:
+      - kind: Булево
+  - name: ФорматПодписиПриОтветеПересылке
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыРедактированияЭлектронныхПисем
+  - name: ПодписьПриОтветеПересылкеПростойТекст
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПодписьПриОтветеПересылкеФорматированныйДокумент
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: УдалитьПерсональнаяУчетнаяЗапись
+    category: resource
+    types:
+      - kind: Булево
+  - name: ОтветственныйЗаОбработкуПисем
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ОтветственныйЗаВедениеПапок
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: УдалятьПисьмаПослеОтправки
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПомещатьПисьмоВПапкуПисьмаОснования
+    category: resource
+    types:
+      - kind: Булево
+  - name: НеИспользоватьВоВстроенномПочтовомКлиенте
+    category: resource
+    types:
+      - kind: Булево
+  - name: ВПредставлениеВключатьИмяПользователя
+    category: resource
+    types:
+      - kind: Булево
+  - name: ОбработкаПисемВыполняетсяВДругомПочтовомКлиенте
+    category: resource
+    types:
+      - kind: Булево
+  - name: ДатаПоследнегоИспользования
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+source: InformationRegisters/НастройкиУчетныхЗаписейЭлектроннойПочты.xml

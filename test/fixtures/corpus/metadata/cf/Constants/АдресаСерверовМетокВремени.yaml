@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: АдресаСерверовМетокВремени
+fullName: Константа.АдресаСерверовМетокВремени
+uuid: 8cf925d9-6811-4bce-b116-09d6a26ff3cb
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/АдресаСерверовМетокВремени.xml

@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПользовательСтандартногоИнтерфейсаOData
+fullName: Константа.ПользовательСтандартногоИнтерфейсаOData
+uuid: 5b62e0d1-8dba-47db-8dbb-517ad935fa0d
+types:
+  - kind: ref
+    ref: Справочник.Пользователи
+source: Constants/ПользовательСтандартногоИнтерфейсаOData.xml

@@ -1,0 +1,43 @@
+version: 1
+kind: ПланВидовХарактеристик
+name: РазделыДатЗапретаИзменения
+fullName: ПланВидовХарактеристик.РазделыДатЗапретаИзменения
+uuid: 0e3d2750-bb4c-42b9-9829-60f1480ced9c
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланВидовХарактеристик.РазделыДатЗапретаИзменения
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ТипЗначения
+    category: standard
+    types:
+      - kind: unknown
+  - name: УдалитьНоваяСсылка
+    category: attribute
+    types:
+      - kind: unknown
+        raw: cfg:ChartOfCharacteristicTypesRef.РазделыДатЗапретаИзменения
+source: ChartsOfCharacteristicTypes/РазделыДатЗапретаИзменения.xml

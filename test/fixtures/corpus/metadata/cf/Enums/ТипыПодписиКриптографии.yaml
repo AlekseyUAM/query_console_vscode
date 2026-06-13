@@ -1,0 +1,29 @@
+version: 1
+kind: Перечисление
+name: ТипыПодписиКриптографии
+fullName: Перечисление.ТипыПодписиКриптографии
+uuid: 1422999b-9977-4bed-9990-b46bd0ec7471
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыПодписиКриптографии
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ОбычнаяCMS
+  - name: БазоваяCAdESBES
+  - name: СМеткойДоверенногоВремениCAdEST
+  - name: СПолнымНаборомПроверочныхДанныхCAdESC
+  - name: CAdESXLong
+  - name: CAdESXType1
+  - name: CAdESXType2
+  - name: CAdESXLongType1
+  - name: РасширеннаяДолгосрочнаяCAdESXLongType2
+  - name: CAdESAv2
+  - name: АрхивнаяCAdESAv3
+  - name: НеОпределен
+source: Enums/ТипыПодписиКриптографии.xml

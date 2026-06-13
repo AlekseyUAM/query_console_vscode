@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ВариантыОчисткиФайлов
+fullName: Перечисление.ВариантыОчисткиФайлов
+uuid: 8be35c43-32e6-418d-b3d6-e53ef56babb7
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыОчисткиФайлов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ОчиститьФайлыИВерсии
+  - name: ОчиститьФайлы
+  - name: ОчиститьВерсии
+  - name: НеОчищать
+source: Enums/ВариантыОчисткиФайлов.xml

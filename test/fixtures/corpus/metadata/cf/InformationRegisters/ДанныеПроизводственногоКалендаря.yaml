@@ -1,0 +1,36 @@
+version: 1
+kind: РегистрСведений
+name: ДанныеПроизводственногоКалендаря
+fullName: РегистрСведений.ДанныеПроизводственногоКалендаря
+uuid: 4a69a70d-1b4c-4999-a3dd-ae1deb331fea
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПроизводственныйКалендарь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПроизводственныеКалендари
+  - name: Дата
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: Год
+    category: dimension
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ВидДня
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыДнейПроизводственногоКалендаря
+  - name: ДатаПереноса
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: Date
+source: InformationRegisters/ДанныеПроизводственногоКалендаря.xml

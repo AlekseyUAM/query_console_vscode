@@ -1,0 +1,27 @@
+version: 1
+kind: РегистрСведений
+name: КонтактыВзаимодействий
+fullName: РегистрСведений.КонтактыВзаимодействий
+uuid: ee6e5e56-5848-46b6-89bf-b9345a57d94c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Взаимодействие
+    category: dimension
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+      - kind: ref
+        ref: Документ.ЗапланированноеВзаимодействие
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоВходящее
+      - kind: ref
+        ref: Документ.ТелефонныйЗвонок
+      - kind: ref
+        ref: Документ.Встреча
+      - kind: ref
+        ref: Документ.СообщениеSMS
+  - name: Контакт
+    category: dimension
+    types: []
+source: InformationRegisters/КонтактыВзаимодействий.xml

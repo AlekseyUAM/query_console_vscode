@@ -1,0 +1,17 @@
+version: 1
+kind: РегистрСведений
+name: ХранилищеФайлов
+fullName: РегистрСведений.ХранилищеФайлов
+uuid: 4dea2614-6251-45c3-9abe-34b7595c71a2
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Файл
+    category: dimension
+    types: []
+  - name: ХранилищеДвоичныхДанных
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.ХранилищеДвоичныхДанных
+source: InformationRegisters/ХранилищеФайлов.xml

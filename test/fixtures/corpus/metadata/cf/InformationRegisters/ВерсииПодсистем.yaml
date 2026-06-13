@@ -1,0 +1,34 @@
+version: 1
+kind: РегистрСведений
+name: ВерсииПодсистем
+fullName: РегистрСведений.ВерсииПодсистем
+uuid: 5e53ccc6-5ab4-4f9d-b524-0081d345d7a2
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяПодсистемы
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Версия
+    category: resource
+    types:
+      - kind: Строка
+        length: 15
+        allowedLength: Variable
+  - name: ПланОбновления
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ЭтоОсновнаяКонфигурация
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВыполненаРегистрацияОтложенныхОбработчиков
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/ВерсииПодсистем.xml

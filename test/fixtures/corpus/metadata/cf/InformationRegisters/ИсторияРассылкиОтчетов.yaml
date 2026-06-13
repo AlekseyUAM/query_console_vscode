@@ -1,0 +1,82 @@
+version: 1
+kind: РегистрСведений
+name: ИсторияРассылкиОтчетов
+fullName: РегистрСведений.ИсторияРассылкиОтчетов
+uuid: 018bd653-a526-4e2c-8483-1192ae997458
+properties:
+  periodicity: Second
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: РассылкаОтчетов
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.РассылкиОтчетов
+  - name: Получатель
+    category: dimension
+    types: []
+  - name: ЗапускРассылки
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УчетнаяЗапись
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: АдресЭП
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Выполнена
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: НомерСеанса
+    category: attribute
+    types:
+      - kind: Число
+        digits: 25
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ЭлектронноеПисьмоИсходящее
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+  - name: СпособПолучения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 500
+        allowedLength: Variable
+  - name: Статус
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыЭлектронныхПисем
+  - name: ИдентификаторПисьма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ДатаДоставки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ИсторияРассылкиОтчетов.xml

@@ -1,0 +1,23 @@
+version: 1
+kind: Перечисление
+name: СостоянияДокументаСообщениеSMS
+fullName: Перечисление.СостоянияДокументаСообщениеSMS
+uuid: e3adb576-6b33-475b-976b-7a6783de3184
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияДокументаСообщениеSMS
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Черновик
+  - name: Исходящее
+  - name: Доставляется
+  - name: Доставлено
+  - name: ЧастичноДоставлено
+  - name: НеДоставлено
+source: Enums/СостоянияДокументаСообщениеSMS.xml

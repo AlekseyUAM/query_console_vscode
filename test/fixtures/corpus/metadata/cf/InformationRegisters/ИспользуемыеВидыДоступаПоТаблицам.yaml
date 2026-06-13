@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: ИспользуемыеВидыДоступаПоТаблицам
+fullName: РегистрСведений.ИспользуемыеВидыДоступаПоТаблицам
+uuid: e6032a40-6195-4889-99f5-f7f4c74d4e8f
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Таблица
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ТипЗначенийДоступа
+    category: dimension
+    types: []
+source: InformationRegisters/ИспользуемыеВидыДоступаПоТаблицам.xml

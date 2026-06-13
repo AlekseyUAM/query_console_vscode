@@ -1,0 +1,76 @@
+version: 1
+kind: РегистрСведений
+name: УдалитьЗамерыВремени3
+fullName: РегистрСведений.УдалитьЗамерыВремени3
+uuid: 911f8810-e96e-4f02-9377-47e49919f87e
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: КлючеваяОперация
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.КлючевыеОперации
+  - name: ДатаНачалаЗамера
+    category: dimension
+    types:
+      - kind: Число
+        digits: 14
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: НомерСеанса
+    category: dimension
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ДатаЗаписиНачалоЧаса
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ВремяВыполнения
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 3
+        allowedSign: Nonnegative
+  - name: ВесЗамера
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Комментарий
+    category: resource
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+  - name: ДатаЗаписи
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаОкончания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 14
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Пользователь
+    category: attribute
+    types:
+      - kind: Строка
+        length: 128
+        allowedLength: Variable
+  - name: ДатаЗаписиЛокальная
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/УдалитьЗамерыВремени3.xml

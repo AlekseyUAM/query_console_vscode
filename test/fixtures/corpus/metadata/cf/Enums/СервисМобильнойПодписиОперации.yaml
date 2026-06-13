@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СервисМобильнойПодписиОперации
+fullName: Перечисление.СервисМобильнойПодписиОперации
+uuid: 8d812412-6e01-4063-81ae-4b8f3a071b11
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СервисМобильнойПодписиОперации
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Подписание
+  - name: ПроверкаПодписи
+source: Enums/СервисМобильнойПодписиОперации.xml

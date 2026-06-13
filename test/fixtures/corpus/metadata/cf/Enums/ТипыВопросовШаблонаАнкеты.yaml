@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ТипыВопросовШаблонаАнкеты
+fullName: Перечисление.ТипыВопросовШаблонаАнкеты
+uuid: 475f76ea-f494-41f1-9b65-f39907e5a427
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыВопросовШаблонаАнкеты
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Простой
+  - name: ВопросСУсловием
+  - name: Табличный
+  - name: Комплексный
+source: Enums/ТипыВопросовШаблонаАнкеты.xml

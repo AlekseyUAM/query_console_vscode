@@ -1,0 +1,87 @@
+version: 1
+kind: Справочник
+name: ВнешниеКомпоненты
+fullName: Справочник.ВнешниеКомпоненты
+uuid: 1610e73c-58df-41cc-8349-51b920806821
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеКомпоненты
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Использование
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыИспользованияВнешнихКомпонент
+  - name: Идентификатор
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: Версия
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: ДатаВерсии
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ИмяФайла
+    category: attribute
+    types:
+      - kind: Строка
+        length: 260
+        allowedLength: Variable
+  - name: ХранилищеКомпоненты
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ОбновлятьСПортала1СИТС
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОписаниеОшибки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ЦелевыеПлатформы
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: Catalogs/ВнешниеКомпоненты.xml

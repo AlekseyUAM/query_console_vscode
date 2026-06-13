@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: СпособыУстановкиКурсаВалюты
+fullName: Перечисление.СпособыУстановкиКурсаВалюты
+uuid: ec11342f-594f-416f-a10f-bd1bfa695c08
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыУстановкиКурсаВалюты
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ЗагрузкаИзИнтернета
+  - name: РучнойВвод
+  - name: НаценкаНаКурсДругойВалюты
+  - name: РасчетПоФормуле
+source: Enums/СпособыУстановкиКурсаВалюты.xml

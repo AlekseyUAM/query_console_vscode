@@ -1,0 +1,26 @@
+version: 1
+kind: Перечисление
+name: ФорматыВыгрузкиОбъектов
+fullName: Перечисление.ФорматыВыгрузкиОбъектов
+uuid: 2111e188-6b21-4a43-8e5d-befa17c4bbb8
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ФорматыВыгрузкиОбъектов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: XML
+  - name: DBF
+  - name: JSON
+  - name: XLS
+  - name: XLSX
+  - name: TXT
+  - name: ANSITXT
+  - name: HTML5
+  - name: MXL
+source: Enums/ФорматыВыгрузкиОбъектов.xml

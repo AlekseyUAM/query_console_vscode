@@ -1,0 +1,238 @@
+version: 1
+kind: Справочник
+name: СообщениеSMSПрисоединенныеФайлы
+fullName: Справочник.СообщениеSMSПрисоединенныеФайлы
+uuid: b8931f98-c1d7-4e9b-be43-065064e7ba95
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.СообщениеSMSПрисоединенныеФайлы
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВладелецФайла
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.СообщениеSMS
+  - name: ДатаЗаема
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаМодификацииУниверсальная
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаСоздания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Зашифрован
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Изменил
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ИндексКартинки
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПодписанЭП
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПутьКФайлу
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Размер
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Расширение
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Редактирует
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: СтатусИзвлеченияТекста
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыИзвлеченияТекстаФайлов
+  - name: ТекстХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ТипХраненияФайла
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыХраненияФайлов
+  - name: Том
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ТомаХраненияФайлов
+  - name: ФайлХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ХранитьВерсии
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: УдалитьЭлектронныеПодписи
+    uuid: 289a6aac-dc4e-4fae-8815-853e78d450bb
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ДатаПодписи
+        category: attribute
+        types:
+          - kind: Дата
+            dateFractions: DateTime
+      - name: ИмяФайлаПодписи
+        category: attribute
+        types:
+          - kind: Строка
+            length: 260
+            allowedLength: Variable
+      - name: Комментарий
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: КомуВыданСертификат
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: Отпечаток
+        category: attribute
+        types:
+          - kind: Строка
+            length: 28
+            allowedLength: Variable
+      - name: Подпись
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: УстановившийПодпись
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.Пользователи
+      - name: Сертификат
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: ДатаПроверкиПодписи
+        category: attribute
+        types:
+          - kind: Дата
+            dateFractions: DateTime
+      - name: ПодписьВерна
+        category: attribute
+        types:
+          - kind: Булево
+  - name: УдалитьСертификатыШифрования
+    uuid: 8b451909-2c15-48f2-b869-65e7031cc542
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Отпечаток
+        category: attribute
+        types:
+          - kind: Строка
+            length: 28
+            allowedLength: Variable
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: Сертификат
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+source: Catalogs/СообщениеSMSПрисоединенныеФайлы.xml

@@ -1,0 +1,36 @@
+version: 1
+kind: РегистрСведений
+name: СертификатыШифрования
+fullName: РегистрСведений.СертификатыШифрования
+uuid: b8fe43d1-b9a7-4ec1-94bd-1e7fad424f8d
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ЗашифрованныйОбъект
+    category: dimension
+    types: []
+  - name: ПорядковыйНомер
+    category: dimension
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Представление
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Сертификат
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Отпечаток
+    category: resource
+    types:
+      - kind: Строка
+        length: 28
+        allowedLength: Variable
+source: InformationRegisters/СертификатыШифрования.xml

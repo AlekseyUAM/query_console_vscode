@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: РежимыВыполненияОтложенныхОбработчиков
+fullName: Перечисление.РежимыВыполненияОтложенныхОбработчиков
+uuid: 20d34659-1bde-4af0-be2c-da922e4ace6e
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыВыполненияОтложенныхОбработчиков
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Последовательно
+  - name: Параллельно
+source: Enums/РежимыВыполненияОтложенныхОбработчиков.xml

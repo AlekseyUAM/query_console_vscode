@@ -1,0 +1,65 @@
+version: 1
+kind: Справочник
+name: ГруппыПользователей
+fullName: Справочник.ГруппыПользователей
+uuid: a2782760-dd4c-44d2-a785-814d6f610455
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+tabularSections:
+  - name: Состав
+    uuid: 6581ac1f-11ef-42b8-9f3b-590bb7546e63
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Пользователь
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.Пользователи
+source: Catalogs/ГруппыПользователей.xml

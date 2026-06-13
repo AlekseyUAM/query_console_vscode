@@ -1,0 +1,23 @@
+version: 1
+kind: РегистрСведений
+name: ОповещенияПользователейСертификатов
+fullName: РегистрСведений.ОповещенияПользователейСертификатов
+uuid: 5ffc2b03-28c0-45da-ab3e-e4c5d449a898
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Сертификат
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.СертификатыКлючейЭлектроннойПодписиИШифрования
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Оповещен
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/ОповещенияПользователейСертификатов.xml

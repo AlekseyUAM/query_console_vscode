@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ФорматыСканированногоИзображения
+fullName: Перечисление.ФорматыСканированногоИзображения
+uuid: 936f1aa5-7516-444b-b451-1162fa5d705f
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ФорматыСканированногоИзображения
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: JPG
+  - name: GIF
+  - name: PNG
+  - name: TIF
+source: Enums/ФорматыСканированногоИзображения.xml

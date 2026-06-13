@@ -1,0 +1,119 @@
+version: 1
+kind: Документ
+name: Анкета1
+fullName: Документ.Анкета1
+uuid: d2710dce-5aea-464f-9766-8dbf54c5b30a
+properties:
+  numberLength: 11
+  numberType: String
+  posting: Allow
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Документ.Анкета1
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Проведен
+    category: standard
+    types:
+      - kind: Булево
+  - name: Опрос
+    category: attribute
+    types:
+      - kind: ref
+        ref: Документ.НазначениеОпросов
+  - name: Респондент
+    category: attribute
+    types: []
+  - name: ДатаРедактирования
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: РедактируемыйРаздел
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВопросыШаблонаАнкеты
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Интервьюер
+    category: attribute
+    types: []
+  - name: ШаблонАнкеты
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ШаблоныАнкет
+  - name: РежимАнкетирования
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыАнкетирования
+tabularSections:
+  - name: Состав
+    uuid: 0d3ebf61-b43c-4e07-9a0c-bfb35b97810f
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Вопрос
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ВопросыШаблонаАнкеты
+      - name: ЭлементарныйВопрос
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ВопросыДляАнкетирования
+      - name: НомерЯчейки
+        category: attribute
+        types:
+          - kind: Число
+            digits: 10
+            fractionDigits: 0
+            allowedSign: Nonnegative
+      - name: Ответ
+        category: attribute
+        types: []
+      - name: ОткрытыйОтвет
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: БезОтвета
+        category: attribute
+        types:
+          - kind: Булево
+source: Documents/Анкета1.xml

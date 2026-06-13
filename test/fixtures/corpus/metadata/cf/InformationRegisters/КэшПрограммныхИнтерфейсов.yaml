@@ -1,0 +1,30 @@
+version: 1
+kind: РегистрСведений
+name: КэшПрограммныхИнтерфейсов
+fullName: РегистрСведений.КэшПрограммныхИнтерфейсов
+uuid: 99fc224a-2a61-441a-85e9-d69df6aa8b5e
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: Строка
+        length: 400
+        allowedLength: Variable
+  - name: ТипДанных
+    category: dimension
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыДанныхКэшаПрограммныхИнтерфейсов
+  - name: ДатаОбновления
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Данные
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/КэшПрограммныхИнтерфейсов.xml

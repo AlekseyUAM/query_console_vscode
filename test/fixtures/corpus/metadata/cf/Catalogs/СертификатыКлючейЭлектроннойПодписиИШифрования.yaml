@@ -1,0 +1,166 @@
+version: 1
+kind: Справочник
+name: СертификатыКлючейЭлектроннойПодписиИШифрования
+fullName: Справочник.СертификатыКлючейЭлектроннойПодписиИШифрования
+uuid: 81d900be-ddc1-417f-ae2c-1aacf040de9a
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.СертификатыКлючейЭлектроннойПодписиИШифрования
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: КомуВыдан
+    category: attribute
+    types:
+      - kind: Строка
+        length: 430
+        allowedLength: Variable
+  - name: Фирма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Фамилия
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Имя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Отчество
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Должность
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: КемВыдан
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ДействителенДо
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Подписание
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Шифрование
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Отпечаток
+    category: attribute
+    types:
+      - kind: Строка
+        length: 28
+        allowedLength: Variable
+  - name: ДанныеСертификата
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Программа
+    category: attribute
+    types: []
+  - name: Отозван
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВводитьПарольВПрограммеЭлектроннойПодписи
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Организация
+    category: attribute
+    types: []
+  - name: ФизическоеЛицо
+    category: attribute
+    types: []
+  - name: Пользователь
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Добавил
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДатаПолученияСертификата
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УдалитьСостояниеЗаявления
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияЗаявленияНаВыпускСертификата
+  - name: УдалитьПользовательОповещенОСрокеДействия
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УдалитьСодержаниеЗаявления
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+tabularSections:
+  - name: Пользователи
+    uuid: 0c38782c-6559-4f1c-88af-aa022285ffbd
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Пользователь
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.Пользователи
+source: Catalogs/СертификатыКлючейЭлектроннойПодписиИШифрования.xml

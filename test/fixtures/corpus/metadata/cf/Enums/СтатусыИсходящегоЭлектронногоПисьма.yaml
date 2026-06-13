@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: СтатусыИсходящегоЭлектронногоПисьма
+fullName: Перечисление.СтатусыИсходящегоЭлектронногоПисьма
+uuid: 8211a1b6-c3b1-466b-8d11-22603fb50c7a
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыИсходящегоЭлектронногоПисьма
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Черновик
+  - name: Отправлено
+  - name: Исходящее
+source: Enums/СтатусыИсходящегоЭлектронногоПисьма.xml

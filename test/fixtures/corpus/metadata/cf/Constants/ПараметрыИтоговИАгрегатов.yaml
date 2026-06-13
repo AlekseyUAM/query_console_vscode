@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПараметрыИтоговИАгрегатов
+fullName: Константа.ПараметрыИтоговИАгрегатов
+uuid: 0894db61-51f6-4068-9634-e55d95e2a8ac
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ПараметрыИтоговИАгрегатов.xml

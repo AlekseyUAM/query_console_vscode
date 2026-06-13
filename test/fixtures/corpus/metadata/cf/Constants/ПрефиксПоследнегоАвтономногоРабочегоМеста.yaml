@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: ПрефиксПоследнегоАвтономногоРабочегоМеста
+fullName: Константа.ПрефиксПоследнегоАвтономногоРабочегоМеста
+uuid: e7d0cc1f-f3ee-486e-b1f3-db8e6a6162cc
+types:
+  - kind: Строка
+    length: 2
+    allowedLength: Variable
+source: Constants/ПрефиксПоследнегоАвтономногоРабочегоМеста.xml

@@ -1,0 +1,136 @@
+version: 1
+kind: Справочник
+name: ПрофилиГруппДоступа
+fullName: Справочник.ПрофилиГруппДоступа
+uuid: f31f3dab-5796-47ac-a54d-3081f8cad817
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПрофилиГруппДоступа
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПрофилиГруппДоступа
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ИдентификаторПоставляемыхДанных
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ПоставляемыйПрофильИзменен
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ИдентификаторШаблонаСервиса
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+tabularSections:
+  - name: Роли
+    uuid: 5d228ce4-069e-4f98-beed-b8e1de17c3d9
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Роль
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовРасширений
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ВидыДоступа
+    uuid: 3d73d5ff-995e-40ed-a401-cec2a3d12c8f
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ВидДоступа
+        category: attribute
+        types: []
+      - name: Предустановленный
+        category: attribute
+        types:
+          - kind: Булево
+      - name: ВсеРазрешены
+        category: attribute
+        types:
+          - kind: Булево
+  - name: ЗначенияДоступа
+    uuid: 763a16c3-a728-4b65-a485-705990310b4a
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ВидДоступа
+        category: attribute
+        types: []
+      - name: ЗначениеДоступа
+        category: attribute
+        types: []
+      - name: ВключаяНижестоящие
+        category: attribute
+        types:
+          - kind: Булево
+  - name: Назначение
+    uuid: e177e258-7d0c-4fe1-80e5-3b89de9e23d9
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ТипПользователей
+        category: attribute
+        types: []
+source: Catalogs/ПрофилиГруппДоступа.xml

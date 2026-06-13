@@ -1,0 +1,16 @@
+version: 1
+kind: РегистрСведений
+name: ИспользуемыеВидыДоступа
+fullName: РегистрСведений.ИспользуемыеВидыДоступа
+uuid: d4e567c7-55f1-4564-b066-f5b2355ad82c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ТипЗначенийДоступа
+    category: dimension
+    types: []
+  - name: Используется
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/ИспользуемыеВидыДоступа.xml

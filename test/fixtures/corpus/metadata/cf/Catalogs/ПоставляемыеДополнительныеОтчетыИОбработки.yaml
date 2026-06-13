@@ -1,0 +1,196 @@
+version: 1
+kind: Справочник
+name: ПоставляемыеДополнительныеОтчетыИОбработки
+fullName: Справочник.ПоставляемыеДополнительныеОтчетыИОбработки
+uuid: 778c28e6-4548-45f3-a1bc-cb1dbf0cb388
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПоставляемыеДополнительныеОтчетыИОбработки
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: Вид
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыДополнительныхОтчетовИОбработок
+  - name: ИспользоватьДляФормыОбъекта
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользоватьДляФормыСписка
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Публикация
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыПубликацииДополнительныхОтчетовИОбработок
+  - name: ПричинаОтключения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Информация
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: Версия
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: БезопасныйРежим
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИмяОбъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 256
+        allowedLength: Variable
+  - name: ИмяФайла
+    category: attribute
+    types:
+      - kind: Строка
+        length: 260
+        allowedLength: Variable
+  - name: ХранилищеОбработки
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ХранилищеВариантов
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ВерсияGUID
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КонтролироватьСовместимостьСВерсиямиКонфигурации
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИспользуетХранилищеВариантов
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РежимСовместимостиРазрешений
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыСовместимостиРазрешенийДополнительныхОтчетовИОбработок
+tabularSections:
+  - name: Команды
+    uuid: 9e2c01b1-ccfe-4a68-a6af-8284e3e2396f
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Идентификатор
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: ВариантЗапуска
+        category: attribute
+        types:
+          - kind: ref
+            ref: Перечисление.СпособыВызоваДополнительныхОбработок
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 200
+            allowedLength: Variable
+      - name: ПоказыватьОповещение
+        category: attribute
+        types:
+          - kind: Булево
+      - name: Модификатор
+        category: attribute
+        types:
+          - kind: Строка
+            length: 9
+            allowedLength: Variable
+      - name: Скрыть
+        category: attribute
+        types:
+          - kind: Булево
+  - name: Совместимость
+    uuid: 4a04d83d-cadd-4f36-9ec8-f926259c18ba
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Версия
+        category: attribute
+        types:
+          - kind: Строка
+            length: 18
+            allowedLength: Variable
+  - name: Разрешения
+    uuid: 48ed25b0-afb9-414b-9a4e-8647fbdd95c3
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ВидРазрешения
+        category: attribute
+        types:
+          - kind: Строка
+            length: 255
+            allowedLength: Variable
+      - name: Параметры
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+source: Catalogs/ПоставляемыеДополнительныеОтчетыИОбработки.xml

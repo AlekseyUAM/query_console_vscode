@@ -1,0 +1,205 @@
+version: 1
+kind: Справочник
+name: КлючиДоступа
+fullName: Справочник.КлючиДоступа
+uuid: 16939af9-e459-43da-8e0d-5d5891af6e0c
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 36
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.КлючиДоступа
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 36
+  - name: Список
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ДляВнешнихПользователей
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Хеш
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: СоставПолей
+    category: attribute
+    types:
+      - kind: Число
+        digits: 17
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Значение1
+    category: attribute
+    types: []
+  - name: Значение2
+    category: attribute
+    types: []
+  - name: Значение3
+    category: attribute
+    types: []
+  - name: Значение4
+    category: attribute
+    types: []
+  - name: Значение5
+    category: attribute
+    types: []
+  - name: НеИспользуетсяС
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+tabularSections:
+  - name: Шапка
+    uuid: 335f379a-2974-44ce-a668-e7ffe2ce6263
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Значение6
+        category: attribute
+        types: []
+      - name: Значение7
+        category: attribute
+        types: []
+      - name: Значение8
+        category: attribute
+        types: []
+      - name: Значение9
+        category: attribute
+        types: []
+      - name: Значение10
+        category: attribute
+        types: []
+  - name: ТабличнаяЧасть1
+    uuid: 0776dfb2-67e0-4e11-9f94-abde790ff7e2
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Значение1
+        category: attribute
+        types: []
+      - name: Значение2
+        category: attribute
+        types: []
+      - name: Значение3
+        category: attribute
+        types: []
+      - name: Значение4
+        category: attribute
+        types: []
+      - name: Значение5
+        category: attribute
+        types: []
+  - name: ТабличнаяЧасть2
+    uuid: 22979d50-ea57-4fab-9673-1b537838aead
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Значение1
+        category: attribute
+        types: []
+      - name: Значение2
+        category: attribute
+        types: []
+      - name: Значение3
+        category: attribute
+        types: []
+      - name: Значение4
+        category: attribute
+        types: []
+      - name: Значение5
+        category: attribute
+        types: []
+  - name: ТабличнаяЧасть3
+    uuid: c292ddbc-9402-4c43-93d8-f8efafa6456e
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Значение1
+        category: attribute
+        types: []
+      - name: Значение2
+        category: attribute
+        types: []
+      - name: Значение3
+        category: attribute
+        types: []
+      - name: Значение4
+        category: attribute
+        types: []
+      - name: Значение5
+        category: attribute
+        types: []
+  - name: ТабличнаяЧасть4
+    uuid: e1856045-f394-45b8-9f0c-298812f1f514
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Значение1
+        category: attribute
+        types: []
+      - name: Значение2
+        category: attribute
+        types: []
+      - name: Значение3
+        category: attribute
+        types: []
+      - name: Значение4
+        category: attribute
+        types: []
+      - name: Значение5
+        category: attribute
+        types: []
+source: Catalogs/КлючиДоступа.xml

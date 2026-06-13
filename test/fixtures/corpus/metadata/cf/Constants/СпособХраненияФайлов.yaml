@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: СпособХраненияФайлов
+fullName: Константа.СпособХраненияФайлов
+uuid: 1e633034-6dcc-4564-9f40-348c32143314
+types:
+  - kind: Строка
+    length: 50
+    allowedLength: Variable
+source: Constants/СпособХраненияФайлов.xml

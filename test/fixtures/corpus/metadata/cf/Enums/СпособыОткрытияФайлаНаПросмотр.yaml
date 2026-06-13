@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СпособыОткрытияФайлаНаПросмотр
+fullName: Перечисление.СпособыОткрытияФайлаНаПросмотр
+uuid: 90ce635a-0277-4056-980d-d1a16d91cb30
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыОткрытияФайлаНаПросмотр
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: СтандартнымПриложением
+  - name: ВоВстроенномРедакторе
+source: Enums/СпособыОткрытияФайлаНаПросмотр.xml

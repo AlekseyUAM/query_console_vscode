@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: КоличествоПотоковДлительныхОпераций
+fullName: Константа.КоличествоПотоковДлительныхОпераций
+uuid: 8dad7f71-63cb-449a-bafd-79bd63f10310
+types:
+  - kind: Число
+    digits: 2
+    fractionDigits: 0
+    allowedSign: Any
+source: Constants/КоличествоПотоковДлительныхОпераций.xml

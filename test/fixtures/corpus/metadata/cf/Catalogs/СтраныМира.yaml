@@ -1,0 +1,97 @@
+version: 1
+kind: Справочник
+name: СтраныМира
+fullName: Справочник.СтраныМира
+uuid: 794f5fb5-3b8f-4f45-9250-7a3b9d1db383
+properties:
+  hierarchical: false
+  codeLength: 3
+  codeType: String
+  descriptionLength: 60
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.СтраныМира
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 3
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 60
+  - name: НаименованиеПолное
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: КодАльфа2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 2
+        allowedLength: Variable
+  - name: КодАльфа3
+    category: attribute
+    types:
+      - kind: Строка
+        length: 3
+        allowedLength: Variable
+  - name: УчастникЕАЭС
+    category: attribute
+    types:
+      - kind: Булево
+  - name: МеждународноеНаименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+tabularSections:
+  - name: ДополнительныеРеквизиты
+    uuid: fb7011ca-4e05-45d8-9698-09406a4c033f
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Catalogs/СтраныМира.xml

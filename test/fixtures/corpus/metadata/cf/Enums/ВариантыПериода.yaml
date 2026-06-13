@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВариантыПериода
+fullName: Перечисление.ВариантыПериода
+uuid: 5ede72fd-2510-4c06-b625-be740bb04e29
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыПериода
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Стандартный
+  - name: Финансовый
+source: Enums/ВариантыПериода.xml

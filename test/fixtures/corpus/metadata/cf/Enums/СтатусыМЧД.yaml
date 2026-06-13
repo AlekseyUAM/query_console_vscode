@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: СтатусыМЧД
+fullName: Перечисление.СтатусыМЧД
+uuid: e0c54cdd-32ab-4c83-a0cd-454139416a58
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыМЧД
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Черновик
+  - name: Действует
+  - name: НеДействует
+source: Enums/СтатусыМЧД.xml

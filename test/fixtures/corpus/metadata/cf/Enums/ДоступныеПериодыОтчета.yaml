@@ -1,0 +1,25 @@
+version: 1
+kind: Перечисление
+name: ДоступныеПериодыОтчета
+fullName: Перечисление.ДоступныеПериодыОтчета
+uuid: 1e44abfe-c173-4802-b535-96849d384983
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ДоступныеПериодыОтчета
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: День
+  - name: Неделя
+  - name: Декада
+  - name: Месяц
+  - name: Квартал
+  - name: Полугодие
+  - name: Год
+  - name: ПроизвольныйПериод
+source: Enums/ДоступныеПериодыОтчета.xml

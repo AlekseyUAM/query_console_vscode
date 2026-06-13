@@ -1,0 +1,44 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияРассылокОтчетов
+fullName: РегистрСведений.СостоянияРассылокОтчетов
+uuid: 0333cd9e-392d-40b2-869d-ad47119e0384
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Рассылка
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.РассылкиОтчетов
+  - name: ПоследнийЗапускНачало
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ПоследнийЗапускЗавершение
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УспешныйЗапуск
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Выполнена
+    category: resource
+    types:
+      - kind: Булево
+  - name: СОшибками
+    category: resource
+    types:
+      - kind: Булево
+  - name: НомерСеанса
+    category: resource
+    types:
+      - kind: Число
+        digits: 25
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/СостоянияРассылокОтчетов.xml

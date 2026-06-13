@@ -1,0 +1,7 @@
+version: 1
+kind: Константа
+name: ГлавныйУзел
+fullName: Константа.ГлавныйУзел
+uuid: a1130128-cc48-4555-93a2-99e7f74f77dc
+types: []
+source: Constants/ГлавныйУзел.xml

@@ -1,0 +1,161 @@
+version: 1
+kind: Справочник
+name: ВопросыШаблонаАнкеты
+fullName: Справочник.ВопросыШаблонаАнкеты
+uuid: 0f564dbe-6a6e-48df-9718-5cea5d608ee6
+properties:
+  hierarchical: true
+  codeLength: 9
+  codeType: Number
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВопросыШаблонаАнкеты
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ШаблоныАнкет
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВопросыШаблонаАнкеты
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Код
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Формулировка
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Обязательный
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТипВопроса
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыВопросовШаблонаАнкеты
+  - name: ТипТабличногоВопроса
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыТабличныхВопросов
+  - name: ЭлементарныйВопрос
+    category: attribute
+    types:
+      - kind: unknown
+        raw: cfg:ChartOfCharacteristicTypesRef.ВопросыДляАнкетирования
+  - name: РодительВопрос
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВопросыШаблонаАнкеты
+  - name: Заметки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Подсказка
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: СпособОтображенияПодсказки
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыОтображенияПодсказок
+  - name: ИспользоватьОтказОтОтвета
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ФормулировкаОтказаОтОтвета
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+tabularSections:
+  - name: СоставТабличногоВопроса
+    uuid: c694c132-1ddb-4273-818a-d3cca88c082a
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ЭлементарныйВопрос
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ВопросыДляАнкетирования
+  - name: ПредопределенныеОтветы
+    uuid: 918a01fe-f753-4a4a-9200-55bbd6edaf5f
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ЭлементарныйВопрос
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ВопросыДляАнкетирования
+      - name: Ответ
+        category: attribute
+        types: []
+  - name: СоставКомплексногоВопроса
+    uuid: 7ab6acda-6732-4582-8092-d43f9a98a28d
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ЭлементарныйВопрос
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ВопросыДляАнкетирования
+source: Catalogs/ВопросыШаблонаАнкеты.xml

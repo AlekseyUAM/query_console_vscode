@@ -1,0 +1,30 @@
+version: 1
+kind: Перечисление
+name: РазмерыБумаги
+fullName: Перечисление.РазмерыБумаги
+uuid: 1c38ad75-b294-4c05-89ce-69ce4d9a291f
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.РазмерыБумаги
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: НеЗадано
+  - name: A3
+  - name: A4
+  - name: A5
+  - name: B4
+  - name: B5
+  - name: B6
+  - name: C4
+  - name: C5
+  - name: C6
+  - name: USExecutive
+  - name: USLegal
+  - name: USLetter
+source: Enums/РазмерыБумаги.xml

@@ -1,0 +1,61 @@
+version: 1
+kind: ПланВидовРасчета
+name: ПланВидовРасчета1
+fullName: ПланВидовРасчета.ПланВидовРасчета1
+uuid: ff188cdc-13fe-45af-9842-c664031d1179
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланВидовРасчета.ПланВидовРасчета1
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 40
+  - name: Реквизит1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+tabularSections:
+  - name: ТабличнаяЧасть1
+    uuid: 74e4ebfa-778d-46e8-a8c2-2842b6170285
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Реквизит1
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+source: ChartsOfCalculationTypes/ПланВидовРасчета1.xml

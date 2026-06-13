@@ -1,0 +1,124 @@
+version: 1
+kind: РегистрСведений
+name: ОбщиеНастройкиУзловИнформационныхБаз
+fullName: РегистрСведений.ОбщиеНастройкиУзловИнформационныхБаз
+uuid: a720abc8-dcf0-4684-8d94-22d394a8e4df
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: ВыполнитьКорректировкуИнформацииСопоставления
+    category: resource
+    types:
+      - kind: Булево
+  - name: НачальнаяВыгрузкаДанных
+    category: resource
+    types:
+      - kind: Булево
+  - name: УдалитьПользовательДляСинхронизацииДанных
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВыполнитьОтправкуДанных
+    category: resource
+    types:
+      - kind: Булево
+  - name: НастройкаЗавершена
+    category: resource
+    types:
+      - kind: Булево
+  - name: НачальныйОбразСоздан
+    category: resource
+    types:
+      - kind: Булево
+  - name: СообщениеДляСопоставленияДанных
+    category: resource
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ВерсияКорреспондента
+    category: resource
+    types:
+      - kind: Строка
+        length: 16
+        allowedLength: Variable
+  - name: ОбнаруженоЗацикливание
+    category: resource
+    types:
+      - kind: Булево
+  - name: РегистрацияДанныхОбменаПриЗацикливании
+    category: resource
+    types:
+      - kind: Булево
+  - name: ОтключитьКонтрольКонтураСинхронизации
+    category: resource
+    types:
+      - kind: Булево
+  - name: ИспользоватьСценарииВМоделиСервиса
+    category: resource
+    types:
+      - kind: Булево
+  - name: ИспользоватьНастройкиПодключенияВМоделиСервиса
+    category: resource
+    types:
+      - kind: Булево
+  - name: СинхронизацияНедоступна
+    category: resource
+    types:
+      - kind: Булево
+  - name: ИмяПланаОбменаКорреспондента
+    category: resource
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: НомерОтправленного
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: НомерОтправленногоНачальнаяВыгрузкаДанных
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Префикс
+    category: attribute
+    types:
+      - kind: Строка
+        length: 2
+        allowedLength: Variable
+  - name: ПрефиксКорреспондента
+    category: attribute
+    types:
+      - kind: Строка
+        length: 2
+        allowedLength: Variable
+  - name: ПереходНаWS_Этап
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПереходНаWS_КонечнаяТочкаКорреспондента
+    category: attribute
+    types: []
+  - name: ПереходНаWS_КонечнаяТочка
+    category: attribute
+    types: []
+  - name: ПереходНаWS_ОбластьДанных
+    category: attribute
+    types:
+      - kind: Строка
+        length: 7
+        allowedLength: Variable
+source: InformationRegisters/ОбщиеНастройкиУзловИнформационныхБаз.xml

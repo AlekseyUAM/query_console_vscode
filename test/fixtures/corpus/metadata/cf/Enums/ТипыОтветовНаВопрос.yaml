@@ -1,0 +1,25 @@
+version: 1
+kind: Перечисление
+name: ТипыОтветовНаВопрос
+fullName: Перечисление.ТипыОтветовНаВопрос
+uuid: 3500c6fa-813a-49dd-a4bf-163500db5b7f
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыОтветовНаВопрос
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Строка
+  - name: Текст
+  - name: Число
+  - name: Дата
+  - name: Булево
+  - name: ЗначениеИнформационнойБазы
+  - name: ОдинВариантИз
+  - name: НесколькоВариантовИз
+source: Enums/ТипыОтветовНаВопрос.xml

@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ВидыСвойств
+fullName: Перечисление.ВидыСвойств
+uuid: 6e0fa31a-5081-4fc7-b5ec-563c6e4ad001
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыСвойств
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ДополнительныеРеквизиты
+  - name: ДополнительныеСведения
+  - name: Метки
+source: Enums/ВидыСвойств.xml

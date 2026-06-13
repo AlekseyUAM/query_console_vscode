@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: УдалитьНастройкиВходаПользователей
+fullName: Константа.УдалитьНастройкиВходаПользователей
+uuid: 766c9bee-b0fc-4a7f-b88e-cd8c4aad73b8
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/УдалитьНастройкиВходаПользователей.xml

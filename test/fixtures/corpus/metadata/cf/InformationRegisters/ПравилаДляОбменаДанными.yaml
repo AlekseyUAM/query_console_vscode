@@ -1,0 +1,132 @@
+version: 1
+kind: РегистрСведений
+name: ПравилаДляОбменаДанными
+fullName: РегистрСведений.ПравилаДляОбменаДанными
+uuid: af071a52-212b-4131-98e6-81f6048a70e6
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяПланаОбмена
+    category: dimension
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ВидПравил
+    category: dimension
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыПравилДляОбменаДанными
+  - name: ИмяМакетаПравил
+    category: resource
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ИмяМакетаПравилКорреспондента
+    category: resource
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ИмяПланаОбменаИзПравил
+    category: resource
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ИмяФайлаОбработкиДляОтладкиВыгрузки
+    category: resource
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИмяФайлаОбработкиДляОтладкиЗагрузки
+    category: resource
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИмяФайлаПравил
+    category: resource
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИмяФайлаПротоколаОбмена
+    category: resource
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИнформацияОПравилах
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ИсточникПравил
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ИсточникиПравилДляОбменаДанными
+  - name: НеОстанавливатьПоОшибке
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравилаXML
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПравилаXMLКорреспондента
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПравилаЗачитанные
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПравилаЗачитанныеКорреспондента
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: РежимОтладки
+    category: resource
+    types:
+      - kind: Булево
+  - name: РежимОтладкиВыгрузки
+    category: resource
+    types:
+      - kind: Булево
+  - name: РежимОтладкиЗагрузки
+    category: resource
+    types:
+      - kind: Булево
+  - name: РежимПротоколированияОбменаДанными
+    category: resource
+    types:
+      - kind: Булево
+  - name: ИмяМенеджераРегистрации
+    category: resource
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ПараметрыВыборочнойРегистрации
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: УдалитьИспользоватьФильтрВыборочнойРегистрацииОбъектов
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПравилаЗагружены
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/ПравилаДляОбменаДанными.xml

@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВидыНазначенияДатЗапрета
+fullName: Перечисление.ВидыНазначенияДатЗапрета
+uuid: f87e3935-dae1-4192-b6a7-05e3c700c590
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыНазначенияДатЗапрета
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ДляВсехПользователей
+  - name: ДляВсехИнформационныхБаз
+source: Enums/ВидыНазначенияДатЗапрета.xml

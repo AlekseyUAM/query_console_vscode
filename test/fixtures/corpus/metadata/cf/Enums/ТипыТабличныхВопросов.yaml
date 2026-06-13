@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ТипыТабличныхВопросов
+fullName: Перечисление.ТипыТабличныхВопросов
+uuid: b1ff31b9-c9f2-4be4-ac9a-62faa1d1eb81
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыТабличныхВопросов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Составной
+  - name: ПредопределенныеОтветыВСтроках
+  - name: ПредопределенныеОтветыВКолонках
+  - name: ПредопределенныеОтветыВСтрокахИКолонках
+source: Enums/ТипыТабличныхВопросов.xml

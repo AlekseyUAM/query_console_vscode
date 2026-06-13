@@ -1,0 +1,8 @@
+version: 1
+kind: Константа
+name: ИспользоватьАнкетирование
+fullName: Константа.ИспользоватьАнкетирование
+uuid: 6aa814fa-417e-428c-951e-6efd9d0775da
+types:
+  - kind: Булево
+source: Constants/ИспользоватьАнкетирование.xml

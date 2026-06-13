@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: ЗаблокированныеДляПолученияУчетныеЗаписи
+fullName: РегистрСведений.ЗаблокированныеДляПолученияУчетныеЗаписи
+uuid: bed8af4e-fa3a-4b25-ba6e-5b7b4a6cd363
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УчетнаяЗапись
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: ДатаБлокировки
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ЗаблокированныеДляПолученияУчетныеЗаписи.xml

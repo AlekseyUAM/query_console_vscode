@@ -1,0 +1,29 @@
+version: 1
+kind: РегистрСведений
+name: БлокировкиСеансовОбластейДанных
+fullName: РегистрСведений.БлокировкиСеансовОбластейДанных
+uuid: fc959221-6313-45d9-b2c4-85befaede226
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: НачалоБлокировки
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: КонецБлокировки
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: СообщениеБлокировки
+    category: resource
+    types:
+      - kind: Строка
+        length: 300
+        allowedLength: Variable
+  - name: Эксклюзивная
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/БлокировкиСеансовОбластейДанных.xml

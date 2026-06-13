@@ -1,0 +1,23 @@
+version: 1
+kind: Перечисление
+name: ПровайдерыSMS
+fullName: Перечисление.ПровайдерыSMS
+uuid: 3807f865-dd2c-44f7-9238-3db191f0a186
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ПровайдерыSMS
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: SMS4B
+  - name: SMSRU
+  - name: SMSЦЕНТР
+  - name: Билайн
+  - name: МТС
+  - name: СМСУслуги
+source: Enums/ПровайдерыSMS.xml

@@ -1,0 +1,20 @@
+version: 1
+kind: РегистрСведений
+name: ДополнительныеСведения
+fullName: РегистрСведений.ДополнительныеСведения
+uuid: 3ad5d8a7-3071-46aa-aebf-306bdb67983b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types: []
+  - name: Свойство
+    category: dimension
+    types:
+      - kind: unknown
+        raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+  - name: Значение
+    category: resource
+    types: []
+source: InformationRegisters/ДополнительныеСведения.xml

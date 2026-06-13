@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: СтатусОбновленияКонфигурации
+fullName: Константа.СтатусОбновленияКонфигурации
+uuid: 84395058-d46a-428c-b782-a9fa89fea14a
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/СтатусОбновленияКонфигурации.xml

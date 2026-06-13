@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: АккредитованныеУдостоверяющиеЦентры
+fullName: Константа.АккредитованныеУдостоверяющиеЦентры
+uuid: 36999e1b-865e-41ad-b9d6-1b3ac887acfb
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/АккредитованныеУдостоверяющиеЦентры.xml

@@ -1,0 +1,29 @@
+version: 1
+kind: РегистрСведений
+name: ВерсииПодсистемОбластейДанных
+fullName: РегистрСведений.ВерсииПодсистемОбластейДанных
+uuid: d97e78c7-f2c1-4e0e-9c9b-d2dd6a94da22
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяПодсистемы
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Версия
+    category: resource
+    types:
+      - kind: Строка
+        length: 15
+        allowedLength: Variable
+  - name: ВыполненаРегистрацияОтложенныхОбработчиков
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЭтоОсновнаяКонфигурация
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/ВерсииПодсистемОбластейДанных.xml

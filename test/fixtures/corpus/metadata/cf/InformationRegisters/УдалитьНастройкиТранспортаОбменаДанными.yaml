@@ -1,0 +1,171 @@
+version: 1
+kind: РегистрСведений
+name: УдалитьНастройкиТранспортаОбменаДанными
+fullName: РегистрСведений.УдалитьНастройкиТранспортаОбменаДанными
+uuid: 83c860a2-d0d7-4b7c-a127-78d86b155cfa
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Корреспондент
+    category: dimension
+    types: []
+  - name: COMАутентификацияОперационнойСистемы
+    category: resource
+    types:
+      - kind: Булево
+  - name: COMВариантРаботыИнформационнойБазы
+    category: resource
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Any
+  - name: COMИмяИнформационнойБазыНаСервере1СПредприятия
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: COMИмяПользователя
+    category: resource
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: COMИмяСервера1СПредприятия
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: COMКаталогИнформационнойБазы
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: EMAILМаксимальныйДопустимыйРазмерСообщения
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: EMAILСжиматьФайлИсходящегоСообщения
+    category: resource
+    types:
+      - kind: Булево
+  - name: EMAILУчетнаяЗапись
+    category: resource
+    types: []
+  - name: EMAILТранслитерироватьИменаФайловСообщенийОбмена
+    category: resource
+    types:
+      - kind: Булево
+  - name: FILEКаталогОбменаИнформацией
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: FILEСжиматьФайлИсходящегоСообщения
+    category: resource
+    types:
+      - kind: Булево
+  - name: FILEТранслитерироватьИменаФайловСообщенийОбмена
+    category: resource
+    types:
+      - kind: Булево
+  - name: FTPСжиматьФайлИсходящегоСообщения
+    category: resource
+    types:
+      - kind: Булево
+  - name: FTPСоединениеМаксимальныйДопустимыйРазмерСообщения
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: FTPСоединениеПассивноеСоединение
+    category: resource
+    types:
+      - kind: Булево
+  - name: FTPСоединениеПользователь
+    category: resource
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: FTPСоединениеПорт
+    category: resource
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: FTPСоединениеПуть
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: FTPТранслитерироватьИменаФайловСообщенийОбмена
+    category: resource
+    types:
+      - kind: Булево
+  - name: WSURLВебСервиса
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: WSЗапомнитьПароль
+    category: resource
+    types:
+      - kind: Булево
+  - name: WSИмяПользователя
+    category: resource
+    types:
+      - kind: Строка
+        length: 165
+        allowedLength: Variable
+  - name: WSИспользоватьПередачуБольшогоОбъемаДанных
+    category: resource
+    types:
+      - kind: Булево
+  - name: WSОбластьДанныхКорреспондента
+    category: resource
+    types:
+      - kind: Число
+        digits: 7
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ВидТранспортаСообщенийОбменаПоУмолчанию
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыТранспортаСообщенийОбмена
+  - name: КоличествоЭлементовВТранзакцииВыгрузкиДанных
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: КоличествоЭлементовВТранзакцииЗагрузкиДанных
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ПараметрыПодключенияВнешнейСистемы
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: WSКонечнаяТочкаКорреспондента
+    category: resource
+    types: []
+source: InformationRegisters/УдалитьНастройкиТранспортаОбменаДанными.xml

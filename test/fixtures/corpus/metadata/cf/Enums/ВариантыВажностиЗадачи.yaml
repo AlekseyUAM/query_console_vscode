@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ВариантыВажностиЗадачи
+fullName: Перечисление.ВариантыВажностиЗадачи
+uuid: c39750ca-e33f-40c2-b830-119423d9a2ae
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВажностиЗадачи
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Высокая
+  - name: Обычная
+  - name: Низкая
+source: Enums/ВариантыВажностиЗадачи.xml

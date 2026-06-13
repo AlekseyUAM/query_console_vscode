@@ -1,0 +1,113 @@
+version: 1
+kind: Справочник
+name: НастройкиАвторизацииИнтернетСервисов
+fullName: Справочник.НастройкиАвторизацииИнтернетСервисов
+uuid: ffd14055-0847-48da-8807-0ba07decf6a5
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 50
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.НастройкиАвторизацииИнтернетСервисов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 50
+  - name: ВладелецДанных
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: АдресАвторизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: АдресПолученияКлюча
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ИмяИнтернетСервиса
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: ИдентификаторПриложения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: АдресПеренаправления
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ИспользоватьКлючПроверкиПодлинностиPKCE
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЗапрашиваемыеРазрешения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ИспользоватьПарольПриложения
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ДополнительныеПараметрыАвторизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДополнительныеПараметрыПолученияТокена
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: АдресПеренаправленияВебКлиент
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: АдресРегистрацииУстройства
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: Catalogs/НастройкиАвторизацииИнтернетСервисов.xml

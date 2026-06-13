@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: УдалитьХранимыеФайлыВерсий
+fullName: РегистрСведений.УдалитьХранимыеФайлыВерсий
+uuid: 079ba95c-8293-47e2-b8bd-7acf73c2d880
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ВерсияФайла
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВерсииФайлов
+  - name: ХранимыйФайл
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/УдалитьХранимыеФайлыВерсий.xml

@@ -1,0 +1,230 @@
+version: 1
+kind: Справочник
+name: ПредопределенныеВариантыОтчетовРасширений
+fullName: Справочник.ПредопределенныеВариантыОтчетовРасширений
+uuid: 3c0a9c45-8e57-43fa-8ae3-26b15571f2cd
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПредопределенныеВариантыОтчетовРасширений
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПредопределенныеВариантыОтчетовРасширений
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Отчет
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+  - name: КлючВарианта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 256
+        allowedLength: Variable
+  - name: Включен
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ГруппироватьПоОтчету
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВидимостьПоУмолчанию
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ХешНастроек
+    category: attribute
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+  - name: НаименованияПолей
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: НаименованияПараметровИОтборов
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: КлючевыеСлова
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: КлючЗамеров
+    category: attribute
+    types:
+      - kind: Строка
+        length: 135
+        allowedLength: Variable
+  - name: ОписаниеЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ОписаниеЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: НаименованияПолейЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: НаименованияПолейЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: НаименованияПараметровИОтборовЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: НаименованияПараметровИОтборовЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: КлючевыеСловаЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: КлючевыеСловаЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Назначение
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.НазначенияВариантовОтчетов
+  - name: ПоказыватьВПодменюВариантов
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: Размещение
+    uuid: 9c484a15-039e-416d-af97-4c2bd90fd873
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Подсистема
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовРасширений
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+      - name: Важный
+        category: attribute
+        types:
+          - kind: Булево
+      - name: СмТакже
+        category: attribute
+        types:
+          - kind: Булево
+  - name: Представления
+    uuid: 0f46b124-1575-4984-9bc1-b5e4696efc74
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+      - name: Описание
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: НаименованияПолей
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: НаименованияПараметровИОтборов
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: КлючевыеСлова
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Catalogs/ПредопределенныеВариантыОтчетовРасширений.xml

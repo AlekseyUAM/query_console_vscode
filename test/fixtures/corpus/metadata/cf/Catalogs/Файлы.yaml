@@ -1,0 +1,233 @@
+version: 1
+kind: Справочник
+name: Файлы
+fullName: Справочник.Файлы
+uuid: e7b0ae70-0192-456c-9dc5-e66049fa9df2
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Файлы
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВладелецФайла
+    category: attribute
+    types: []
+  - name: ДатаЗаема
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаМодификацииУниверсальная
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаСоздания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Зашифрован
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИндексКартинки
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПодписанЭП
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Редактирует
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Служебный
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТекстХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ТекущаяВерсия
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВерсииФайлов
+  - name: Изменил
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: УдалитьТекущаяВерсияДатаМодификацииФайла
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УдалитьТекущаяВерсияДатаСоздания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УдалитьТекущаяВерсияКод
+    category: attribute
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: УдалитьТекущаяВерсияНомерВерсии
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПутьКФайлу
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Размер
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Расширение
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Том
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ТомаХраненияФайлов
+  - name: ХранитьВерсии
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТипХраненияФайла
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыХраненияФайлов
+  - name: СтатусИзвлеченияТекста
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыИзвлеченияТекстаФайлов
+  - name: ФайлХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+tabularSections:
+  - name: ДополнительныеРеквизиты
+    uuid: f48b4475-2cd9-41df-962a-6529f84985ca
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+  - name: УдалитьСертификатыШифрования
+    uuid: 6d852a13-c85e-4e84-8396-f91c1ed0596e
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Отпечаток
+        category: attribute
+        types:
+          - kind: Строка
+            length: 28
+            allowedLength: Variable
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: Сертификат
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+source: Catalogs/Файлы.xml

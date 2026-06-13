@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: ЗаголовокСистемы
+fullName: Константа.ЗаголовокСистемы
+uuid: a1875d63-4303-46f1-bdea-fc529b5891f3
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/ЗаголовокСистемы.xml

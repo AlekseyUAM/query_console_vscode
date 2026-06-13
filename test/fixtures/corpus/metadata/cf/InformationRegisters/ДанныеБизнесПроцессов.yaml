@@ -1,0 +1,56 @@
+version: 1
+kind: РегистрСведений
+name: ДанныеБизнесПроцессов
+fullName: РегистрСведений.ДанныеБизнесПроцессов
+uuid: 8f17ec3f-6d62-46b8-baef-b20430e948ce
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Владелец
+    category: dimension
+    types: []
+  - name: Номер
+    category: resource
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: Дата
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Завершен
+    category: resource
+    types:
+      - kind: Булево
+  - name: Стартован
+    category: resource
+    types:
+      - kind: Булево
+  - name: Автор
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДатаЗавершения
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Наименование
+    category: resource
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: ПометкаУдаления
+    category: resource
+    types:
+      - kind: Булево
+  - name: Состояние
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияБизнесПроцессов
+source: InformationRegisters/ДанныеБизнесПроцессов.xml

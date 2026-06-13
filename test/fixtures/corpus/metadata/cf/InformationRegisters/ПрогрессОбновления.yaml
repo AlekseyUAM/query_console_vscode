@@ -1,0 +1,32 @@
+version: 1
+kind: РегистрСведений
+name: ПрогрессОбновления
+fullName: РегистрСведений.ПрогрессОбновления
+uuid: 336cb96e-8867-4c9d-b74c-b4287ac9212a
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяОбработчика
+    category: dimension
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: ИнтервалЧас
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: КлючЗаписи
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ОбъектовОбработано
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/ПрогрессОбновления.xml

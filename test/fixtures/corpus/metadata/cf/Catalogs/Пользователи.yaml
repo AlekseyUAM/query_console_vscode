@@ -1,0 +1,191 @@
+version: 1
+kind: Справочник
+name: Пользователи
+fullName: Справочник.Пользователи
+uuid: 579baaa4-6493-4d99-8744-6399757295c7
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: Недействителен
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Подразделение
+    category: attribute
+    types: []
+  - name: ФизическоеЛицо
+    category: attribute
+    types: []
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Служебный
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Подготовлен
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИдентификаторПользователяИБ
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИдентификаторПользователяСервиса
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: УдалитьСвойстваПользователяИБ
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Фотография
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+tabularSections:
+  - name: ДополнительныеРеквизиты
+    uuid: 245f870e-a53a-4d86-aa0a-c0c7709b8acb
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+  - name: КонтактнаяИнформация
+    uuid: d6969c1e-e13c-4542-abb7-9cf6bb50b8e2
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Тип
+        category: attribute
+        types:
+          - kind: ref
+            ref: Перечисление.ТипыКонтактнойИнформации
+      - name: Вид
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ВидыКонтактнойИнформации
+      - name: Представление
+        category: attribute
+        types:
+          - kind: Строка
+            length: 500
+            allowedLength: Variable
+      - name: ЗначенияПолей
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: Страна
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Регион
+        category: attribute
+        types:
+          - kind: Строка
+            length: 50
+            allowedLength: Variable
+      - name: Город
+        category: attribute
+        types:
+          - kind: Строка
+            length: 50
+            allowedLength: Variable
+      - name: АдресЭП
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: ДоменноеИмяСервера
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: НомерТелефона
+        category: attribute
+        types:
+          - kind: Строка
+            length: 20
+            allowedLength: Variable
+      - name: НомерТелефонаБезКодов
+        category: attribute
+        types:
+          - kind: Строка
+            length: 20
+            allowedLength: Variable
+      - name: ВидДляСписка
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ВидыКонтактнойИнформации
+      - name: Значение
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Catalogs/Пользователи.xml

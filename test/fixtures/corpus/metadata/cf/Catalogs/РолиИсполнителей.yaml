@@ -1,0 +1,98 @@
+version: 1
+kind: Справочник
+name: РолиИсполнителей
+fullName: Справочник.РолиИсполнителей
+uuid: 45c0003f-0ed7-4582-b84e-217fdc4ddeaf
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.РолиИсполнителей
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ИспользуетсяБезОбъектовАдресации
+    category: attribute
+    types:
+      - kind: Булево
+  - name: КраткоеПредставление
+    category: attribute
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: ИспользуетсяСОбъектамиАдресации
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТипыДополнительногоОбъектаАдресации
+    category: attribute
+    types:
+      - kind: unknown
+        raw: cfg:ChartOfCharacteristicTypesRef.ОбъектыАдресацииЗадач
+  - name: ТипыОсновногоОбъектаАдресации
+    category: attribute
+    types:
+      - kind: unknown
+        raw: cfg:ChartOfCharacteristicTypesRef.ОбъектыАдресацииЗадач
+  - name: ВнешняяРоль
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УзелОбмена
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+tabularSections:
+  - name: Назначение
+    uuid: 58cdbd20-a7f4-4c4c-8a4e-638714cc2699
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ТипПользователей
+        category: attribute
+        types: []
+source: Catalogs/РолиИсполнителей.xml

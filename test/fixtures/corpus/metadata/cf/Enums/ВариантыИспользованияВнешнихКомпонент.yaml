@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВариантыИспользованияВнешнихКомпонент
+fullName: Перечисление.ВариантыИспользованияВнешнихКомпонент
+uuid: 98aa8a80-29fa-4a54-8d0e-90d413d63da1
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыИспользованияВнешнихКомпонент
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Используется
+  - name: Отключена
+source: Enums/ВариантыИспользованияВнешнихКомпонент.xml

@@ -1,0 +1,28 @@
+version: 1
+kind: РегистрСведений
+name: УровниСокращенийАдресныхСведений
+fullName: РегистрСведений.УровниСокращенийАдресныхСведений
+uuid: 1fc05949-c1ba-4363-8353-6902bc041021
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Сокращение
+    category: dimension
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: Уровень
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Значение
+    category: resource
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+source: InformationRegisters/УровниСокращенийАдресныхСведений.xml

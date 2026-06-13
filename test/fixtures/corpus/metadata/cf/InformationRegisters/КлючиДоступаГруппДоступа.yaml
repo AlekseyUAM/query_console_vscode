@@ -1,0 +1,31 @@
+version: 1
+kind: РегистрСведений
+name: КлючиДоступаГруппДоступа
+fullName: РегистрСведений.КлючиДоступаГруппДоступа
+uuid: e4166141-f18f-4d27-beb5-9e30fe30f842
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ГруппаДоступа
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыДоступа
+      - kind: ref
+        ref: Справочник.ГруппыВнешнихПользователей
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+  - name: КлючДоступа
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.КлючиДоступа
+  - name: ПравоИзменение
+    category: resource
+    types:
+      - kind: Булево
+  - name: ПравоДобавление
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/КлючиДоступаГруппДоступа.xml

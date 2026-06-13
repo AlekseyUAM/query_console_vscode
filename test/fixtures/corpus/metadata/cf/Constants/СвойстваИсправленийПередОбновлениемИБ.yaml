@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: СвойстваИсправленийПередОбновлениемИБ
+fullName: Константа.СвойстваИсправленийПередОбновлениемИБ
+uuid: e984fbf9-6b89-4d38-8938-b2b0e6623c7a
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/СвойстваИсправленийПередОбновлениемИБ.xml

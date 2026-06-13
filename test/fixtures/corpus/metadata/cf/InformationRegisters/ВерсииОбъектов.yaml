@@ -1,0 +1,98 @@
+version: 1
+kind: РегистрСведений
+name: ВерсииОбъектов
+fullName: РегистрСведений.ВерсииОбъектов
+uuid: 0b13cad5-91ae-4cd1-a620-9a315ae8024c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Объект
+    category: dimension
+    types: []
+  - name: НомерВерсии
+    category: dimension
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ВерсияОбъекта
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: АвторВерсии
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДатаВерсии
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТипВерсииОбъекта
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыВерсийОбъекта
+  - name: ВерсияПроигнорирована
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РазмерДанных
+    category: attribute
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: КонтрольнаяСумма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+  - name: ЕстьДанныеВерсии
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВерсияВладелец
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Узел
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Синхронизируется
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Смещение
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ПредупреждениеСинхронизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/ВерсииОбъектов.xml

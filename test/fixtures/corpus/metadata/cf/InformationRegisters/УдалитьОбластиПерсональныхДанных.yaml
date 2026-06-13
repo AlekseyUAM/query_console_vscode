@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: УдалитьОбластиПерсональныхДанных
+fullName: РегистрСведений.УдалитьОбластиПерсональныхДанных
+uuid: 3370d43e-8e97-4411-8123-2bb2bcf60a75
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяОбласти
+    category: dimension
+    types:
+      - kind: Строка
+        length: 256
+        allowedLength: Variable
+  - name: ИспользованиеСобытийЖурналаРегистрации
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/УдалитьОбластиПерсональныхДанных.xml

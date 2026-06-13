@@ -1,0 +1,58 @@
+version: 1
+kind: Справочник
+name: ЗакладкиВзаимодействий
+fullName: Справочник.ЗакладкиВзаимодействий
+uuid: 8a41b8f1-93fc-44e6-bf45-0d1fa9d24f4a
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЗакладкиВзаимодействий
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЗакладкиВзаимодействий
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: КомпоновщикНастроек
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: Catalogs/ЗакладкиВзаимодействий.xml

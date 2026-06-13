@@ -1,0 +1,138 @@
+version: 1
+kind: Справочник
+name: МакетыПечатныхФорм
+fullName: Справочник.МакетыПечатныхФорм
+uuid: de258ab8-2d16-4c69-9490-5819b7ae3d08
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.МакетыПечатныхФорм
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.МакетыПечатныхФорм
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ИсточникДанных
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Используется
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Идентификатор
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Макет
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: УсловиеВидимости
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ТипМакета
+    category: attribute
+    types:
+      - kind: Строка
+        length: 4
+        allowedLength: Variable
+  - name: МакетДляВыгрузкиОбъекта
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ФорматСохраненияОбъекта
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ФорматыВыгрузкиОбъектов
+  - name: ОсновнаяПечатнаяФорма
+    category: attribute
+    types:
+      - kind: Булево
+  - name: НаименованиеПечатнойФормы
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+tabularSections:
+  - name: Представления
+    uuid: a816deca-4863-44e2-a8ff-89bfa5fbb0ac
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+      - name: Макет
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+  - name: ИсточникиДанных
+    uuid: c67cddce-64d0-45eb-8abb-5c76bbe27f93
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ИсточникДанных
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовРасширений
+          - kind: ref
+            ref: Справочник.ИдентификаторыОбъектовМетаданных
+source: Catalogs/МакетыПечатныхФорм.xml

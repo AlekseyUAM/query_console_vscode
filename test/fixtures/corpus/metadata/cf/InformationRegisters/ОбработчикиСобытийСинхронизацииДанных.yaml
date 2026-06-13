@@ -1,0 +1,24 @@
+version: 1
+kind: РегистрСведений
+name: ОбработчикиСобытийСинхронизацииДанных
+fullName: РегистрСведений.ОбработчикиСобытийСинхронизацииДанных
+uuid: 1363523a-929e-49ac-ae39-d43acf9f0478
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: Событие
+    category: dimension
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: Обработчик
+    category: dimension
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+source: InformationRegisters/ОбработчикиСобытийСинхронизацииДанных.xml

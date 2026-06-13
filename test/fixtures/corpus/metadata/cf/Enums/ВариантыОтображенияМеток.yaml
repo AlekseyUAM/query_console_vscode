@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВариантыОтображенияМеток
+fullName: Перечисление.ВариантыОтображенияМеток
+uuid: fd9177e4-1277-4f77-be3e-07e169fad918
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыОтображенияМеток
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Картинка
+  - name: Надпись
+source: Enums/ВариантыОтображенияМеток.xml

@@ -1,0 +1,187 @@
+version: 1
+kind: БизнесПроцесс
+name: Задание
+fullName: БизнесПроцесс.Задание
+uuid: dad11c2e-08fc-4a6b-8829-8be6c64c15fc
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: БизнесПроцесс.Задание
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Завершен
+    category: standard
+    types:
+      - kind: Булево
+  - name: ВедущаяЗадача
+    category: standard
+    types:
+      - kind: unknown
+  - name: Стартован
+    category: standard
+    types:
+      - kind: Булево
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Важность
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВажностиЗадачи
+  - name: Выполнено
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ГлавнаяЗадача
+    category: attribute
+    types:
+      - kind: unknown
+        raw: cfg:TaskRef.ЗадачаИсполнителя
+  - name: ДатаЗавершения
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Исполнитель
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.РолиИсполнителей
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Наименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: НаПроверке
+    category: attribute
+    types:
+      - kind: Булево
+  - name: НомерИтерации
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Подтверждено
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Предмет
+    category: attribute
+    types: []
+  - name: Проверяющий
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.РолиИсполнителей
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: РезультатВыполнения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Содержание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Состояние
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияБизнесПроцессов
+  - name: СрокИсполнения
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: СрокПроверки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: АвторСтрокой
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ВнешнееЗадание
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЗадачаИсточник
+    category: attribute
+    types:
+      - kind: unknown
+        raw: cfg:TaskRef.ЗадачаИсполнителя
+  - name: СодержаниеПредмета
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ОсновнойОбъектАдресации
+    category: attribute
+    types: []
+  - name: ОсновнойОбъектАдресацииПроверяющий
+    category: attribute
+    types: []
+  - name: ДополнительныйОбъектАдресации
+    category: attribute
+    types: []
+  - name: ДополнительныйОбъектАдресацииПроверяющий
+    category: attribute
+    types: []
+  - name: ГруппаИсполнителейЗадач
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+      - kind: ref
+        ref: Справочник.ГруппыИсполнителейЗадач
+  - name: ГруппаИсполнителейЗадачПроверяющий
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+      - kind: ref
+        ref: Справочник.ГруппыИсполнителейЗадач
+source: BusinessProcesses/Задание.xml

@@ -1,0 +1,8 @@
+version: 1
+kind: Константа
+name: ИспользоватьШифрование
+fullName: Константа.ИспользоватьШифрование
+uuid: 41f6f6d1-b7cf-4477-907b-ce69fc08c799
+types:
+  - kind: Булево
+source: Constants/ИспользоватьШифрование.xml

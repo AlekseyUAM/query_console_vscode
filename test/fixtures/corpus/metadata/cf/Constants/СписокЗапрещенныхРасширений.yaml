@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: СписокЗапрещенныхРасширений
+fullName: Константа.СписокЗапрещенныхРасширений
+uuid: b6566d54-e821-4a2a-a447-0f533f35de91
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/СписокЗапрещенныхРасширений.xml

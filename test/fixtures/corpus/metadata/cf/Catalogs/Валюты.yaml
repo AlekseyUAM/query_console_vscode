@@ -1,0 +1,106 @@
+version: 1
+kind: Справочник
+name: Валюты
+fullName: Справочник.Валюты
+uuid: 1d6b8425-360c-4ab1-9bab-cc9a3b590bb2
+properties:
+  hierarchical: false
+  codeLength: 3
+  codeType: String
+  descriptionLength: 10
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Валюты
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 3
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 10
+  - name: ЗагружаетсяИзИнтернета
+    category: attribute
+    types:
+      - kind: Булево
+  - name: НаименованиеПолное
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: Наценка
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 2
+        allowedSign: Any
+  - name: ОсновнаяВалюта
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Валюты
+  - name: ПараметрыПрописи
+    category: attribute
+    types:
+      - kind: Строка
+        length: 200
+        allowedLength: Variable
+  - name: ФормулаРасчетаКурса
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: СпособУстановкиКурса
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыУстановкиКурсаВалюты
+tabularSections:
+  - name: Представления
+    uuid: f3ae1a2c-e0ca-461b-ba5a-76a6423c6325
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: ПараметрыПрописи
+        category: attribute
+        types:
+          - kind: Строка
+            length: 200
+            allowedLength: Variable
+source: Catalogs/Валюты.xml

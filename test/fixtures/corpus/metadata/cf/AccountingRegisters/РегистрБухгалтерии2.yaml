@@ -1,0 +1,51 @@
+version: 1
+kind: РегистрБухгалтерии
+name: РегистрБухгалтерии2
+fullName: РегистрБухгалтерии.РегистрБухгалтерии2
+uuid: 83355d20-1385-40b5-9b0d-fa7967363bb7
+properties:
+  correspondence: false
+  chartOfAccounts: ПланСчетов1
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Активность
+    category: standard
+    types:
+      - kind: Булево
+  - name: ВидДвижения
+    category: standard
+    types:
+      - kind: unknown
+  - name: Счет
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланСчетов.ПланСчетов1
+  - name: Организация
+    category: dimension
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Ресурс1
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+source: AccountingRegisters/РегистрБухгалтерии2.xml

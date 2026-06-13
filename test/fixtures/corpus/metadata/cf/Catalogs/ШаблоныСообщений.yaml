@@ -1,0 +1,204 @@
+version: 1
+kind: Справочник
+name: ШаблоныСообщений
+fullName: Справочник.ШаблоныСообщений
+uuid: 1e14d062-1d5a-4939-8ce6-4d9514990376
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ШаблоныСообщений
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВладелецШаблона
+    category: attribute
+    types: []
+  - name: ВнешняяОбработка
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ДополнительныеОтчетыИОбработки
+  - name: ДобавлятьПрисоединенныеФайлы
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Назначение
+    category: attribute
+    types:
+      - kind: Строка
+        length: 300
+        allowedLength: Variable
+  - name: Отправитель
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ОтправлятьВТранслите
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПодписьИПечать
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПолноеИмяТипаПараметраВводаНаОсновании
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: ПредназначенДляSMS
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПредназначенДляВводаНаОсновании
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПредназначенДляЭлектронныхПисем
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТекстШаблонаПроизвольный
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТекстШаблонаSMS
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ТекстШаблонаПисьма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТекстШаблонаПисьмаHTML
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ТемаПисьма
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ТипТекстаПисьма
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыРедактированияЭлектронныхПисем
+  - name: ТолькоДляАвтора
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТранслитерироватьИменаФайлов
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УпаковатьВАрхив
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ФорматВложений
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ШаблонПоВнешнейОбработке
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: ПечатныеФормыИВложения
+    uuid: 2f4ea53a-c84d-4d5f-ae7a-817a20ccd96a
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Идентификатор
+        category: attribute
+        types:
+          - kind: Строка
+            length: 50
+            allowedLength: Variable
+      - name: Имя
+        category: attribute
+        types:
+          - kind: Строка
+            length: 300
+            allowedLength: Variable
+  - name: Параметры
+    uuid: 17477f72-0622-445c-9cb7-2c5a5a65bbe0
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ИмяПараметра
+        category: attribute
+        types:
+          - kind: Строка
+            length: 50
+            allowedLength: Variable
+      - name: ТипПараметра
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: ПредставлениеПараметра
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+source: Catalogs/ШаблоныСообщений.xml

@@ -1,0 +1,31 @@
+version: 1
+kind: РегистрСведений
+name: ЗемельныеУчастки
+fullName: РегистрСведений.ЗемельныеУчастки
+uuid: b58b711b-8e9a-44a0-b62d-6b6362177a4b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: АдресныйОбъект
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ДополнительныеАдресныеСведения
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Участки
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ЗемельныеУчастки.xml

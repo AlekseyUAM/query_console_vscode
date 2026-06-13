@@ -1,0 +1,34 @@
+version: 1
+kind: РегистрСведений
+name: НазначениеДополнительныхОбработок
+fullName: РегистрСведений.НазначениеДополнительныхОбработок
+uuid: 77e5bd01-35f3-4072-bc7a-8730e6dcbab3
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ОбъектНазначения
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ТипФормы
+    category: dimension
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: ИспользоватьЗаполнениеОбъекта
+    category: resource
+    types:
+      - kind: Булево
+  - name: ИспользоватьОтчеты
+    category: resource
+    types:
+      - kind: Булево
+  - name: ИспользоватьСозданиеСвязанныхОбъектов
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/НазначениеДополнительныхОбработок.xml

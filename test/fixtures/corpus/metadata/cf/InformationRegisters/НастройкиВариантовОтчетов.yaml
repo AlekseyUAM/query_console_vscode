@@ -1,0 +1,40 @@
+version: 1
+kind: РегистрСведений
+name: НастройкиВариантовОтчетов
+fullName: РегистрСведений.НастройкиВариантовОтчетов
+uuid: b6f8bc3e-f0cd-43ef-b060-d701cd446197
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Вариант
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВариантыОтчетов
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.ГруппыВнешнихПользователей
+      - kind: ref
+        ref: Справочник.ГруппыПользователей
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Подсистема
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: Видимость
+    category: resource
+    types:
+      - kind: Булево
+  - name: БыстрыйДоступ
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/НастройкиВариантовОтчетов.xml

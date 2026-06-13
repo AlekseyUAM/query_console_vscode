@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СостоянияБизнесПроцессов
+fullName: Перечисление.СостоянияБизнесПроцессов
+uuid: b85b3a58-95e4-4698-b1ae-037901ecc1b1
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияБизнесПроцессов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Активен
+  - name: Остановлен
+source: Enums/СостоянияБизнесПроцессов.xml

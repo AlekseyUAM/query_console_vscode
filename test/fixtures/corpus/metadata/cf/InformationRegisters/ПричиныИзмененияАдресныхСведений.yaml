@@ -1,0 +1,35 @@
+version: 1
+kind: РегистрСведений
+name: ПричиныИзмененияАдресныхСведений
+fullName: РегистрСведений.ПричиныИзмененияАдресныхСведений
+uuid: 4de445f0-7c27-4540-a5a8-9c3ca2a13fd2
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИзмененныйОбъект
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: СодержитОписание
+    category: resource
+    types:
+      - kind: Булево
+  - name: Описание
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ПричиныИзмененияАдресныхСведений.xml

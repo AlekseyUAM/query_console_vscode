@@ -1,0 +1,21 @@
+version: 1
+kind: РегистрСведений
+name: ПакетыИнформацииПриЗапуске
+fullName: РегистрСведений.ПакетыИнформацииПриЗапуске
+uuid: 6fb76c5f-844f-4cbc-ae7c-4ac834fddfc9
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Номер
+    category: dimension
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Состав
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ПакетыИнформацииПриЗапуске.xml

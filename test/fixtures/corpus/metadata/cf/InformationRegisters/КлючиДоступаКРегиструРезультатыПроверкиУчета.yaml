@@ -1,0 +1,29 @@
+version: 1
+kind: РегистрСведений
+name: КлючиДоступаКРегиструРезультатыПроверкиУчета
+fullName: РегистрСведений.КлючиДоступаКРегиструРезультатыПроверкиУчета
+uuid: 3c159a42-d9f9-4de4-a86f-893b1fc65b46
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ВариантДоступа
+    category: dimension
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: Поле1
+    category: dimension
+    types: []
+  - name: Поле2
+    category: dimension
+    types:
+      - kind: ref
+        ref: Перечисление.ДополнительныеЗначенияДоступа
+  - name: КлючДоступа
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.КлючиДоступа
+source: InformationRegisters/КлючиДоступаКРегиструРезультатыПроверкиУчета.xml

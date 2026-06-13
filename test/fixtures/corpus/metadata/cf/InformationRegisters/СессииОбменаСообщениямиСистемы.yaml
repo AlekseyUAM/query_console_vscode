@@ -1,0 +1,38 @@
+version: 1
+kind: РегистрСведений
+name: СессииОбменаСообщениямиСистемы
+fullName: РегистрСведений.СессииОбменаСообщениямиСистемы
+uuid: 4e892154-3279-492c-9eae-124304225c5d
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Сессия
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ДатаНачала
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ЗавершенаУспешно
+    category: resource
+    types:
+      - kind: Булево
+  - name: ЗавершенаСОшибкой
+    category: resource
+    types:
+      - kind: Булево
+  - name: Данные
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ОписаниеОшибки
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/СессииОбменаСообщениямиСистемы.xml

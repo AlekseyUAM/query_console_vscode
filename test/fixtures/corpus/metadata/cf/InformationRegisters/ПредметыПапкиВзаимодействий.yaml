@@ -1,0 +1,41 @@
+version: 1
+kind: РегистрСведений
+name: ПредметыПапкиВзаимодействий
+fullName: РегистрСведений.ПредметыПапкиВзаимодействий
+uuid: 617de19c-bf01-4900-832a-c169e9faeb79
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Взаимодействие
+    category: dimension
+    types:
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоИсходящее
+      - kind: ref
+        ref: Документ.ЗапланированноеВзаимодействие
+      - kind: ref
+        ref: Документ.ЭлектронноеПисьмоВходящее
+      - kind: ref
+        ref: Документ.ТелефонныйЗвонок
+      - kind: ref
+        ref: Документ.Встреча
+      - kind: ref
+        ref: Документ.СообщениеSMS
+  - name: Предмет
+    category: resource
+    types: []
+  - name: ПапкаЭлектронногоПисьма
+    category: resource
+    types:
+      - kind: ref
+        ref: Справочник.ПапкиЭлектронныхПисем
+  - name: Рассмотрено
+    category: resource
+    types:
+      - kind: Булево
+  - name: РассмотретьПосле
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ПредметыПапкиВзаимодействий.xml

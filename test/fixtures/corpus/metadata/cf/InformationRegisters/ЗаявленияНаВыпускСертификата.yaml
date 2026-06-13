@@ -1,0 +1,83 @@
+version: 1
+kind: РегистрСведений
+name: ЗаявленияНаВыпускСертификата
+fullName: РегистрСведений.ЗаявленияНаВыпускСертификата
+uuid: 15cd04c9-c12a-44ea-a397-d2adbac99c5b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Сертификат
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.СертификатыКлючейЭлектроннойПодписиИШифрования
+  - name: СостояниеЗаявления
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияЗаявленияНаВыпускСертификата
+  - name: ОформленоВЭлектронномВиде
+    category: resource
+    types:
+      - kind: Булево
+  - name: ДляФизическогоЛица
+    category: resource
+    types:
+      - kind: Булево
+  - name: ДатаОбновленияСостояния
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаОтправки
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ИдентификаторАбонента
+    category: attribute
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+  - name: ИдентификаторДокументооборота
+    category: attribute
+    types:
+      - kind: Строка
+        length: 32
+        allowedLength: Variable
+  - name: КодТарифа
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ОписаниеТарифа
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПредставлениеТарифа
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: СертификатОснование
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.СертификатыКлючейЭлектроннойПодписиИШифрования
+  - name: СодержаниеЗаявления
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: СостояниеОбработкиЗаявления
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/ЗаявленияНаВыпускСертификата.xml

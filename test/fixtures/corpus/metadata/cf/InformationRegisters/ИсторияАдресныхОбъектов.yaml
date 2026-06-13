@@ -1,0 +1,67 @@
+version: 1
+kind: РегистрСведений
+name: ИсторияАдресныхОбъектов
+fullName: РегистрСведений.ИсторияАдресныхОбъектов
+uuid: b5bb5376-27a6-43f2-9e91-bf7c913b89fd
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: АдресныйОбъект
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ДополнительныеАдресныеСведения
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Наименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 120
+        allowedLength: Variable
+  - name: НачалоДействияЗаписи
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ОкончаниеДействияЗаписи
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Операция
+    category: attribute
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ТипОбъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Уровень
+    category: attribute
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/ИсторияАдресныхОбъектов.xml

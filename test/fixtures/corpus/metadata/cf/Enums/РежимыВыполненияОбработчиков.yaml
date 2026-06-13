@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: РежимыВыполненияОбработчиков
+fullName: Перечисление.РежимыВыполненияОбработчиков
+uuid: 573c2153-7069-4589-8a2a-4517edca877d
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыВыполненияОбработчиков
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Монопольно
+  - name: Оперативно
+  - name: Отложенно
+source: Enums/РежимыВыполненияОбработчиков.xml

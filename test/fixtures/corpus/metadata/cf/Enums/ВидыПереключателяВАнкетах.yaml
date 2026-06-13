@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВидыПереключателяВАнкетах
+fullName: Перечисление.ВидыПереключателяВАнкетах
+uuid: 198ea989-5001-47ac-86b8-aa2585a5f7d7
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыПереключателяВАнкетах
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Переключатель
+  - name: Тумблер
+source: Enums/ВидыПереключателяВАнкетах.xml

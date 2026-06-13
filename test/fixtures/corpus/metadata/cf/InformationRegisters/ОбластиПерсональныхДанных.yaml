@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: ОбластиПерсональныхДанных
+fullName: РегистрСведений.ОбластиПерсональныхДанных
+uuid: 47714327-dd28-4e32-a1c9-20ee47d9afd0
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяОбласти
+    category: dimension
+    types:
+      - kind: Строка
+        length: 256
+        allowedLength: Variable
+  - name: ИспользованиеСобытийЖурналаРегистрации
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/ОбластиПерсональныхДанных.xml

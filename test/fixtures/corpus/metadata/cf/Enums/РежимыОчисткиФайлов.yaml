@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: РежимыОчисткиФайлов
+fullName: Перечисление.РежимыОчисткиФайлов
+uuid: be75d0b2-c9db-4dab-9e32-dbe26d667508
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыОчисткиФайлов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: НеОчищать
+  - name: ОчищатьУдаленные
+  - name: ОчищатьУдаленныеИНенужные
+source: Enums/РежимыОчисткиФайлов.xml

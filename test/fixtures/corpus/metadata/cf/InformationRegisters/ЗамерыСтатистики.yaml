@@ -1,0 +1,44 @@
+version: 1
+kind: РегистрСведений
+name: ЗамерыСтатистики
+fullName: РегистрСведений.ЗамерыСтатистики
+uuid: e8c048fc-0f39-4778-aaf3-d6bff5acb06a
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ТипЗаписи
+    category: dimension
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ПериодЗаписи
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Ключ
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ОперацияСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ЗначениеОперации
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 3
+        allowedSign: Any
+  - name: ИдентификаторУдаления
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ЗамерыСтатистики.xml

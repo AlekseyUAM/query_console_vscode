@@ -1,0 +1,94 @@
+version: 1
+kind: Документ
+name: НазначениеОпросов
+fullName: Документ.НазначениеОпросов
+uuid: 3d315df6-e000-4cbd-810d-0b26c0d1bc54
+properties:
+  numberLength: 11
+  numberType: String
+  posting: Allow
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Документ.НазначениеОпросов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Проведен
+    category: standard
+    types:
+      - kind: Булево
+  - name: ШаблонАнкеты
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ШаблоныАнкет
+  - name: ТипРеспондентов
+    category: attribute
+    types: []
+  - name: ДатаНачала
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ДатаОкончания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ВозможностьПредварительногоСохранения
+    category: attribute
+    types:
+      - kind: Булево
+  - name: СвободныйОпрос
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+  - name: ПоказыватьВАрхивеАнкет
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+tabularSections:
+  - name: Респонденты
+    uuid: 62637860-2013-4f9d-9aed-7cbb0dce8983
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Респондент
+        category: attribute
+        types: []
+source: Documents/НазначениеОпросов.xml

@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПараметрыАдресногоКлассификатора
+fullName: Константа.ПараметрыАдресногоКлассификатора
+uuid: 76cdcc51-0e6a-4f9c-a115-1864998c2add
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ПараметрыАдресногоКлассификатора.xml

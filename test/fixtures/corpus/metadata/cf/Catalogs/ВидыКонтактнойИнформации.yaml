@@ -1,0 +1,190 @@
+version: 1
+kind: Справочник
+name: ВидыКонтактнойИнформации
+fullName: Справочник.ВидыКонтактнойИнформации
+uuid: 782cb93d-36e6-4923-b2b6-75caa3459cd6
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВидыКонтактнойИнформации
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВидыКонтактнойИнформации
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ВводитьНомерПоМаске
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВключатьСтрануВПредставление
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВидПоляДругое
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: ВидРедактирования
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: ЗапретитьРедактированиеПользователем
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИдентификаторДляФормул
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ИмяГруппы
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ИмяПредопределенногоВида
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: Используется
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИсправлятьУстаревшиеАдреса
+    category: attribute
+    types:
+      - kind: Булево
+  - name: МаскаНомераТелефона
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: МеждународныйФорматАдреса
+    category: attribute
+    types:
+      - kind: Булево
+  - name: МожноИзменятьСпособРедактирования
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОбязательноеЗаполнение
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПроверятьКорректность
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УдалитьПроверятьПоФИАС
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РазрешитьВводНесколькихЗначений
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РеквизитДопУпорядочивания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: СкрыватьНеактуальныеАдреса
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТелефонСДобавочнымНомером
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Тип
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыКонтактнойИнформации
+  - name: ТолькоНациональныйАдрес
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УдалитьРедактированиеТолькоВДиалоге
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УказыватьОКТМО
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ХранитьИсториюИзменений
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ОтображатьВсегда
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: Представления
+    uuid: 99387869-f8b1-4269-bd26-e39380d17b69
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+source: Catalogs/ВидыКонтактнойИнформации.xml

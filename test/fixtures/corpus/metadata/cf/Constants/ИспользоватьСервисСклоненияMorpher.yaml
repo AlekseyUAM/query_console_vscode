@@ -1,0 +1,8 @@
+version: 1
+kind: Константа
+name: ИспользоватьСервисСклоненияMorpher
+fullName: Константа.ИспользоватьСервисСклоненияMorpher
+uuid: ce5549bd-ba99-4259-86a3-36521bad59f5
+types:
+  - kind: Булево
+source: Constants/ИспользоватьСервисСклоненияMorpher.xml

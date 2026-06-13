@@ -1,0 +1,74 @@
+version: 1
+kind: Справочник
+name: ПрофилиКлючевыхОпераций
+fullName: Справочник.ПрофилиКлючевыхОпераций
+uuid: 0d89036c-af6e-4709-847c-0dab74a33d72
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПрофилиКлючевыхОпераций
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+tabularSections:
+  - name: КлючевыеОперацииПрофиля
+    uuid: 7d223aab-d4f6-41d5-a701-6fe03517cf50
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КлючеваяОперация
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.КлючевыеОперации
+      - name: ЦелевоеВремя
+        category: attribute
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 1
+            allowedSign: Any
+      - name: Приоритет
+        category: attribute
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+            allowedSign: Nonnegative
+source: Catalogs/ПрофилиКлючевыхОпераций.xml

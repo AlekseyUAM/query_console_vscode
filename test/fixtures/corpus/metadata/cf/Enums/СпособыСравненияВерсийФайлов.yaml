@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СпособыСравненияВерсийФайлов
+fullName: Перечисление.СпособыСравненияВерсийФайлов
+uuid: 24be43ec-d39e-46aa-9c11-2536b835e515
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыСравненияВерсийФайлов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: MicrosoftOfficeWord
+  - name: OpenOfficeOrgWriter
+source: Enums/СпособыСравненияВерсийФайлов.xml

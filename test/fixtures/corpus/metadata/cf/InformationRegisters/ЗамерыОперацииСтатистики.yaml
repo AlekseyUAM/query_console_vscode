@@ -1,0 +1,43 @@
+version: 1
+kind: РегистрСведений
+name: ЗамерыОперацииСтатистики
+fullName: РегистрСведений.ЗамерыОперацииСтатистики
+uuid: e74925d4-1979-4600-8560-0932d26450ad
+properties:
+  periodicity: Second
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ПериодОкончание
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ОперацияСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИдентификаторУдаления
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: КоличествоЗначений
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 3
+        allowedSign: Any
+  - name: СуммаЗначений
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 3
+        allowedSign: Any
+source: InformationRegisters/ЗамерыОперацииСтатистики.xml

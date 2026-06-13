@@ -1,0 +1,50 @@
+version: 1
+kind: Справочник
+name: ВерсииРасширений
+fullName: Справочник.ВерсииРасширений
+uuid: 4bb0f7c3-62f3-4352-9bc8-e243dd18fe4a
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: Number
+  descriptionLength: 0
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВерсииРасширений
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+  - name: ОписаниеМетаданных
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДатаПоследнегоИспользования
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: Catalogs/ВерсииРасширений.xml

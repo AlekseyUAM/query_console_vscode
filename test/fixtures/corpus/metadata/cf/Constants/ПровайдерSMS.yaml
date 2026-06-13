@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПровайдерSMS
+fullName: Константа.ПровайдерSMS
+uuid: 5a9c82c1-d0cd-48ff-b91c-38b950591e4c
+types:
+  - kind: ref
+    ref: Перечисление.ПровайдерыSMS
+source: Constants/ПровайдерSMS.xml

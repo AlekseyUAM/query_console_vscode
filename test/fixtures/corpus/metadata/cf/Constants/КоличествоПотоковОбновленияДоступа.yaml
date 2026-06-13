@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: КоличествоПотоковОбновленияДоступа
+fullName: Константа.КоличествоПотоковОбновленияДоступа
+uuid: 866438d1-1223-4768-9c96-e6cb12f1a4d5
+types:
+  - kind: Число
+    digits: 5
+    fractionDigits: 0
+    allowedSign: Nonnegative
+source: Constants/КоличествоПотоковОбновленияДоступа.xml

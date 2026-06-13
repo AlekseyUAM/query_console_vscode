@@ -1,0 +1,25 @@
+version: 1
+kind: РегистрСведений
+name: ИдентификаторыОбъектовВерсийРасширений
+fullName: РегистрСведений.ИдентификаторыОбъектовВерсийРасширений
+uuid: de2bdd4f-93f2-4341-86d6-7082fc286a5c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ВерсияРасширений
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВерсииРасширений
+  - name: ПолноеИмяОбъекта
+    category: dimension
+    types:
+      - kind: Строка
+        length: 430
+        allowedLength: Variable
+  - name: Идентификатор
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+source: InformationRegisters/ИдентификаторыОбъектовВерсийРасширений.xml

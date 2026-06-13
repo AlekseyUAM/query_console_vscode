@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: УдалитьЛогинДоступаКСервисуMorpher
+fullName: Константа.УдалитьЛогинДоступаКСервисуMorpher
+uuid: 4766c40e-6330-4c1d-a64f-0c8c672886a4
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/УдалитьЛогинДоступаКСервисуMorpher.xml

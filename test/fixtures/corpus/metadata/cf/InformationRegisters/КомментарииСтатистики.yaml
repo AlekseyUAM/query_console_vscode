@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрСведений
+name: КомментарииСтатистики
+fullName: РегистрСведений.КомментарииСтатистики
+uuid: e964753f-7f4c-4f9f-bd17-cdac317c1d35
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторКомментария
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ХешНаименования
+    category: dimension
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: Наименование
+    category: resource
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+source: InformationRegisters/КомментарииСтатистики.xml

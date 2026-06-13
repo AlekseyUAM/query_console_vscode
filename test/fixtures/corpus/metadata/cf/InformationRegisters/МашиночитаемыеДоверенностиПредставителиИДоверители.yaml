@@ -1,0 +1,96 @@
+version: 1
+kind: РегистрСведений
+name: МашиночитаемыеДоверенностиПредставителиИДоверители
+fullName: РегистрСведений.МашиночитаемыеДоверенностиПредставителиИДоверители
+uuid: e603a2c2-5acc-4657-9a0e-d98ab57a67ef
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ТипУчастника
+    category: dimension
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыУчастниковМЧД
+  - name: ИНН
+    category: dimension
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: ИННФЛ
+    category: dimension
+    types:
+      - kind: Строка
+        length: 12
+        allowedLength: Variable
+  - name: ОГРН
+    category: dimension
+    types:
+      - kind: Строка
+        length: 15
+        allowedLength: Variable
+  - name: СНИЛС
+    category: dimension
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: КПП
+    category: dimension
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: МашиночитаемаяДоверенность
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенности
+  - name: СовместныеПолномочия
+    category: resource
+    types:
+      - kind: Булево
+  - name: Организация
+    category: attribute
+    types: []
+  - name: ФизическоеЛицо
+    category: attribute
+    types: []
+  - name: УправляющаяКомпания
+    category: attribute
+    types: []
+  - name: НаименованиеОрганизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+  - name: ФИО
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1000
+        allowedLength: Variable
+  - name: РегистрационныйНомерФилиала
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: ЭтоКонтрагент
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЭтоФизическоеЛицо
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЭтоИндивидуальныйПредприниматель
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ЭтоИностраннаяОрганизация
+    category: attribute
+    types:
+      - kind: Булево
+source: InformationRegisters/МашиночитаемыеДоверенностиПредставителиИДоверители.xml

@@ -1,0 +1,276 @@
+version: 1
+kind: ПланВидовХарактеристик
+name: ДополнительныеРеквизитыИСведения
+fullName: ПланВидовХарактеристик.ДополнительныеРеквизитыИСведения
+uuid: 1055d15b-8cb5-4ff0-a526-7fd20a08a96c
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланВидовХарактеристик.ДополнительныеРеквизитыИСведения
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ТипЗначения
+    category: standard
+    types:
+      - kind: unknown
+  - name: Виден
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВладелецДополнительныхЗначений
+    category: attribute
+    types:
+      - kind: unknown
+        raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+  - name: ВыводитьВВидеГиперссылки
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ДополнительныеЗначенияИспользуются
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ДополнительныеЗначенияСВесом
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Доступен
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Заголовок
+    category: attribute
+    types:
+      - kind: Строка
+        length: 75
+        allowedLength: Variable
+  - name: ЗаголовокФормыВыбораЗначения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ЗаголовокФормыВыбораЗначенияЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ЗаголовокФормыВыбораЗначенияЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ЗаголовокФормыЗначения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ЗаголовокФормыЗначенияЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ЗаголовокФормыЗначенияЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ЗаголовокЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 75
+        allowedLength: Variable
+  - name: ЗаголовокЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 75
+        allowedLength: Variable
+  - name: ЗаполнятьОбязательно
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ИдентификаторДляФормул
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: Имя
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: МногострочноеПолеВвода
+    category: attribute
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: НаборСвойств
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.НаборыДополнительныхРеквизитовИСведений
+  - name: Подсказка
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПодсказкаЯзык1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПодсказкаЯзык2
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ФорматСвойства
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ЭтоДополнительноеСведение
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВидСвойства
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВидыСвойств
+  - name: ЦветСвойства
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ЦветаСвойств
+tabularSections:
+  - name: ЗависимостиДополнительныхРеквизитов
+    uuid: d6b72e00-018a-4fdc-b6a4-06dcecf89809
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ЗависимоеСвойство
+        category: attribute
+        types:
+          - kind: Строка
+            length: 25
+            allowedLength: Variable
+      - name: НаборСвойств
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.НаборыДополнительныхРеквизитовИСведений
+      - name: Реквизит
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+          - kind: Строка
+            length: 99
+            allowedLength: Variable
+      - name: Условие
+        category: attribute
+        types:
+          - kind: Строка
+            length: 20
+            allowedLength: Variable
+      - name: Значение
+        category: attribute
+        types:
+          - kind: Булево
+          - kind: Строка
+            length: 50
+            allowedLength: Variable
+          - kind: Дата
+            dateFractions: Date
+          - kind: Число
+            digits: 10
+            fractionDigits: 0
+            allowedSign: Any
+  - name: Представления
+    uuid: 8f51328b-73a8-46fb-b6db-7b7a84c05c2a
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: Заголовок
+        category: attribute
+        types:
+          - kind: Строка
+            length: 75
+            allowedLength: Variable
+      - name: Подсказка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: ЗаголовокФормыЗначения
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+      - name: ЗаголовокФормыВыбораЗначения
+        category: attribute
+        types:
+          - kind: Строка
+            length: 150
+            allowedLength: Variable
+source: ChartsOfCharacteristicTypes/ДополнительныеРеквизитыИСведения.xml

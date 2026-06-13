@@ -1,0 +1,73 @@
+version: 1
+kind: Справочник
+name: ПравилаОбработкиЭлектроннойПочты
+fullName: Справочник.ПравилаОбработкиЭлектроннойПочты
+uuid: da59378e-0a97-4cff-977b-cc51967068ee
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПравилаОбработкиЭлектроннойПочты
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: КомпоновщикНастроек
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПомещатьВПапку
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ПапкиЭлектронныхПисем
+  - name: РеквизитДопУпорядочивания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПредставлениеОтбора
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: Catalogs/ПравилаОбработкиЭлектроннойПочты.xml

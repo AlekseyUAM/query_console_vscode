@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ТипыДанныхКэшаПрограммныхИнтерфейсов
+fullName: Перечисление.ТипыДанныхКэшаПрограммныхИнтерфейсов
+uuid: 4e90e1ab-b1ec-4795-ad45-1db151a5492c
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыДанныхКэшаПрограммныхИнтерфейсов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ОписаниеWebСервиса
+  - name: ВерсииИнтерфейса
+source: Enums/ТипыДанныхКэшаПрограммныхИнтерфейсов.xml

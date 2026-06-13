@@ -1,0 +1,30 @@
+version: 1
+kind: РегистрСведений
+name: РучныеИзмененияГрафиковРаботы
+fullName: РегистрСведений.РучныеИзмененияГрафиковРаботы
+uuid: a21cf522-d657-49ba-a198-01ff1de5e3f0
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ГрафикРаботы
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.Календари
+  - name: Год
+    category: dimension
+    types:
+      - kind: Число
+        digits: 4
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ДатаГрафика
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: РучноеИзменение
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/РучныеИзмененияГрафиковРаботы.xml

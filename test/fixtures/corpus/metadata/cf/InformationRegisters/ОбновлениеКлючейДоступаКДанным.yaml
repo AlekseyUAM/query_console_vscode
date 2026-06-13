@@ -1,0 +1,51 @@
+version: 1
+kind: РегистрСведений
+name: ОбновлениеКлючейДоступаКДанным
+fullName: РегистрСведений.ОбновлениеКлючейДоступаКДанным
+uuid: 1d66cd80-fd61-4bf2-a7f9-34b33443e1ea
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Список
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовРасширений
+      - kind: ref
+        ref: Справочник.ИдентификаторыОбъектовМетаданных
+  - name: ДляВнешнихПользователей
+    category: dimension
+    types:
+      - kind: Булево
+  - name: КлючУникальности
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ТочечноеЗадание
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ДатаПоследнегоОбновленногоЭлемента
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ПараметрыЗадания
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: РазмерЗадания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 1
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ДатаИзмененияЗаписиРегистра
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ОбновлениеКлючейДоступаКДанным.xml

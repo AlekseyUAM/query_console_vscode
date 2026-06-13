@@ -1,0 +1,31 @@
+version: 1
+kind: РегистрСведений
+name: ДомаЗданияСтроения
+fullName: РегистрСведений.ДомаЗданияСтроения
+uuid: e520fbbb-3521-4707-bbe7-c8ead04fb2dc
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: АдресныйОбъект
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КодСубъектаРФ
+    category: dimension
+    types:
+      - kind: Число
+        digits: 2
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ДополнительныеАдресныеСведения
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Строения
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: InformationRegisters/ДомаЗданияСтроения.xml

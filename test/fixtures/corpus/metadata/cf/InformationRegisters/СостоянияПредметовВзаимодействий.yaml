@@ -1,0 +1,28 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияПредметовВзаимодействий
+fullName: РегистрСведений.СостоянияПредметовВзаимодействий
+uuid: fb5b79a2-caec-4c6e-a112-27e78a184d5e
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Предмет
+    category: dimension
+    types: []
+  - name: КоличествоНеРассмотрено
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ДатаПоследнегоВзаимодействия
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Активен
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/СостоянияПредметовВзаимодействий.xml

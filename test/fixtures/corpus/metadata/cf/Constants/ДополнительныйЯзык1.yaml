@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: ДополнительныйЯзык1
+fullName: Константа.ДополнительныйЯзык1
+uuid: e353db15-71c5-4b68-9ffb-9800800a59dc
+types:
+  - kind: Строка
+    length: 10
+    allowedLength: Variable
+source: Constants/ДополнительныйЯзык1.xml

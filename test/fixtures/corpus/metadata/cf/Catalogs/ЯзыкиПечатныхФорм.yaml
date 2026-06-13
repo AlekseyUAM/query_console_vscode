@@ -1,0 +1,47 @@
+version: 1
+kind: Справочник
+name: ЯзыкиПечатныхФорм
+fullName: Справочник.ЯзыкиПечатныхФорм
+uuid: c6c26c3c-de7a-4ed4-944d-ada62cf1ab8f
+properties:
+  hierarchical: false
+  codeLength: 13
+  codeType: String
+  descriptionLength: 0
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЯзыкиПечатныхФорм
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 13
+        allowedLength: Variable
+  - name: РеквизитДопУпорядочивания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+source: Catalogs/ЯзыкиПечатныхФорм.xml

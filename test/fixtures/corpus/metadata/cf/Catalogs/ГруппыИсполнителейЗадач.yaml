@@ -1,0 +1,50 @@
+version: 1
+kind: Справочник
+name: ГруппыИсполнителейЗадач
+fullName: Справочник.ГруппыИсполнителейЗадач
+uuid: b03829e9-ba22-4584-85f0-c36d63f48242
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыИсполнителейЗадач
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: РольИсполнителя
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.РолиИсполнителей
+  - name: ОсновнойОбъектАдресации
+    category: attribute
+    types: []
+  - name: ДополнительныйОбъектАдресации
+    category: attribute
+    types: []
+source: Catalogs/ГруппыИсполнителейЗадач.xml

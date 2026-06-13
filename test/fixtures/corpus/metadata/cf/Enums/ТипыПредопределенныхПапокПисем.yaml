@@ -1,0 +1,23 @@
+version: 1
+kind: Перечисление
+name: ТипыПредопределенныхПапокПисем
+fullName: Перечисление.ТипыПредопределенныхПапокПисем
+uuid: 5e86a443-bd0f-411d-b1b9-41bfa0cf1a2f
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыПредопределенныхПапокПисем
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Входящие
+  - name: Исходящие
+  - name: Удаленные
+  - name: Черновики
+  - name: Отправленные
+  - name: НежелательнаяПочта
+source: Enums/ТипыПредопределенныхПапокПисем.xml

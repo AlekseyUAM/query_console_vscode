@@ -1,0 +1,88 @@
+version: 1
+kind: Справочник
+name: ЗначенияСвойствОбъектов
+fullName: Справочник.ЗначенияСвойствОбъектов
+uuid: b18d312b-f9c3-4f37-ac77-d499e949f154
+properties:
+  hierarchical: true
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЗначенияСвойствОбъектов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: unknown
+        raw: ChartOfCharacteristicTypes.ДополнительныеРеквизитыИСведения
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ЗначенияСвойствОбъектов
+  - name: ЭтоГруппа
+    category: standard
+    types:
+      - kind: Булево
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: Вес
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 2
+        allowedSign: Any
+  - name: ПолноеНаименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+tabularSections:
+  - name: Представления
+    uuid: f02e807c-6cd3-4a4f-8dad-73bd56ee98ff
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: КодЯзыка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 10
+            allowedLength: Variable
+      - name: Наименование
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+source: Catalogs/ЗначенияСвойствОбъектов.xml

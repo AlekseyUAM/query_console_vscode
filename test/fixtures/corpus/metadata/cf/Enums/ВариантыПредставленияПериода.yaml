@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ВариантыПредставленияПериода
+fullName: Перечисление.ВариантыПредставленияПериода
+uuid: d43fb14b-2051-4ba5-8379-af6996e603b3
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыПредставленияПериода
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Стандартный
+  - name: Гиперссылка
+source: Enums/ВариантыПредставленияПериода.xml

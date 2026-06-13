@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: КаталогВременныхФайловДляLinux
+fullName: Константа.КаталогВременныхФайловДляLinux
+uuid: dc14a27a-2299-4bd5-8c0e-5f84adae507a
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/КаталогВременныхФайловДляLinux.xml

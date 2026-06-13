@@ -1,0 +1,138 @@
+version: 1
+kind: Задача
+name: ЗадачаИсполнителя
+fullName: Задача.ЗадачаИсполнителя
+uuid: 3ad08f4a-6202-4099-b6cc-bc116e6731a0
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Задача.ЗадачаИсполнителя
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 14
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: БизнесПроцесс
+    category: standard
+    types:
+      - kind: unknown
+  - name: ТочкаМаршрута
+    category: standard
+    types:
+      - kind: unknown
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Выполнена
+    category: standard
+    types:
+      - kind: Булево
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Важность
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыВажностиЗадачи
+  - name: ГруппаИсполнителейЗадач
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыИсполнителейЗадач
+  - name: ДатаИсполнения
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаНачала
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаПринятияКИсполнению
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Предмет
+    category: attribute
+    types: []
+  - name: ПредметСтрокой
+    category: attribute
+    types:
+      - kind: Строка
+        length: 500
+        allowedLength: Variable
+  - name: ПринятаКИсполнению
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РезультатВыполнения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: СостояниеБизнесПроцесса
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СостоянияБизнесПроцессов
+  - name: СрокИсполнения
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: АвторСтрокой
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ДополнительныйОбъектАдресации
+    category: attribute
+    types: []
+  - name: Исполнитель
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ОсновнойОбъектАдресации
+    category: attribute
+    types: []
+  - name: РольИсполнителя
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.РолиИсполнителей
+source: Tasks/ЗадачаИсполнителя.xml

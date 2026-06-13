@@ -1,0 +1,178 @@
+version: 1
+kind: Документ
+name: АктОбУничтоженииПерсональныхДанных
+fullName: Документ.АктОбУничтоженииПерсональныхДанных
+uuid: cb8ab5b6-876f-4aae-952f-2284bf0f539d
+properties:
+  numberLength: 11
+  numberType: String
+  posting: Allow
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Документ.АктОбУничтоженииПерсональныхДанных
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Проведен
+    category: standard
+    types:
+      - kind: Булево
+  - name: Организация
+    category: attribute
+    types: []
+  - name: НаименованиеОрганизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ЮридическийАдресОрганизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ОтветственныйЗаОбработкуПерсональныхДанных
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ФИООтветственногоЗаОбработкуПДн
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: НаименованиеИнформационнойСистемы
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ДатаУничтожения
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: СпособУничтожения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПричинаУничтожения
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Субъект
+    category: attribute
+    types: []
+  - name: ФИОСубъекта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+tabularSections:
+  - name: КатегорииДанных
+    uuid: 6f612a9e-c264-4856-98cf-e1a5b8ff7c97
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Субъект
+        category: attribute
+        types: []
+      - name: ИмяОбъекта
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: Категория
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+  - name: ДополнительныеРеквизиты
+    uuid: 960dc389-b6bb-40ad-bcf7-a07b8c25d6f5
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+  - name: ОбъектыСУничтожаемымиДанными
+    uuid: f0c12406-79a9-48e3-b470-b2148d3c9990
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ИмяОбъекта
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: КоличествоОбъектов
+        category: attribute
+        types:
+          - kind: Число
+            digits: 10
+            fractionDigits: 0
+            allowedSign: Any
+source: Documents/АктОбУничтоженииПерсональныхДанных.xml

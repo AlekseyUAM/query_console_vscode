@@ -1,0 +1,69 @@
+version: 1
+kind: РегистрСведений
+name: СтатусыСинхронизацииФайловСОблачнымСервисом
+fullName: РегистрСведений.СтатусыСинхронизацииФайловСОблачнымСервисом
+uuid: 488d2644-6fef-488a-af38-40f59c0e0d8c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Файл
+    category: dimension
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: УчетнаяЗапись
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+  - name: Href
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Etag
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: УникальныйИдентификатор1С
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ЭтоФайл
+    category: resource
+    types:
+      - kind: Булево
+  - name: ЭтоВладелецФайла
+    category: resource
+    types:
+      - kind: Булево
+  - name: ВладелецФайла
+    category: resource
+    types: []
+  - name: Синхронизирован
+    category: resource
+    types:
+      - kind: Булево
+  - name: ДатаСинхронизацииНачало
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаСинхронизацииЗавершение
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: НомерСеанса
+    category: resource
+    types:
+      - kind: Число
+        digits: 25
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/СтатусыСинхронизацииФайловСОблачнымСервисом.xml

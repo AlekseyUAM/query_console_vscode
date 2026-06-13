@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: НомераОтсканированныхФайлов
+fullName: РегистрСведений.НомераОтсканированныхФайлов
+uuid: 0ddeed48-b98a-47c3-84a2-2eac065be06c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Владелец
+    category: dimension
+    types: []
+  - name: Номер
+    category: resource
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/НомераОтсканированныхФайлов.xml

@@ -1,0 +1,26 @@
+version: 1
+kind: РегистрРасчета
+name: РегистрРасчета1
+fullName: РегистрРасчета.РегистрРасчета1
+uuid: 12a074ce-7e13-45a9-b7f6-87c49b2013b8
+fields:
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: ВидРасчета
+    category: standard
+    types:
+      - kind: unknown
+source: CalculationRegisters/РегистрРасчета1.xml

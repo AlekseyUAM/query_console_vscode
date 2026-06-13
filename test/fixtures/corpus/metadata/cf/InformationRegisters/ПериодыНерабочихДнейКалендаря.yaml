@@ -1,0 +1,37 @@
+version: 1
+kind: РегистрСведений
+name: ПериодыНерабочихДнейКалендаря
+fullName: РегистрСведений.ПериодыНерабочихДнейКалендаря
+uuid: 0a92df3d-fb51-4fba-938c-55846929bd5f
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ПроизводственныйКалендарь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПроизводственныеКалендари
+  - name: НомерПериода
+    category: dimension
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ДатаНачала
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: ДатаОкончания
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: Основание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+source: InformationRegisters/ПериодыНерабочихДнейКалендаря.xml

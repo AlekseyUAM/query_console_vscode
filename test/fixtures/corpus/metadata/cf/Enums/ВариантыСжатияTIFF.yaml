@@ -1,0 +1,22 @@
+version: 1
+kind: Перечисление
+name: ВариантыСжатияTIFF
+fullName: Перечисление.ВариантыСжатияTIFF
+uuid: d678856d-6e7c-443f-a6e3-350bbe8af659
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ВариантыСжатияTIFF
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: CCITT3
+  - name: CCITT4
+  - name: LZW
+  - name: RLE
+  - name: БезСжатия
+source: Enums/ВариантыСжатияTIFF.xml

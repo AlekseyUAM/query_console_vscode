@@ -1,0 +1,10 @@
+version: 1
+kind: Константа
+name: РазрешенныеНеаккредитованныеУЦ
+fullName: Константа.РазрешенныеНеаккредитованныеУЦ
+uuid: 630845af-a7dc-4d1e-8c1a-44fa65aab036
+types:
+  - kind: Строка
+    length: 0
+    allowedLength: Variable
+source: Constants/РазрешенныеНеаккредитованныеУЦ.xml

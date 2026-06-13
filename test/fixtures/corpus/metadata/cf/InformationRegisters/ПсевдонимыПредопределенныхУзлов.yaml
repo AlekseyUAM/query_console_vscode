@@ -1,0 +1,18 @@
+version: 1
+kind: РегистрСведений
+name: ПсевдонимыПредопределенныхУзлов
+fullName: РегистрСведений.ПсевдонимыПредопределенныхУзлов
+uuid: ae124745-edfb-11e6-4681-a8667f21fde4
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Корреспондент
+    category: dimension
+    types: []
+  - name: КодУзла
+    category: resource
+    types:
+      - kind: Строка
+        length: 36
+        allowedLength: Variable
+source: InformationRegisters/ПсевдонимыПредопределенныхУзлов.xml

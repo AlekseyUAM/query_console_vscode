@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: ФорматыХраненияМногостраничныхФайлов
+fullName: Перечисление.ФорматыХраненияМногостраничныхФайлов
+uuid: d3bc8211-54d8-47dd-aecf-5da72b65195f
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ФорматыХраненияМногостраничныхФайлов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: PDF
+  - name: TIF
+source: Enums/ФорматыХраненияМногостраничныхФайлов.xml

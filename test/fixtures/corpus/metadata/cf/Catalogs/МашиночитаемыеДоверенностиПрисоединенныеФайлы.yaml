@@ -1,0 +1,153 @@
+version: 1
+kind: Справочник
+name: МашиночитаемыеДоверенностиПрисоединенныеФайлы
+fullName: Справочник.МашиночитаемыеДоверенностиПрисоединенныеФайлы
+uuid: e4fc1eae-ecdc-42ac-b338-e695b663d642
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенностиПрисоединенныеФайлы
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ВладелецФайла
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.МашиночитаемыеДоверенности
+  - name: ДатаЗаема
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаМодификацииУниверсальная
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаСоздания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Зашифрован
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Изменил
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ИндексКартинки
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Описание
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПодписанЭП
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ПутьКФайлу
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Размер
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Расширение
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Редактирует
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: СтатусИзвлеченияТекста
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыИзвлеченияТекстаФайлов
+  - name: ТекстХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ТипХраненияФайла
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыХраненияФайлов
+  - name: Том
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ТомаХраненияФайлов
+  - name: ФайлХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ХранитьВерсии
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Служебный
+    category: attribute
+    types:
+      - kind: Булево
+source: Catalogs/МашиночитаемыеДоверенностиПрисоединенныеФайлы.xml

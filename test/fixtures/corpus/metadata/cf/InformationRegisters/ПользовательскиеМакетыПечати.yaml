@@ -1,0 +1,36 @@
+version: 1
+kind: РегистрСведений
+name: ПользовательскиеМакетыПечати
+fullName: РегистрСведений.ПользовательскиеМакетыПечати
+uuid: 876e31ff-ab7b-4ea4-b491-161963727dd1
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИмяМакета
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Объект
+    category: dimension
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Макет
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: Использование
+    category: attribute
+    types:
+      - kind: Булево
+  - name: УсловиеВидимости
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/ПользовательскиеМакетыПечати.xml

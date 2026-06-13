@@ -1,0 +1,41 @@
+version: 1
+kind: РегистрСведений
+name: ЗамерыОбластиСтатистики
+fullName: РегистрСведений.ЗамерыОбластиСтатистики
+uuid: 718e53d2-24ec-40fb-9def-825441ada46c
+properties:
+  periodicity: Second
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ПериодОкончание
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ОперацияСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ОбластьСтатистики
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ИдентификаторУдаления
+    category: dimension
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: КоличествоЗначений
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+source: InformationRegisters/ЗамерыОбластиСтатистики.xml

@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: СведенияОБлокируемыхОбъектах
+fullName: Константа.СведенияОБлокируемыхОбъектах
+uuid: 9dd57f32-90a1-4a1d-bc2a-c1b12461d963
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/СведенияОБлокируемыхОбъектах.xml

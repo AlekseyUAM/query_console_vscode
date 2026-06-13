@@ -1,0 +1,11 @@
+version: 1
+kind: Константа
+name: КоличествоМесяцевХраненияИсторииРассылкиОтчетов
+fullName: Константа.КоличествоМесяцевХраненияИсторииРассылкиОтчетов
+uuid: 8d8ac8f0-37e1-4637-87c7-5af82d05202b
+types:
+  - kind: Число
+    digits: 2
+    fractionDigits: 0
+    allowedSign: Nonnegative
+source: Constants/КоличествоМесяцевХраненияИсторииРассылкиОтчетов.xml

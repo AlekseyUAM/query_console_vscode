@@ -1,0 +1,32 @@
+version: 1
+kind: РегистрСведений
+name: СостоянияОбменовДанными
+fullName: РегистрСведений.СостоянияОбменовДанными
+uuid: 5ef026c2-2ef4-45d6-9792-5ba0d298714b
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: ДействиеПриОбмене
+    category: dimension
+    types:
+      - kind: ref
+        ref: Перечисление.ДействияПриОбмене
+  - name: РезультатВыполненияОбмена
+    category: resource
+    types:
+      - kind: ref
+        ref: Перечисление.РезультатыВыполненияОбмена
+  - name: ДатаНачала
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаОкончания
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/СостоянияОбменовДанными.xml

@@ -1,0 +1,81 @@
+version: 1
+kind: Справочник
+name: НастройкиТранспортаСообщенийОбмена
+fullName: Справочник.НастройкиТранспортаСообщенийОбмена
+uuid: b142e431-66bd-4e28-a159-40df0c12fee2
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.НастройкиТранспортаСообщенийОбмена
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: Корреспондент
+    category: attribute
+    types: []
+  - name: ИдентификаторТранспорта
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: НастройкаПоУмолчанию
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: Настройки
+    uuid: 0d87a82d-fc3f-4395-9480-29cc5d45e11c
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Настройка
+        category: attribute
+        types:
+          - kind: Строка
+            length: 100
+            allowedLength: Variable
+      - name: Значение
+        category: attribute
+        types:
+          - kind: Булево
+          - kind: Строка
+            length: 1000
+            allowedLength: Variable
+          - kind: Дата
+            dateFractions: DateTime
+          - kind: Число
+            digits: 15
+            fractionDigits: 3
+            allowedSign: Any
+source: Catalogs/НастройкиТранспортаСообщенийОбмена.xml

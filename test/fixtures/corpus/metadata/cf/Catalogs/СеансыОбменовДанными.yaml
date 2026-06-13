@@ -1,0 +1,72 @@
+version: 1
+kind: Справочник
+name: СеансыОбменовДанными
+fullName: Справочник.СеансыОбменовДанными
+uuid: 4b8fdb79-a9a0-4a53-9a95-82b8f64b1aa2
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.СеансыОбменовДанными
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: УзелИнформационнойБазы
+    category: attribute
+    types: []
+  - name: Начало
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Окончание
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Отправка
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Получение
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ВремяВыполнения
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ЗамерыПроизводительности
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+source: Catalogs/СеансыОбменовДанными.xml

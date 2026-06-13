@@ -1,0 +1,38 @@
+version: 1
+kind: ПланВидовХарактеристик
+name: ОбъектыАдресацииЗадач
+fullName: ПланВидовХарактеристик.ОбъектыАдресацииЗадач
+uuid: ad083c26-7461-4e94-b524-0174242fbd91
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланВидовХарактеристик.ОбъектыАдресацииЗадач
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: ТипЗначения
+    category: standard
+    types:
+      - kind: unknown
+source: ChartsOfCharacteristicTypes/ОбъектыАдресацииЗадач.xml

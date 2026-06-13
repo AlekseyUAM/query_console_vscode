@@ -1,0 +1,57 @@
+version: 1
+kind: Справочник
+name: Контрагенты
+fullName: Справочник.Контрагенты
+uuid: 087ff90b-247d-4350-b94f-2e0d64e74866
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Контрагенты
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ИНН
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+  - name: КПП
+    category: attribute
+    types:
+      - kind: Строка
+        length: 50
+        allowedLength: Variable
+source: Catalogs/Контрагенты.xml

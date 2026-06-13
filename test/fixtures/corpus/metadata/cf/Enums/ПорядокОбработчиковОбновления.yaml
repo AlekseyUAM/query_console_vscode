@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: ПорядокОбработчиковОбновления
+fullName: Перечисление.ПорядокОбработчиковОбновления
+uuid: 316553f3-bed7-4517-86ed-6520c1e536d9
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ПорядокОбработчиковОбновления
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Критичный
+  - name: Обычный
+  - name: Некритичный
+source: Enums/ПорядокОбработчиковОбновления.xml

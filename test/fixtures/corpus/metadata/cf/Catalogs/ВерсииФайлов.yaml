@@ -1,0 +1,206 @@
+version: 1
+kind: Справочник
+name: ВерсииФайлов
+fullName: Справочник.ВерсииФайлов
+uuid: eb3dfdc7-58b8-4b1f-b079-368c262364c9
+properties:
+  hierarchical: false
+  codeLength: 11
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВерсииФайлов
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.Файлы
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: Автор
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиСинхронизацииФайлов
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ДатаМодификацииУниверсальная
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаМодификацииФайла
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ДатаСоздания
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: ИндексКартинки
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: НомерВерсии
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ПутьКФайлу
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Размер
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Расширение
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: РодительскаяВерсия
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ВерсииФайлов
+  - name: СтатусИзвлеченияТекста
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыИзвлеченияТекстаФайлов
+  - name: ТекстХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ТипХраненияФайла
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыХраненияФайлов
+  - name: Том
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ТомаХраненияФайлов
+  - name: ФайлХранилище
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+tabularSections:
+  - name: УдалитьЭлектронныеПодписи
+    uuid: ab1bcabf-ffb0-4914-8ad0-b94b5aaeab1d
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: ДатаПодписи
+        category: attribute
+        types:
+          - kind: Дата
+            dateFractions: DateTime
+      - name: ИмяФайлаПодписи
+        category: attribute
+        types:
+          - kind: Строка
+            length: 260
+            allowedLength: Variable
+      - name: Комментарий
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: КомуВыданСертификат
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+      - name: Отпечаток
+        category: attribute
+        types:
+          - kind: Строка
+            length: 28
+            allowedLength: Variable
+      - name: Подпись
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: УстановившийПодпись
+        category: attribute
+        types:
+          - kind: ref
+            ref: Справочник.Пользователи
+      - name: Сертификат
+        category: attribute
+        types:
+          - kind: unknown
+            raw: v8:ValueStorage
+      - name: ДатаПроверкиПодписи
+        category: attribute
+        types:
+          - kind: Дата
+            dateFractions: DateTime
+      - name: ПодписьВерна
+        category: attribute
+        types:
+          - kind: Булево
+source: Catalogs/ВерсииФайлов.xml

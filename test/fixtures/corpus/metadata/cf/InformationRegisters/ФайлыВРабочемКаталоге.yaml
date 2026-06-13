@@ -1,0 +1,45 @@
+version: 1
+kind: РегистрСведений
+name: ФайлыВРабочемКаталоге
+fullName: РегистрСведений.ФайлыВРабочемКаталоге
+uuid: 40e2fb30-bb03-4178-a8eb-ddf48337ef23
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Файл
+    category: dimension
+    types: []
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Путь
+    category: resource
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Размер
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ДатаПомещенияВРабочийКаталог
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: НаЧтение
+    category: resource
+    types:
+      - kind: Булево
+  - name: ВРабочемКаталогеВладельца
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/ФайлыВРабочемКаталоге.xml

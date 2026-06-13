@@ -1,0 +1,94 @@
+version: 1
+kind: Справочник
+name: СценарииОбменовДанными
+fullName: Справочник.СценарииОбменовДанными
+uuid: 3dec1ae7-90bb-45ab-aa04-48cfbc14742e
+properties:
+  hierarchical: false
+  codeLength: 5
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.СценарииОбменовДанными
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 5
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ИспользоватьРегламентноеЗадание
+    category: attribute
+    types:
+      - kind: Булево
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: РегламентноеЗаданиеGUID
+    category: attribute
+    types:
+      - kind: Строка
+        length: 40
+        allowedLength: Variable
+  - name: ОтключенАвтоматически
+    category: attribute
+    types:
+      - kind: Булево
+tabularSections:
+  - name: НастройкиОбмена
+    uuid: 32b11498-542f-46b2-829f-1525936ab7fa
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: УзелИнформационнойБазы
+        category: attribute
+        types: []
+      - name: УдалитьВидТранспортаОбмена
+        category: attribute
+        types:
+          - kind: ref
+            ref: Перечисление.ВидыТранспортаСообщенийОбмена
+      - name: ВыполняемоеДействие
+        category: attribute
+        types:
+          - kind: ref
+            ref: Перечисление.ДействияПриОбмене
+      - name: ИдентификаторТранспорта
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Catalogs/СценарииОбменовДанными.xml

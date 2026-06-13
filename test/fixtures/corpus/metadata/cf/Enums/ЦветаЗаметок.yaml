@@ -1,0 +1,24 @@
+version: 1
+kind: Перечисление
+name: ЦветаЗаметок
+fullName: Перечисление.ЦветаЗаметок
+uuid: 3734619b-7059-4547-8b97-0b3393389d4d
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ЦветаЗаметок
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Красный
+  - name: Оранжевый
+  - name: Желтый
+  - name: Зеленый
+  - name: Голубой
+  - name: Синий
+  - name: Фиолетовый
+source: Enums/ЦветаЗаметок.xml

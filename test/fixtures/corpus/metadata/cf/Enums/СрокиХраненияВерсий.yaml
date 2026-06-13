@@ -1,0 +1,23 @@
+version: 1
+kind: Перечисление
+name: СрокиХраненияВерсий
+fullName: Перечисление.СрокиХраненияВерсий
+uuid: 3c33adc7-abea-4e0f-9e5d-d8f10abb63df
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СрокиХраненияВерсий
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ЗаПоследнююНеделю
+  - name: ЗаПоследнийМесяц
+  - name: ЗаПоследниеТриМесяца
+  - name: ЗаПоследниеШестьМесяцев
+  - name: ЗаПоследнийГод
+  - name: Бессрочно
+source: Enums/СрокиХраненияВерсий.xml

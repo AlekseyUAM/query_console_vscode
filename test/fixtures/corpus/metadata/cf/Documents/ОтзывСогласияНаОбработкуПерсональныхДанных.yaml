@@ -1,0 +1,102 @@
+version: 1
+kind: Документ
+name: ОтзывСогласияНаОбработкуПерсональныхДанных
+fullName: Документ.ОтзывСогласияНаОбработкуПерсональныхДанных
+uuid: 7d5b2b73-27e6-4a61-9558-eb2410eb9f2f
+properties:
+  numberLength: 11
+  numberType: String
+  posting: Allow
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Документ.ОтзывСогласияНаОбработкуПерсональныхДанных
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Номер
+    category: standard
+    types:
+      - kind: Строка
+        length: 11
+        allowedLength: Variable
+  - name: Дата
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Проведен
+    category: standard
+    types:
+      - kind: Булево
+  - name: Организация
+    category: attribute
+    types: []
+  - name: ЮридическийАдресОрганизации
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: ОтветственныйЗаОбработкуПерсональныхДанных
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ФИООтветственногоЗаОбработкуПДн
+    category: attribute
+    types:
+      - kind: Строка
+        length: 150
+        allowedLength: Variable
+  - name: Субъект
+    category: attribute
+    types: []
+  - name: ДатаОтзыва
+    category: attribute
+    types:
+      - kind: Дата
+        dateFractions: Date
+  - name: Ответственный
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Комментарий
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+tabularSections:
+  - name: ДополнительныеРеквизиты
+    uuid: a5f5bc90-e670-4ee7-95fe-067fe1b129f7
+    fields:
+      - name: НомерСтроки
+        category: standard
+        types:
+          - kind: Число
+            digits: 5
+            fractionDigits: 0
+      - name: Свойство
+        category: attribute
+        types:
+          - kind: unknown
+            raw: cfg:ChartOfCharacteristicTypesRef.ДополнительныеРеквизитыИСведения
+      - name: Значение
+        category: attribute
+        types: []
+      - name: ТекстоваяСтрока
+        category: attribute
+        types:
+          - kind: Строка
+            length: 0
+            allowedLength: Variable
+source: Documents/ОтзывСогласияНаОбработкуПерсональныхДанных.xml

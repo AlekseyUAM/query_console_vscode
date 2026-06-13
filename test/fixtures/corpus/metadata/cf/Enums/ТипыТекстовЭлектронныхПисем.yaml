@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ТипыТекстовЭлектронныхПисем
+fullName: Перечисление.ТипыТекстовЭлектронныхПисем
+uuid: 9d77103a-9921-4f6c-98fc-d7f42f0f2d8d
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыТекстовЭлектронныхПисем
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: HTML
+  - name: ПростойТекст
+  - name: РазмеченныйТекст
+  - name: HTMLСКартинками
+source: Enums/ТипыТекстовЭлектронныхПисем.xml

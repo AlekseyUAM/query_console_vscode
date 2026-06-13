@@ -1,0 +1,19 @@
+version: 1
+kind: Перечисление
+name: СпособыРедактированияЭлектронныхПисем
+fullName: Перечисление.СпособыРедактированияЭлектронныхПисем
+uuid: f152945b-2a7b-449e-a915-176166af7bac
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СпособыРедактированияЭлектронныхПисем
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: ОбычныйТекст
+  - name: HTML
+source: Enums/СпособыРедактированияЭлектронныхПисем.xml

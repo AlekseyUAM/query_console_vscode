@@ -1,0 +1,64 @@
+version: 1
+kind: РегистрСведений
+name: АрхивСообщенийОбменов
+fullName: РегистрСведений.АрхивСообщенийОбменов
+uuid: 0ab0a57c-24c6-4ba8-9be1-5773fd82367e
+properties:
+  periodicity: Second
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: УзелИнформационнойБазы
+    category: dimension
+    types: []
+  - name: ПолноеИмяФайла
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: Хранилище
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: НомерПринятогоСообщения
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИмяФайла
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: РасширениеФайла
+    category: attribute
+    types:
+      - kind: Строка
+        length: 3
+        allowedLength: Variable
+  - name: РазмерФайла
+    category: attribute
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ФайлБольше100Мб
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ХешСуммаФайла
+    category: attribute
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/АрхивСообщенийОбменов.xml

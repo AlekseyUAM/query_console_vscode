@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ДанныеДляИзмененияМультиязычныхРеквизитов
+fullName: Константа.ДанныеДляИзмененияМультиязычныхРеквизитов
+uuid: af52cd7d-374a-4c46-a74c-305e154dc6f2
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ДанныеДляИзмененияМультиязычныхРеквизитов.xml

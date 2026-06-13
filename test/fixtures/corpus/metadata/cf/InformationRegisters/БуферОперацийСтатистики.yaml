@@ -1,0 +1,50 @@
+version: 1
+kind: РегистрСведений
+name: БуферОперацийСтатистики
+fullName: РегистрСведений.БуферОперацийСтатистики
+uuid: c869c1b7-3c04-4e5e-a033-d3f2fb0af03c
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ДатаЗаписи
+    category: dimension
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ИдентификаторУдаления
+    category: dimension
+    types:
+      - kind: Число
+        digits: 11
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: ИдентификаторЗаписи
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ОперацияСтатистики
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: КомментарийСтатистики
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: ОбластьСтатистики
+    category: resource
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: Значение
+    category: resource
+    types:
+      - kind: Число
+        digits: 15
+        fractionDigits: 3
+        allowedSign: Any
+source: InformationRegisters/БуферОперацийСтатистики.xml

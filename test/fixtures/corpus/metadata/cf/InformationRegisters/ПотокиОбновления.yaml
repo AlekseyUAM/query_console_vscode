@@ -1,0 +1,54 @@
+version: 1
+kind: РегистрСведений
+name: ПотокиОбновления
+fullName: РегистрСведений.ПотокиОбновления
+uuid: 86b835c4-341e-4b0d-99e5-2369684ff3f4
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ИдентификаторПотока
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+  - name: АдресРезультата
+    category: attribute
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Группа
+    category: attribute
+    types:
+      - kind: Строка
+        length: 20
+        allowedLength: Variable
+  - name: Наименование
+    category: attribute
+    types:
+      - kind: Строка
+        length: 1024
+        allowedLength: Variable
+  - name: ПараметрыПроцедуры
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПараметрыПроцедурыЗавершения
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:ValueStorage
+  - name: ПриоритетЗавершения
+    category: attribute
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: ИдентификаторЗадания
+    category: attribute
+    types:
+      - kind: unknown
+        raw: v8:UUID
+source: InformationRegisters/ПотокиОбновления.xml

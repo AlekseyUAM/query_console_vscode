@@ -1,0 +1,31 @@
+version: 1
+kind: РегистрСведений
+name: ПользовательскиеНастройкиДоступаКОбработкам
+fullName: РегистрСведений.ПользовательскиеНастройкиДоступаКОбработкам
+uuid: 6f630213-c16c-421c-a160-09e3c729ab26
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: ДополнительныйОтчетИлиОбработка
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ДополнительныеОтчетыИОбработки
+  - name: ИдентификаторКоманды
+    category: dimension
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: Пользователь
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: Доступно
+    category: resource
+    types:
+      - kind: Булево
+source: InformationRegisters/ПользовательскиеНастройкиДоступаКОбработкам.xml

@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: НастройкиВходаПользователей
+fullName: Константа.НастройкиВходаПользователей
+uuid: ae039438-89af-4217-910d-476115f51ab2
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/НастройкиВходаПользователей.xml

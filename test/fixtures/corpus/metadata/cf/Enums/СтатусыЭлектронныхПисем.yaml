@@ -1,0 +1,20 @@
+version: 1
+kind: Перечисление
+name: СтатусыЭлектронныхПисем
+fullName: Перечисление.СтатусыЭлектронныхПисем
+uuid: da031ebd-4aba-40e6-acb9-245cf73c4423
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СтатусыЭлектронныхПисем
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: НеДоставлено
+  - name: Доставлено
+  - name: Прочитано
+source: Enums/СтатусыЭлектронныхПисем.xml

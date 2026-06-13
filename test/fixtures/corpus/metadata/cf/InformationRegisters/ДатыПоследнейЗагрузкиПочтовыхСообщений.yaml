@@ -1,0 +1,19 @@
+version: 1
+kind: РегистрСведений
+name: ДатыПоследнейЗагрузкиПочтовыхСообщений
+fullName: РегистрСведений.ДатыПоследнейЗагрузкиПочтовыхСообщений
+uuid: b4dde44e-57d5-4c3a-bb9b-643787ce07b0
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: УчетнаяЗапись
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: ДатаЗагрузкиПисем
+    category: resource
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+source: InformationRegisters/ДатыПоследнейЗагрузкиПочтовыхСообщений.xml

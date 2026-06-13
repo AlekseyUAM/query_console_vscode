@@ -1,0 +1,32 @@
+version: 1
+kind: РегистрСведений
+name: ИсполнителиЗадач
+fullName: РегистрСведений.ИсполнителиЗадач
+uuid: 440d115d-a769-427e-891a-88d65fba2057
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: РольИсполнителя
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.РолиИсполнителей
+  - name: Исполнитель
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ВнешниеПользователи
+      - kind: ref
+        ref: Справочник.Пользователи
+  - name: ОсновнойОбъектАдресации
+    category: dimension
+    types: []
+  - name: ДополнительныйОбъектАдресации
+    category: dimension
+    types: []
+  - name: ГруппаИсполнителейЗадач
+    category: attribute
+    types:
+      - kind: ref
+        ref: Справочник.ГруппыИсполнителейЗадач
+source: InformationRegisters/ИсполнителиЗадач.xml

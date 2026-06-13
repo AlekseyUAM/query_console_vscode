@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: КлассификаторОшибокКриптографии
+fullName: Константа.КлассификаторОшибокКриптографии
+uuid: 52f3e20c-1cf7-4284-a083-6539782f4bc3
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/КлассификаторОшибокКриптографии.xml

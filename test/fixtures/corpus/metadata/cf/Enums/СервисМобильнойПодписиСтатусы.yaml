@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: СервисМобильнойПодписиСтатусы
+fullName: Перечисление.СервисМобильнойПодписиСтатусы
+uuid: fda24f7a-e953-4e0f-9fb3-911f05bf0d2d
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.СервисМобильнойПодписиСтатусы
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: Успешно
+  - name: Ошибка
+  - name: ОжидаетОбработки
+  - name: Отклонено
+source: Enums/СервисМобильнойПодписиСтатусы.xml

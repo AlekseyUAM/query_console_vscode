@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: СостояниеОтправкиСерверныхОповещений
+fullName: Константа.СостояниеОтправкиСерверныхОповещений
+uuid: db445527-7bd2-448b-bf87-5ac0c10d742d
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/СостояниеОтправкиСерверныхОповещений.xml

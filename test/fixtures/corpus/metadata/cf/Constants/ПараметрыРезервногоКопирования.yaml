@@ -1,0 +1,9 @@
+version: 1
+kind: Константа
+name: ПараметрыРезервногоКопирования
+fullName: Константа.ПараметрыРезервногоКопирования
+uuid: 0d8c215d-1210-47a2-897d-a3257b9f849a
+types:
+  - kind: unknown
+    raw: v8:ValueStorage
+source: Constants/ПараметрыРезервногоКопирования.xml

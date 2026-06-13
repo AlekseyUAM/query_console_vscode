@@ -1,0 +1,58 @@
+version: 1
+kind: РегистрБухгалтерии
+name: РегистрБухгалтерии1
+fullName: РегистрБухгалтерии.РегистрБухгалтерии1
+uuid: 1c5ec857-1cc1-4a16-ae2d-86a47cc5007a
+properties:
+  correspondence: true
+  chartOfAccounts: ПланСчетов1
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Регистратор
+    category: standard
+    types:
+      - kind: unknown
+  - name: НомерСтроки
+    category: standard
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+  - name: Активность
+    category: standard
+    types:
+      - kind: Булево
+  - name: СчетДт
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланСчетов.ПланСчетов1
+  - name: СчетКт
+    category: standard
+    types:
+      - kind: ref
+        ref: ПланСчетов.ПланСчетов1
+  - name: Организация
+    category: dimension
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+  - name: Сумма
+    category: resource
+    types:
+      - kind: Число
+        digits: 10
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Реквизит1
+    category: attribute
+    types:
+      - kind: Строка
+        length: 10
+        allowedLength: Variable
+source: AccountingRegisters/РегистрБухгалтерии1.xml

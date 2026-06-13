@@ -1,0 +1,32 @@
+version: 1
+kind: РегистрСведений
+name: ПутиКПрограммамЭлектроннойПодписиИШифрованияНаСерверахLinux
+fullName: РегистрСведений.ПутиКПрограммамЭлектроннойПодписиИШифрованияНаСерверахLinux
+uuid: 3c429fe8-e663-4a58-817f-8f8382697dbb
+properties:
+  periodicity: Nonperiodical
+fields:
+  - name: Программа
+    category: dimension
+    types:
+      - kind: ref
+        ref: Справочник.ПрограммыЭлектроннойПодписиИШифрования
+  - name: ИмяКомпьютера
+    category: dimension
+    types:
+      - kind: Строка
+        length: 255
+        allowedLength: Variable
+  - name: Комментарий
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+  - name: ПутьКПрограмме
+    category: resource
+    types:
+      - kind: Строка
+        length: 0
+        allowedLength: Variable
+source: InformationRegisters/ПутиКПрограммамЭлектроннойПодписиИШифрованияНаСерверахLinux.xml

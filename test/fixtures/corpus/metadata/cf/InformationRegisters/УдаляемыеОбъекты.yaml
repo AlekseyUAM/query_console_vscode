@@ -1,0 +1,22 @@
+version: 1
+kind: РегистрСведений
+name: УдаляемыеОбъекты
+fullName: РегистрСведений.УдаляемыеОбъекты
+uuid: d5b23aac-ea1c-497e-bed7-8685bb682e36
+properties:
+  periodicity: Second
+fields:
+  - name: Период
+    category: standard
+    types:
+      - kind: Дата
+        dateFractions: DateTime
+  - name: Объект
+    category: dimension
+    types: []
+  - name: ИдентификаторСеанса
+    category: dimension
+    types:
+      - kind: unknown
+        raw: v8:UUID
+source: InformationRegisters/УдаляемыеОбъекты.xml

@@ -1,0 +1,64 @@
+version: 1
+kind: Справочник
+name: ПапкиЭлектронныхПисем
+fullName: Справочник.ПапкиЭлектронныхПисем
+uuid: 0abacb0a-ce00-474e-8aec-35685c51ddef
+properties:
+  hierarchical: true
+  codeLength: 9
+  codeType: String
+  descriptionLength: 100
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПапкиЭлектронныхПисем
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.УчетныеЗаписиЭлектроннойПочты
+  - name: Родитель
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПапкиЭлектронныхПисем
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 100
+  - name: ПредопределеннаяПапка
+    category: attribute
+    types:
+      - kind: Булево
+  - name: ТипПредопределеннойПапки
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.ТипыПредопределенныхПапокПисем
+source: Catalogs/ПапкиЭлектронныхПисем.xml

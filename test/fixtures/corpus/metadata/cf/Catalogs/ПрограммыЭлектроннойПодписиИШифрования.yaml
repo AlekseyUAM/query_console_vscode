@@ -1,0 +1,79 @@
+version: 1
+kind: Справочник
+name: ПрограммыЭлектроннойПодписиИШифрования
+fullName: Справочник.ПрограммыЭлектроннойПодписиИШифрования
+uuid: aa29e1be-4e99-4136-8dc1-0124908979ad
+properties:
+  hierarchical: false
+  codeLength: 0
+  codeType: Number
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ПрограммыЭлектроннойПодписиИШифрования
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ИмяПрограммы
+    category: attribute
+    types:
+      - kind: Строка
+        length: 430
+        allowedLength: Variable
+  - name: ТипПрограммы
+    category: attribute
+    types:
+      - kind: Число
+        digits: 9
+        fractionDigits: 0
+        allowedSign: Nonnegative
+  - name: АлгоритмПодписи
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: АлгоритмХеширования
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: АлгоритмШифрования
+    category: attribute
+    types:
+      - kind: Строка
+        length: 100
+        allowedLength: Variable
+  - name: ЭтоВстроенныйКриптопровайдер
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РежимИспользования
+    category: attribute
+    types:
+      - kind: ref
+        ref: Перечисление.РежимыИспользованияПрограммыЭлектроннойПодписи
+source: Catalogs/ПрограммыЭлектроннойПодписиИШифрования.xml

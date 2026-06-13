@@ -1,0 +1,21 @@
+version: 1
+kind: Перечисление
+name: ПериодОчисткиФайлов
+fullName: Перечисление.ПериодОчисткиФайлов
+uuid: a0861dd3-ced5-485e-8719-0ad0bc3adc0d
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Перечисление.ПериодОчисткиФайлов
+  - name: Порядок
+    category: standard
+    types:
+      - kind: Число
+values:
+  - name: СтаршеМесяца
+  - name: СтаршеШестиМесяцев
+  - name: СтаршеГода
+  - name: ПоПравилу
+source: Enums/ПериодОчисткиФайлов.xml

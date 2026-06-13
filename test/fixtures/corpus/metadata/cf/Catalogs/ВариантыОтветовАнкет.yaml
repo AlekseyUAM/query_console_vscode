@@ -1,0 +1,67 @@
+version: 1
+kind: Справочник
+name: ВариантыОтветовАнкет
+fullName: Справочник.ВариантыОтветовАнкет
+uuid: 375977c1-5745-4e78-a4df-cef966c0ccf8
+properties:
+  hierarchical: false
+  codeLength: 9
+  codeType: String
+  descriptionLength: 150
+fields:
+  - name: Ссылка
+    category: standard
+    types:
+      - kind: ref
+        ref: Справочник.ВариантыОтветовАнкет
+  - name: ВерсияДанных
+    category: standard
+    types:
+      - kind: timestamp
+  - name: ПометкаУдаления
+    category: standard
+    types:
+      - kind: Булево
+  - name: Предопределенный
+    category: standard
+    types:
+      - kind: Булево
+  - name: ИмяПредопределенныхДанных
+    category: standard
+    types:
+      - kind: Строка
+        length: 255
+  - name: Владелец
+    category: standard
+    types:
+      - kind: unknown
+        raw: ChartOfCharacteristicTypes.ВопросыДляАнкетирования
+  - name: Код
+    category: standard
+    types:
+      - kind: Строка
+        length: 9
+        allowedLength: Variable
+  - name: Наименование
+    category: standard
+    types:
+      - kind: Строка
+        length: 150
+  - name: ТребуетОткрытогоОтвета
+    category: attribute
+    types:
+      - kind: Булево
+  - name: РеквизитДопУпорядочивания
+    category: attribute
+    types:
+      - kind: Число
+        digits: 5
+        fractionDigits: 0
+        allowedSign: Any
+  - name: Подсказка
+    category: attribute
+    types:
+      - kind: Строка
+        length: 250
+        allowedLength: Variable
+source: Catalogs/ВариантыОтветовАнкет.xml
