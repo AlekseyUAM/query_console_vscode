@@ -4,7 +4,8 @@ import * as fs from 'fs';
 import { parseXml, firstElementChild } from '../../src/core/metadata/parser/dom';
 import { parseCommonAttribute } from '../../src/core/metadata/parser/commonAttribute';
 
-const CA_DIR = path.join(__dirname, '..', '..', 'src', 'cf', 'CommonAttributes');
+// Закоммиченные XML-фикстуры (не зависят от gitignored src/cf) — test/fixtures/cf-objects.
+const CA_DIR = path.join(__dirname, '..', 'fixtures', 'cf-objects', 'CommonAttributes');
 
 function readCa(filename: string): any {
   const xml = fs.readFileSync(path.join(CA_DIR, filename), 'utf8');

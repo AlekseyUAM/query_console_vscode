@@ -17,7 +17,9 @@ import { parseSequence } from '../../src/core/metadata/parser/sequence';
 import { parseDocumentJournal } from '../../src/core/metadata/parser/documentJournal';
 import { parseFilterCriteria } from '../../src/core/metadata/parser/filterCriteria';
 
-const CF_DIR = path.join(__dirname, '..', '..', 'src', 'cf');
+// Закоммиченные XML-фикстуры (подмножество реальной выгрузки), чтобы тесты не
+// зависели от gitignored src/cf — см. test/fixtures/cf-objects.
+const CF_DIR = path.join(__dirname, '..', 'fixtures', 'cf-objects');
 
 function readObjectEl(subdir: string, filename: string): any {
   const xml = fs.readFileSync(path.join(CF_DIR, subdir, filename), 'utf8');
