@@ -1387,6 +1387,20 @@ export function normalizeLeafCase(raw: string): string {
       }
     }
 
+    // 5) Операторы-идентификаторы (лексер не делает их keyword): НЕ/ИЛИ — никогда не
+    //    имена полей, приводим к ВЕРХ всегда (вне пути). ССЫЛКА — ещё и имя поля,
+    //    поэтому ВЕРХ только в ИНФИКСНОЙ позиции `<выражение> ССЫЛКА <Тип>`
+    //    (фаза 6.16.7, MCP).
+    if (!shouldUpper && (up === 'НЕ' || up === 'ИЛИ')) shouldUpper = true;
+    if (!shouldUpper && up === 'ССЫЛКА') {
+      const prevIsExprEnd = !!prev && (
+        prev.type === 'number' || prev.type === 'string' ||
+        (prev.type === 'punct' && prev.value === ')') ||
+        ((prev.type === 'ident' || prev.type === 'keyword') && !(prev.type === 'keyword' && prev.value === 'КАК'))
+      );
+      if (prevIsExprEnd && isWordTok(next)) shouldUpper = true;
+    }
+
     if (shouldUpper) spans.push({ pos: t.pos, len: text.length, up });
   }
 
