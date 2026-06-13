@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getConfig } from './corpusConfig';
 
 export interface ExtractedQuery {
   text: string;
@@ -119,9 +120,10 @@ function walk(dir: string, ext: string): string[] {
   return out;
 }
 
-function main(): void {
-  const cfRoot = path.resolve('src/cf');
-  const outDir = path.resolve('tmp/query1c');
+export function run(): void {
+  const cfg = getConfig();
+  const cfRoot = cfg.configDir;
+  const outDir = cfg.queryCorpusDir;
 
   if (!fs.existsSync(cfRoot)) {
     console.error(`Каталог не найден: ${cfRoot}`);
@@ -158,5 +160,5 @@ function main(): void {
 }
 
 if (require.main === module) {
-  main();
+  run();
 }

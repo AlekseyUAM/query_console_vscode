@@ -5,6 +5,7 @@ playwright-report/
 test/e2e/harness/main.js
 tmp/
 src/cf/
+.env
 .claude/worktrees/
 .claude/settings.local.json
 .claire/

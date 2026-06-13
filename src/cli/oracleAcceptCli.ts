@@ -9,14 +9,14 @@ import { acceptAgainstOracle } from './oracleAccept';
 import { loadMetadataFromYaml } from '../core/metadata/yamlLoader';
 import type { MetadataResolver } from '../core/query/metadataResolver';
 import type { MetaTable } from '../core/metadata/types';
+import { getConfig, goldenPath } from './corpusConfig';
 
 /**
  * Резолвер метаданных для развёртки `*` (фаза 6.15.15): строит индекс по fullName
- * из YAML корпуса (`tmp/parser_data/cf`). Если каталог отсутствует/пуст — резолвер
+ * из YAML корпуса (`<METADATA_CACHE_DIR>/cf`). Если каталог отсутствует/пуст — резолвер
  * пустой (звезда не разворачивается, поведение прежнее).
  */
-function buildResolver(): MetadataResolver | undefined {
-  const cfDir = path.resolve('tmp/parser_data/cf');
+function buildResolver(cfDir: string): MetadataResolver | undefined {
   if (!fs.existsSync(cfDir)) return undefined;
   const model = loadMetadataFromYaml(cfDir);
   const byFull = new Map<string, MetaTable>();
@@ -31,15 +31,22 @@ function buildResolver(): MetadataResolver | undefined {
 interface Golden { file: string; valid: boolean; input: string; query_text: string; }
 interface ReportEntry { file: string; reason: string; detail?: string; }
 
-function run(): void {
-  const dir = path.resolve('tmp/query1c/oracle');
-  const goldenPath = path.join(dir, 'golden.jsonl');
-  if (!fs.existsSync(goldenPath)) { console.error(`Нет ${goldenPath} — сначала npm run harvest`); process.exit(1); }
+export function run(): void {
+  const cfg = getConfig();
+  const gPath = goldenPath(cfg);
+  const dir = path.dirname(gPath);
+  if (!fs.existsSync(gPath)) { console.error(`Нет ${gPath} — сначала npm run harvest`); process.exit(1); }
 
-  const golden: Golden[] = fs.readFileSync(goldenPath, 'utf8').split('\n')
+  const golden: Golden[] = fs.readFileSync(gPath, 'utf8').split('\n')
     .filter((l) => l.trim()).map((l) => JSON.parse(l));
 
-  const resolver = buildResolver();
+  const resolver = buildResolver(path.join(cfg.metadataCacheDir, 'cf'));
+
+  // Каталог ошибок: пересоздаём с нуля при каждом прогоне.
+  const errorsDir = cfg.errorsDir;
+  fs.rmSync(errorsDir, { recursive: true, force: true });
+  fs.mkdirSync(errorsDir, { recursive: true });
+  let errorFiles = 0;
 
   const report: ReportEntry[] = [];
   const byReason: Record<string, number> = { 'parse-exception': 0, mismatch: 0 };
@@ -55,6 +62,20 @@ function run(): void {
     const reason = res.reason ?? 'parse-exception';
     byReason[reason] = (byReason[reason] ?? 0) + 1;
     report.push({ file: g.file, reason, detail: res.detail });
+
+    // Структурированный JSON на каждый провал.
+    const errObj = {
+      файл: g.file,
+      причина: reason,
+      исходныйТекстЗапроса: g.input,
+      текстВалидатора: g.query_text,
+      текстКонструктора: res.ours ?? '',
+      классОшибки: res.errorClass ?? reason,
+      номерСтроки: res.errorLine ?? 0,
+    };
+    fs.writeFileSync(path.join(errorsDir, g.file + '.json'), JSON.stringify(errObj, null, 2));
+    errorFiles++;
+
     if (reason === 'parse-exception') {
       const k = (res.detail ?? '').slice(0, 80);
       topMessages[k] = (topMessages[k] ?? 0) + 1;
@@ -84,6 +105,7 @@ function run(): void {
   console.log('=== Приёмка против оракула-конструктора (6.7) ===');
   console.log(`Всего: ${summary.total} | oracle-invalid: ${oracleInvalid} | принято: ${accepted} | отклонено: ${summary.rejected}`);
   console.log(`  parse-exception: ${byReason['parse-exception']} | mismatch: ${byReason.mismatch}`);
+  console.log(`Файлы ошибок: ${errorFiles} → ${errorsDir}`);
 }
 
 if (require.main === module) run();

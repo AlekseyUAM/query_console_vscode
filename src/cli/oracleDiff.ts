@@ -11,11 +11,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseBatch } from '../core/query/sdblParser';
 import { generateBatch } from '../core/query/sdblGenerator';
+import { getConfig, goldenPath } from './corpusConfig';
 
 interface Golden { file: string; valid: boolean; input: string; query_text: string; }
 
 function load(): Golden[] {
-  const p = path.resolve('tmp/query1c/oracle/golden.jsonl');
+  const p = goldenPath(getConfig());
   return fs.readFileSync(p, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
 }
 

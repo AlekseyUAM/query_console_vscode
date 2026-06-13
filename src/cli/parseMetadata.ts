@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseConfiguration } from '../core/metadata/parser/parseConfiguration';
+import { getConfig } from './corpusConfig';
 
 function getArg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -8,8 +9,9 @@ function getArg(name: string): string | undefined {
 }
 
 function main(): void {
-  const cf = path.resolve(getArg('cf') ?? 'src/cf');
-  const out = path.resolve(getArg('out') ?? 'tmp/parser_data');
+  const cfg = getConfig();
+  const cf = path.resolve(getArg('cf') ?? cfg.configDir);
+  const out = getArg('out') ?? cfg.metadataCacheDir;
 
   if (!fs.existsSync(cf)) {
     console.error(`Каталог cf не найден: ${cf}`);

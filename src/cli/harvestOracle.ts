@@ -13,6 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { validateQuery, readMcpUrl, normalizeQueryText } from './mcpClient';
+import { getConfig } from './corpusConfig';
 
 const CONCURRENCY = 8;
 
@@ -20,9 +21,10 @@ function normInput(s: string): string {
   return s.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\n+$/, '');
 }
 
-async function run(): Promise<void> {
+export async function run(): Promise<void> {
   const force = process.argv.includes('--force');
-  const corpusDir = path.resolve('tmp/query1c');
+  const cfg = getConfig();
+  const corpusDir = cfg.queryCorpusDir;
   const outDir = path.join(corpusDir, 'oracle');
   const goldenPath = path.join(outDir, 'golden.jsonl');
   fs.mkdirSync(outDir, { recursive: true });
@@ -37,7 +39,7 @@ async function run(): Promise<void> {
   if (force && fs.existsSync(goldenPath)) fs.rmSync(goldenPath);
 
   const files = fs.readdirSync(corpusDir).filter((f) => f.endsWith('.txt') && !done.has(f)).sort();
-  const url = readMcpUrl();
+  const url = cfg.mcpUrl ?? readMcpUrl();
   const out = fs.createWriteStream(goldenPath, { flags: 'a' });
   let i = 0, ok = 0, removed = 0, fail = 0;
 
