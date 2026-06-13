@@ -2163,7 +2163,68 @@ function valueText(node: Node): string {
  * (reflowLeafSelectorCase, фаза 6.15.26). Первая строка рефлоу приклеивается к
  * ключевому слову ветки, остальные — как есть.
  */
+/**
+ * Однострочное значение ветки ТОГДА/ИНАЧЕ с ВЕРХНЕУРОВНЕВЫМ ИЛИ конструктор 1С
+ * раскладывает многострочно: операнд0 инлайн после ключевого слова, каждый
+ * следующий — `ИЛИ <операнд>` на отступе kwInd+2; ОХВАТЫВАЮЩИЕ скобки операнда
+ * (`(НЕ ЕСТЬNULL(…))`, `(Поле)`) снимаются как избыточная группировка (фаза
+ * 6.15.28, MCP). Возвращает null, если значение НЕ является однострочной
+ * верхнеуровневой ИЛИ-цепочкой (узкий триггер — иначе раскладку даёт fallback).
+ */
+/**
+ * Снимает ровно одну ОХВАТЫВАЮЩУЮ пару скобок, если она оборачивает ВСЁ выражение
+ * (`(НЕ ЕСТЬNULL(…))` → `НЕ ЕСТЬNULL(…)`, `(Поле)` → `Поле`). Если первая `(` не
+ * парна последней `)` (скобки лишь частичные, напр. `(a) + (b)`) — текст без
+ * изменений.
+ */
+function stripEnclosingParens(text: string): string {
+  const t = text.trim();
+  if (!t.startsWith('(') || !t.endsWith(')')) return t;
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      // Закрылась стартовая скобка не на последнем символе — она не охватывающая.
+      if (depth === 0 && i !== t.length - 1) return t;
+    }
+  }
+  return depth === 0 ? t.slice(1, -1).trim() : t;
+}
+
+function renderOrValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: string, kwInd: number): string[] | null {
+  if (value.includes('\n')) return null;
+  let tree: Node;
+  try {
+    tree = new Parser(value.trim(), false).parse();
+  } catch {
+    return null;
+  }
+  if (tree.kind !== 'or') return null;
+  const ctx: RenderCtx = { cont: 1, caseBoolean: false };
+  const iliInd = kwInd + 2;
+  const lines: string[] = [];
+  tree.operands.forEach((op, k) => {
+    // Снять охватывающие скобки операнда (избыточная группировка). Структурную
+    // группу (`(a ИЛИ b)`) разворачиваем через child; листовой операнд, целиком
+    // обёрнутый в скобки (`(НЕ ЕСТЬNULL(…))`, `(Поле)`) — снимаем строкой.
+    const bare = op.kind === 'group' ? op.child
+      : op.kind === 'leaf' ? ({ kind: 'leaf', text: stripEnclosingParens(op.text) } as Node)
+      : op;
+    const sub = renderSelectBool(bare, k === 0 ? kwInd : iliInd, iliInd + 1, 1, ctx, iliInd + 1);
+    sub[0] = k === 0 ? `${tabs(kwInd)}${keyword} ${sub[0]}` : `${tabs(iliInd)}ИЛИ ${sub[0]}`;
+    lines.push(...sub);
+  });
+  return lines;
+}
+
 function renderBranchValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: string, kwInd: number): string[] {
+  const orLines = renderOrValueLines(keyword, value, kwInd);
+  if (orLines !== null) return orLines;
   const reflowed = reflowLeafSelectorCase(value, kwInd + 2);
   if (reflowed !== null) {
     const parts = reflowed.split('\n');
