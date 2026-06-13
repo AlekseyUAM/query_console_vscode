@@ -562,15 +562,29 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
     let f = cur.peek();
     if (f.type !== 'ident' && f.type !== 'keyword') throw cur.error('ожидалось поле табличной части', f);
     cur.next();
-    // Поле может быть квалифицировано псевдонимом табличной части
-    // (`Группы.Группа` внутри `…Группы.(`). Конструктор печатает поле БЕЗ этого
-    // ведущего квалификатора (`Группа`), поэтому берём последний сегмент пути.
+    // Поле может быть квалифицировано. Конструктор различает два случая:
+    //  (1) ведущий сегмент = ИМЯ табличной части (`СоставКомплексногоВопроса.ЭлементарныйВопрос`
+    //      или `Группы.Группа`) — это самоссылка на ТЧ, квалификатор печатается БЕЗ
+    //      ведущего сегмента (`ЭлементарныйВопрос`);
+    //  (2) ведущий сегмент = ССЫЛОЧНАЯ колонка ТЧ (`ЭлементарныйВопрос.ТребуетсяКомментарий`)
+    //      — это навигация по типу колонки, оракул СОХРАНЯЕТ полный путь.
+    // Собираем сегменты и решаем по первому сегменту.
+    const segs: string[] = [f.text];
     while (cur.isPunct('.')) {
       cur.next(); // '.'
       const seg = cur.peek();
       if (seg.type !== 'ident' && seg.type !== 'keyword') throw cur.error('ожидалось поле табличной части', seg);
       cur.next();
+      segs.push(seg.text);
       f = seg;
+    }
+    // Многосегментный путь: если первый сегмент — имя ТЧ, отбрасываем его (самоссылка);
+    // иначе оставляем путь целиком (навигация по ссылочной колонке).
+    let fieldText: string;
+    if (segs.length > 1 && segs[0].toUpperCase() === tsName.toUpperCase()) {
+      fieldText = segs.slice(1).join('.');
+    } else {
+      fieldText = segs.join('.');
     }
     // Псевдоним колонки. Обычно совпадает с именем поля; конструктор сохраняет и
     // ОТЛИЧНЫЙ псевдоним (`ЭлементарныйВопрос КАК ЭлементарныйВопросОтвет`).
@@ -581,10 +595,10 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
       cur.next();
       colAlias = a.text;
     }
-    // Исходный текст имени поля (для keyword-токенов value в верхнем регистре).
-    fields.push(f.text);
+    // Имя поля (с учётом квалификатора: самоссылка отброшена, навигация по ссылке сохранена).
+    fields.push(fieldText);
     // Отличный псевдоним сохраняем; совпадающий с именем — нет (авто `Поле КАК Поле`).
-    fieldAliases.push(colAlias !== undefined && colAlias !== f.text ? colAlias : undefined);
+    fieldAliases.push(colAlias !== undefined && colAlias !== fieldText ? colAlias : undefined);
     if (cur.matchPunct(',')) continue;
     break;
   }
