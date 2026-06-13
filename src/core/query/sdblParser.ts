@@ -300,6 +300,9 @@ function parseSingleQuery(
   // 1С резолвит по схеме метаданных (недоступна здесь); эвристика по вхождениям
   // совпадает с эталоном на всём корпусе.
   const fieldOwners = buildFieldOwnerScan(cur.allTokens, aliasToId);
+  // id таблицы → её полное имя: для снятия префикса полного имени из голого пути
+  // поля (`Справочник.Валюты.Ссылка` при источнике `Справочник.Валюты` → `Ссылка`).
+  const tableFullNames = new Map(tables.map(t => [t.id, t.fullName] as const));
   const resolveOwner = (head: string): string | undefined => {
     if (soleSource) return soleSource.id;
     const owners = fieldOwners.get(head.toUpperCase());
@@ -336,7 +339,7 @@ function parseSingleQuery(
     }
     const target = sawTabSection ? trailingFields : fields;
     const before = target.length;
-    interpretField(item.field, aliasToId, target, aggregates, resolveOwner);
+    interpretField(item.field, aliasToId, target, aggregates, resolveOwner, tableFullNames);
     if (tagOrder) for (let k = before; k < target.length; k++) target[k].selectOrder = selectOrder;
     selectOrder++;
   }
@@ -1171,7 +1174,8 @@ function interpretField(
   aliasToId: Map<string, string>,
   fields: SelectedField[],
   aggregates: SummableField[],
-  resolveOwner: OwnerResolver
+  resolveOwner: OwnerResolver,
+  tableFullNames: Map<string, string>
 ): void {
   // Голое поле (фаза 6.12, расширено 6.15.4): разработчик не квалифицировал поле
   // псевдонимом таблицы (`ВЫБРАТЬ Ссылка ИЗ … КАК Т`, `ВЫБРАТЬ Валюта.Код` при
@@ -1186,7 +1190,8 @@ function interpretField(
     const bare = tryBareField(rf.bodyTokens, aliasToId);
     const owner = bare ? resolveOwner(bare.head) : undefined;
     if (bare && owner !== undefined) {
-      const field: SelectedField = { tableId: owner, path: bare.path };
+      const path = stripOwnerFullName(bare.path, tableFullNames.get(owner));
+      const field: SelectedField = { tableId: owner, path };
       if (rf.alias !== undefined && !AUTO_ALIAS.test(rf.alias)) field.alias = rf.alias;
       fields.push(field);
       return;
@@ -1208,7 +1213,7 @@ function interpretField(
   }
 
   // 1) Попытка агрегата.
-  const agg = tryAggregate(rf.bodyTokens, aliasToId, resolveOwner);
+  const agg = tryAggregate(rf.bodyTokens, aliasToId, resolveOwner, tableFullNames);
   if (agg) {
     const field: SelectedField = { tableId: agg.tableId, path: agg.path, func: agg.func };
     if (rf.alias !== undefined) field.alias = rf.alias;
@@ -1244,7 +1249,8 @@ interface AggHit {
 function tryAggregate(
   body: Token[],
   aliasToId: Map<string, string>,
-  resolveOwner: OwnerResolver
+  resolveOwner: OwnerResolver,
+  tableFullNames: Map<string, string>
 ): AggHit | undefined {
   if (body.length < 4) return undefined;
   const head = body[0];
@@ -1276,7 +1282,7 @@ function tryAggregate(
   const bare = tryBareField(inner, aliasToId);
   if (bare) {
     const owner = resolveOwner(bare.head);
-    if (owner !== undefined) return { tableId: owner, path: bare.path, func };
+    if (owner !== undefined) return { tableId: owner, path: stripOwnerFullName(bare.path, tableFullNames.get(owner)), func };
   }
   return undefined;
 }
@@ -1440,6 +1446,21 @@ function tryBareField(
   // Литерал-значение из одного сегмента (НЕОПРЕДЕЛЕНО/ИСТИНА/ЛОЖЬ/NULL).
   if (segs.length === 1 && LITERAL_VALUES.has(head.toUpperCase())) return undefined;
   return { path: segs.join('.'), head };
+}
+
+/**
+ * Снять ведущий префикс полного имени таблицы-владельца из голого пути поля:
+ * `Справочник.Валюты.Ссылка` при владельце `Справочник.Валюты` → `Ссылка`.
+ * Конструктор 1С трактует ведущие сегменты, дословно равные полному имени таблицы
+ * источника, как ссылку НА таблицу, а не часть пути поля, и печатает её через
+ * псевдоним (`Валюты.Ссылка КАК Ссылка`). Срабатывает только на точном совпадении
+ * `<fullName>.` (две и более частей), поэтому вложенные ссылки `Алиас.Владелец.Код`
+ * не затрагиваются. Регистронезависимо.
+ */
+function stripOwnerFullName(path: string, fullName: string | undefined): string {
+  if (!fullName || !fullName.includes('.')) return path;
+  const prefix = fullName + '.';
+  return path.toUpperCase().startsWith(prefix.toUpperCase()) ? path.slice(prefix.length) : path;
 }
 
 /**
