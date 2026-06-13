@@ -877,10 +877,33 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     return effAlias ? `\t${lhs} КАК ${effAlias}` : `\t${lhs}`;
   };
 
+  // Печать одной строки колонки-выражения проекции ТЧ: формат как поле выборки, но
+  // сдвинутый на +1 таб (содержимое проекции глубже на уровень: база 1 → 2). Псевдоним —
+  // на последней строке. `comma` — добавляемая запятая (между колонками).
+  const tsExprLines = (expression: string, alias: string | undefined, comma: string): string[] => {
+    const rows = formatSelectExpression(expression).split('\n');
+    const shifted = rows.map((l, j) => (j === 0 ? '\t\t' + l : '\t' + l));
+    const tail = alias !== undefined ? ' КАК ' + alias : '';
+    shifted[shifted.length - 1] = shifted[shifted.length - 1] + tail + comma;
+    return shifted;
+  };
+
   const tsLine = (tsf: SelectedTabSectionField): string => {
     const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
     let subLines: string[];
-    if (tsf.exprFields && tsf.exprFields.length > 0) {
+    if (tsf.columns && tsf.columns.length > 0) {
+      // Смешанная проекция ТЧ (простые поля + произвольные выражения, в исходном
+      // порядке). Простая колонка — голая (`<поле> КАК <псевдоним>`); выражение —
+      // через formatSelectExpression с переквалификацией (выполнена парсером).
+      subLines = tsf.columns.flatMap((c, i) => {
+        const comma = i < tsf.columns!.length - 1 ? ',' : '';
+        if (c.kind === 'field') {
+          const colAlias = c.alias ?? c.field;
+          return [`\t\t${c.field} КАК ${colAlias}${comma}`];
+        }
+        return tsExprLines(c.expression, c.alias, comma);
+      });
+    } else if (tsf.exprFields && tsf.exprFields.length > 0) {
       // Проекция ТЧ из произвольных выражений (агрегат над колонкой ТЧ, фаза 6.15.26).
       // Каждое выражение печатается как поле выборки, сдвинутое на +2 таба (содержимое
       // проекции глубже на 1 уровень от обычного поля = 1 таб → база 2), с синтетическим

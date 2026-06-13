@@ -24,6 +24,7 @@ import type {
   SelectedTable,
   SelectedField,
   SelectedTabSectionField,
+  TabSectionColumn,
   AggregateFunction,
   SummableField,
   Selection,
@@ -174,6 +175,16 @@ class Cursor {
   error(message: string, t: Token = this.peek()): Error {
     return new Error(`Ошибка разбора ${t.line}:${t.col} — ${message} (получено «${t.value || '<конец>'}»)`);
   }
+
+  /** Снимок позиции для отката (спекулятивный разбор). */
+  mark(): number {
+    return this.idx;
+  }
+
+  /** Откат позиции к снимку, снятому `mark()`. */
+  reset(m: number): void {
+    this.idx = m;
+  }
 }
 
 /** Промежуточное представление «сырого» поля до резолвинга псевдонимов. */
@@ -186,17 +197,17 @@ interface RawField {
   rawBody: string;
 }
 
+/** Одна сырая колонка проекции ТЧ: простое поле или произвольное выражение. */
+type RawTabColumn =
+  | { kind: 'field'; field: string; alias?: string }
+  | { kind: 'expr'; rawBody: string; alias?: string };
+
 /** Сырая табличная часть `<alias>.<tsName>.( … ) КАК <tsName>`. */
 interface RawTabSection {
   tableAlias: string;
   tsName: string;
-  fields: string[];
-  /**
-   * Явный псевдоним колонки `<поле> КАК <alias>`, отличный от имени поля
-   * (позиционно соответствует `fields`); undefined — псевдоним = имя поля.
-   * Конструктор печатает заданный псевдоним, иначе авто `<поле> КАК <поле>`.
-   */
-  fieldAliases?: (string | undefined)[];
+  /** Колонки проекции в исходном порядке (смесь полей и выражений). */
+  columns: RawTabColumn[];
   /** Явный псевдоним `… КАК <alias>` (если задан), иначе undefined. */
   alias?: string;
 }
@@ -336,7 +347,7 @@ function parseSingleQuery(
   let selectOrder = 0;
   for (const item of items) {
     if (item.kind === 'tabSection') {
-      const ts = resolveTabSection(item.ts, aliasToId, tables);
+      const ts = resolveTabSection(item.ts, aliasToId, tables, aliasSpelling);
       if (tagOrder) ts.selectOrder = selectOrder;
       selectOrder++;
       sawTabSection = true;
@@ -571,52 +582,15 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
   cur.expectPunct('.');
   cur.expectPunct('(');
 
-  // Внутри: список полей через запятую. `КАК <псевдоним>` после имени поля
-  // необязателен — 1С допускает голые имена `Идентификатор, ВариантЗапуска`,
-  // которым конструктор сам подставляет псевдоним = имя поля.
-  const fields: string[] = [];
-  const fieldAliases: (string | undefined)[] = [];
+  // Внутри: список колонок через запятую. Колонка — либо ПРОСТОЕ поле (голое имя или
+  // точечный путь: `НомерСтроки`, `Номенклатура.Артикул`), которому `КАК <псевдоним>`
+  // необязателен (1С подставляет псевдоним = имя), либо ПРОИЗВОЛЬНОЕ ВЫРАЖЕНИЕ
+  // (`ВЫБОР … КОНЕЦ`, литерал `""`/`0`, вызов функции, арифметика). Выражения читаются
+  // сырым срезом и переквалифицируются генератором.
+  const columns: RawTabColumn[] = [];
   for (;;) {
-    let f = cur.peek();
-    if (f.type !== 'ident' && f.type !== 'keyword') throw cur.error('ожидалось поле табличной части', f);
-    cur.next();
-    // Поле может быть квалифицировано. Конструктор различает два случая:
-    //  (1) ведущий сегмент = ИМЯ табличной части (`СоставКомплексногоВопроса.ЭлементарныйВопрос`
-    //      или `Группы.Группа`) — это самоссылка на ТЧ, квалификатор печатается БЕЗ
-    //      ведущего сегмента (`ЭлементарныйВопрос`);
-    //  (2) ведущий сегмент = ССЫЛОЧНАЯ колонка ТЧ (`ЭлементарныйВопрос.ТребуетсяКомментарий`)
-    //      — это навигация по типу колонки, оракул СОХРАНЯЕТ полный путь.
-    // Собираем сегменты и решаем по первому сегменту.
-    const segs: string[] = [f.text];
-    while (cur.isPunct('.')) {
-      cur.next(); // '.'
-      const seg = cur.peek();
-      if (seg.type !== 'ident' && seg.type !== 'keyword') throw cur.error('ожидалось поле табличной части', seg);
-      cur.next();
-      segs.push(seg.text);
-      f = seg;
-    }
-    // Многосегментный путь: если первый сегмент — имя ТЧ, отбрасываем его (самоссылка);
-    // иначе оставляем путь целиком (навигация по ссылочной колонке).
-    let fieldText: string;
-    if (segs.length > 1 && segs[0].toUpperCase() === tsName.toUpperCase()) {
-      fieldText = segs.slice(1).join('.');
-    } else {
-      fieldText = segs.join('.');
-    }
-    // Псевдоним колонки. Обычно совпадает с именем поля; конструктор сохраняет и
-    // ОТЛИЧНЫЙ псевдоним (`ЭлементарныйВопрос КАК ЭлементарныйВопросОтвет`).
-    let colAlias: string | undefined;
-    if (cur.matchKeyword('КАК')) { // matchKeyword уже поглотил токен `КАК`
-      const a = cur.peek();
-      if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним поля после КАК', a);
-      cur.next();
-      colAlias = a.text;
-    }
-    // Имя поля (с учётом квалификатора: самоссылка отброшена, навигация по ссылке сохранена).
-    fields.push(fieldText);
-    // Отличный псевдоним сохраняем; совпадающий с именем — нет (авто `Поле КАК Поле`).
-    fieldAliases.push(colAlias !== undefined && colAlias !== fieldText ? colAlias : undefined);
+    const col = parseTabColumn(cur, tsName, tableAlias);
+    columns.push(col);
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -631,7 +605,83 @@ function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
       cur.next();
     }
   }
-  return { tableAlias, tsName, fields, fieldAliases, alias };
+  return { tableAlias, tsName, columns, alias };
+}
+
+/**
+ * Разбирает ОДНУ колонку проекции ТЧ. Распознаёт простое поле (голый идентификатор или
+ * точечный путь) от произвольного выражения, считывая тело до верхнеуровневой `,`/`)`/`КАК`.
+ * Простое поле — путь из имён через `.`, без операторов/скобок/литералов; ведущий сегмент,
+ * совпадающий с именем ТЧ, отбрасывается (самоссылка). Всё прочее — выражение (сырой срез).
+ */
+function parseTabColumn(cur: Cursor, tsName: string, tableAlias: string): RawTabColumn {
+  const start = cur.peek();
+  if (start.type === 'eof') throw cur.error('ожидалось поле табличной части', start);
+
+  // Попытка распознать ПРОСТОЕ поле: цепочка `имя (. имя)*`, после которой идёт
+  // граница колонки (`,` / `)` / `КАК`). Если после пути встретилось что-то иное
+  // (оператор, `(` вызова, литерал) — это выражение; откатываемся и читаем сырьём.
+  const mark = cur.mark();
+  if (start.type === 'ident' || start.type === 'keyword') {
+    const segs: string[] = [start.text];
+    cur.next();
+    let ok = true;
+    while (cur.isPunct('.')) {
+      cur.next();
+      const seg = cur.peek();
+      if (seg.type !== 'ident' && seg.type !== 'keyword') { ok = false; break; }
+      cur.next();
+      segs.push(seg.text);
+    }
+    const after = cur.peek();
+    const atBoundary = after.type === 'eof'
+      || (after.type === 'punct' && (after.value === ',' || after.value === ')'))
+      || (after.type === 'keyword' && after.value === 'КАК');
+    if (ok && atBoundary) {
+      // Простая колонка печатается ГОЛОЙ относительно ТЧ: отбрасываем ведущие сегменты,
+      // совпадающие с псевдонимом таблицы и/или именем ТЧ (`ОтчетКомиссионера.Поле`,
+      // `Запасы.Поле`, `ОтчетКомиссионера.Запасы.Поле` → `Поле`). Сверено с оракулом.
+      let body = segs;
+      if (body.length > 1 && body[0].toUpperCase() === tableAlias.toUpperCase()) body = body.slice(1);
+      if (body.length > 1 && body[0].toUpperCase() === tsName.toUpperCase()) body = body.slice(1);
+      const fieldText = body.join('.');
+      let colAlias: string | undefined;
+      if (cur.matchKeyword('КАК')) {
+        const a = cur.peek();
+        if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним поля после КАК', a);
+        cur.next();
+        colAlias = a.text;
+      }
+      // Совпадающий с именем псевдоним не сохраняем (авто `Поле КАК Поле`).
+      return { kind: 'field', field: fieldText, alias: colAlias !== undefined && colAlias !== fieldText ? colAlias : undefined };
+    }
+  }
+
+  // Произвольное выражение: откатываемся к началу и читаем тело сырьём до границы.
+  cur.reset(mark);
+  const bodyTokens: Token[] = [];
+  let alias: string | undefined;
+  let depth = 0;
+  for (;;) {
+    const t = cur.peek();
+    if (t.type === 'eof') break;
+    if (depth === 0) {
+      if (t.type === 'punct' && (t.value === ',' || t.value === ')')) break;
+      if (t.type === 'keyword' && t.value === 'КАК') {
+        cur.next();
+        const a = cur.peek();
+        if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
+        cur.next();
+        alias = a.text;
+        break;
+      }
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    bodyTokens.push(cur.next());
+  }
+  if (bodyTokens.length === 0) throw cur.error('ожидалось поле табличной части', cur.peek());
+  return { kind: 'expr', rawBody: sliceSource(cur.source, bodyTokens), alias };
 }
 
 function parseOneField(cur: Cursor): RawField {
@@ -718,17 +768,125 @@ function parseOneField(cur: Cursor): RawField {
 function resolveTabSection(
   ts: RawTabSection,
   aliasToId: Map<string, string>,
-  tables: SelectedTable[]
+  tables: SelectedTable[],
+  aliasSpelling: Map<string, string>
 ): SelectedTabSectionField {
   const tableId = aliasToId.get(ts.tableAlias.toUpperCase()) ?? '';
   const table = tables.find(t => t.id === tableId);
   // tsFullName косметический (генератор использует только tsName и fields).
   const tsFullName = table ? `${table.fullName}.${ts.tsName}` : ts.tsName;
-  const hasColAlias = ts.fieldAliases?.some(a => a !== undefined);
+
+  const hasExpr = ts.columns.some(c => c.kind === 'expr');
+
+  // Все объявленные псевдонимы таблиц — голову, совпадающую с ними, НЕ префиксуем
+  // (это ссылка на саму таблицу/другой источник, а не на колонку ТЧ).
+  const tableAliasUp = ts.tableAlias.toUpperCase();
+  // Префикс переквалификации выражений: `<псевдонимТаблицы>.<ТЧ>`.
+  const prefix = `${ts.tableAlias}.${ts.tsName}`;
+
+  const columns: TabSectionColumn[] = ts.columns.map(c => {
+    if (c.kind === 'field') return { kind: 'field', field: c.field, alias: c.alias };
+    // Внутри выражения: голые ссылки на колонки ТЧ получают полный префикс
+    // `<таблица>.<ТЧ>.`, уже квалифицированные/литералы/вызовы — без изменений.
+    const expression = requalifyTabSectionExpr(c.rawBody, prefix, aliasSpelling, tableAliasUp, ts.tsName);
+    return { kind: 'expr', expression, alias: c.alias };
+  });
+
+  // Обратная совместимость: `fields`/`fieldAliases` заполняем из ПРОСТЫХ колонок
+  // (downstream-потребители без поддержки `columns`). Генератор предпочитает `columns`.
+  const fields = ts.columns.filter(c => c.kind === 'field').map(c => (c as { field: string }).field);
+  const fieldAliases = ts.columns.filter(c => c.kind === 'field').map(c => (c as { alias?: string }).alias);
+  const hasColAlias = fieldAliases.some(a => a !== undefined);
+
   return {
-    tableId, tsName: ts.tsName, tsFullName, fields: ts.fields, alias: ts.alias,
-    ...(hasColAlias ? { fieldAliases: ts.fieldAliases } : {}),
+    tableId, tsName: ts.tsName, tsFullName, fields, alias: ts.alias,
+    ...(hasColAlias ? { fieldAliases } : {}),
+    ...(hasExpr ? { columns } : {}),
   };
+}
+
+/**
+ * Переквалификация голых ссылок внутри выражения-колонки проекции ТЧ. Каждая точечная
+ * цепочка имён, голова которой НЕ объявленный псевдоним таблицы и НЕ голова текущей
+ * ТЧ-проекции, получает префикс `<префикс>.` (= `<псевдонимТаблицы>.<ТЧ>.`). В отличие
+ * от квалификации в подзапросе, префиксуются и многосегментные цепочки (`ЕдиницаИзмерения.
+ * Коэффициент` → `<префикс>.ЕдиницаИзмерения.Коэффициент`): внутри проекции бесхозная
+ * голова — это навигация по колонке ТЧ, не коррелированная ссылка. НЕ трогаются:
+ * продолжения путей, вызовы функций, типы после `КАК`/`ССЫЛКА`, аргументы
+ * `ЗНАЧЕНИЕ(…)`/`ТИП(…)`, подзапросы, стоп-слова и литералы (сверено с оракулом).
+ */
+function requalifyTabSectionExpr(
+  rawBody: string,
+  prefix: string,
+  aliasSpelling: Map<string, string>,
+  tableAliasUp: string,
+  tsName: string
+): string {
+  const tokens = tokenize(rawBody).filter(t => t.type !== 'eof');
+  if (tokens.length === 0) return rawBody;
+  const edits: { pos: number; len: number; text: string }[] = [];
+  let depth = 0;
+  let skipUntilDepth: number | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && t.value === '(') {
+      depth++;
+      if (skipUntilDepth === undefined &&
+          tokens[i + 1]?.type === 'keyword' && tokens[i + 1].value === 'ВЫБРАТЬ') {
+        skipUntilDepth = depth;
+      }
+      continue;
+    }
+    if (t.type === 'punct' && t.value === ')') {
+      depth--;
+      if (skipUntilDepth !== undefined && depth < skipUntilDepth) skipUntilDepth = undefined;
+      continue;
+    }
+    if (skipUntilDepth !== undefined) continue;
+    if (!isNameToken(t)) continue;
+    const up = t.text.toUpperCase();
+    // ЗНАЧЕНИЕ(/ТИП( — путь метаданных, не поле.
+    if ((up === 'ЗНАЧЕНИЕ' || up === 'ТИП') &&
+        tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '(') {
+      skipUntilDepth = depth + 1;
+      continue;
+    }
+    if (t.type !== 'ident') continue; // ключевые слова полями не бывают
+    const prev = tokens[i - 1];
+    if (prev && prev.type === 'punct' && prev.value === '.') continue; // продолжение пути
+    const prevUp = prev && (prev.type === 'ident' || prev.type === 'keyword')
+      ? prev.text.toUpperCase() : undefined;
+    const skipChain = prevUp === 'КАК' || prevUp === 'ССЫЛКА' || EXPR_STOP_WORDS.has(up);
+    // Конец точечной цепочки.
+    let j = i;
+    while (tokens[j + 1]?.type === 'punct' && tokens[j + 1].value === '.' && isNameToken(tokens[j + 2])) {
+      j += 2;
+    }
+    const next = tokens[j + 1];
+    const isCall = next !== undefined && next.type === 'punct' && next.value === '(';
+    if (!skipChain && !isCall) {
+      const declared = aliasSpelling.get(up);
+      if (declared !== undefined || up === tableAliasUp) {
+        // Уже квалифицировано псевдонимом таблицы — нормализуем написание, не префиксуем.
+        const sp = declared ?? (up === tableAliasUp ? prefix.slice(0, prefix.indexOf('.')) : t.text);
+        if (sp !== undefined && t.text !== sp) edits.push({ pos: t.pos, len: t.text.length, text: sp });
+      } else if (up === tsName.toUpperCase()) {
+        // Голова = имя ТЧ (самоссылка `<ТЧ>.поле`) — это уже путь от ТЧ; не префиксуем.
+      } else {
+        // Бесхозная голова — колонка ТЧ; префиксуем всю цепочку.
+        edits.push({ pos: t.pos, len: 0, text: `${prefix}.` });
+      }
+    }
+    i = j;
+  }
+  let out = '';
+  let p = tokens[0].pos;
+  for (const e of edits) {
+    out += rawBody.slice(p, e.pos) + e.text;
+    p = e.pos + e.len;
+  }
+  const last = tokens[tokens.length - 1];
+  return out + rawBody.slice(p, last.pos + last.value.length);
 }
 
 /** Сырой срез исходника по диапазону токенов тела. */
