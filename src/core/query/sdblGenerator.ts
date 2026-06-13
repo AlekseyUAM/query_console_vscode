@@ -115,9 +115,16 @@ function renderConditionSubquery(subquery: QueryDocument, baseTabs: number): str
       text = text.replace(re, `$1${t.fullName}.`);
     }
   }
+  // Пустые строки-разделители вокруг `ОБЪЕДИНИТЬ ВСЕ` внутри подзапроса-операнда
+  // конструктор отбивает на ОДИН таб мельче тела (`baseTabs - 1`), а не на baseTabs
+  // (фаза 6.15.19, MCP). Прочие строки получают полный pad.
+  const padBlank = '\t'.repeat(Math.max(0, baseTabs - 1));
   const inner = text.split('\n');
   return inner
-    .map((l, k) => (k === 0 ? `${pad}(${l}` : `${pad}${l}`))
+    .map((l, k) => {
+      if (l === '') return padBlank;
+      return k === 0 ? `${pad}(${l}` : `${pad}${l}`;
+    })
     .join('\n') + ')';
 }
 
