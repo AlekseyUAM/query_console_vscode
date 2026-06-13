@@ -170,7 +170,72 @@ function renderSource(t: SelectedTable, bodyTabs = 1): string {
   // сохраняются. Скобки — только если задан хоть один параметр.
   const positions = [v.period ?? '', v.condition ?? ''];
   if (!positions.some(p => p !== '')) return t.fullName;
-  return `${t.fullName}(${positions.join(', ')})`;
+  return renderVirtualParams(t.fullName, positions, v.condition ?? '', bodyTabs);
+}
+
+/**
+ * Ставит перенос строки перед каждым ВЕРХНЕУРОВНЕВЫМ оператором И/ИЛИ (вне скобок и
+ * строк; `И` диапазона `МЕЖДУ a И b` не трогает). Если условие уже многострочное,
+ * существующие переносы сохраняются (повторных не добавляем). Используется для
+ * разбивки составного условия виртуальной таблицы по конъюнктам.
+ */
+function splitTopLevelBool(expr: string): string {
+  const n = expr.length;
+  const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  let depth = 0;
+  let inStr = false;
+  let betweenPending = 0;
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    const c = expr[i];
+    if (inStr) { out += c; if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === '(') { depth++; out += c; continue; }
+    if (c === ')') { depth--; out += c; continue; }
+    if (depth === 0 && !isWordChar(expr[i - 1])) {
+      const up = expr.slice(i, i + 6).toUpperCase();
+      if (up.startsWith('МЕЖДУ') && !isWordChar(expr[i + 5])) { betweenPending++; out += c; continue; }
+      const isIli = up.startsWith('ИЛИ') && !isWordChar(expr[i + 3]);
+      const isI = expr[i].toUpperCase() === 'И' && !isWordChar(expr[i + 1]);
+      if (isI && betweenPending > 0) { betweenPending--; out += c; continue; }
+      if (isIli || isI) {
+        // Заменяем предшествующий пробел/перенос на ровно один перенос строки
+        // (существующий перенос многострочного ввода не удваиваем).
+        out = out.replace(/[ \t\n]*$/u, '') + '\n';
+        out += c;
+        continue;
+      }
+    }
+    out += c;
+  }
+  return out;
+}
+
+/**
+ * Печатает параметры виртуальной таблицы. Если условие (последний параметр) —
+ * СОСТАВНОЕ (есть верхнеуровневый И/ИЛИ), конструктор 1С разбивает все параметры
+ * по строкам: `Имя(\n\t\t\tП1,\n\t\t\t<условие>...)` с параметрами на bodyTabs+2,
+ * продолжениями условия на bodyTabs+3 (фаза 6.15.20, MCP). Простое (одночленное)
+ * условие остаётся инлайн: `Имя(П1, условие)`.
+ */
+function renderVirtualParams(fullName: string, positions: string[], condition: string, bodyTabs: number): string {
+  if (!condition || !hasTopLevelBooleanOp(condition)) {
+    return `${fullName}(${positions.join(', ')})`;
+  }
+  const base = bodyTabs + 2;
+  const pad = '\t'.repeat(base);
+  // Конструктор разбивает СОСТАВНОЕ условие по верхнеуровневым И/ИЛИ (даже если во
+  // вводе оно на одной строке): каждый конъюнкт — на отдельной строке, продолжения
+  // на base+1. Если входной текст уже многострочный — reindentLeafBool лишь
+  // переотбивает отступы. Сперва принудительно ставим переносы перед верхнеуровневыми
+  // И/ИЛИ, затем нормализуем отступ.
+  const split = splitTopLevelBool(condition.trim());
+  const condText = reindentLeafBool(split, base);
+  const condLines = condText.split('\n');
+  condLines[0] = pad + condLines[0].replace(/^\t+/u, '');
+  // Предшествующие параметры (период и др.) — каждый на своей строке с запятой.
+  const head = positions.slice(0, -1).map(p => pad + p);
+  return `${fullName}(\n${[...head, condLines.join('\n')].join(',\n')})`;
 }
 
 /** Модификаторы выборки записей: РАЗРЕШЕННЫЕ → РАЗЛИЧНЫЕ → ПЕРВЫЕ N. */
