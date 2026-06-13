@@ -439,8 +439,16 @@ export function reindentLeafCase(text: string, base: number): string {
   }
   if (openIdx < 0) return text;
 
-  // Баланс скобок от начала листа до слова ВЫБОР на строке openIdx.
+  // Баланс скобок от начала листа до слова ВЫБОР на строке openIdx. Параллельно
+  // считаем «эффективную» глубину: подряд идущие открывающие скобки `((` конструктор
+  // 1С трактует как ОДИН уровень отступа (избыточная группировка `ЕСТЬNULL((СУММА(…`
+  // даёт КОНЕЦ на base+2, а не base+3) — фаза 6.15.19, MCP. Если перед ВЫБОР
+  // встречается закрывающая скобка (нетривиальная геометрия), эффективную глубину не
+  // считаем и откатываемся на полный баланс (консервативно).
   let parenDepth = 0;
+  let effectiveDepth = 0;
+  let sawClose = false;
+  let prevOpen = false;
   let inStr = false;
   for (let i = 0; i <= openIdx; i++) {
     const line = lines[i];
@@ -448,13 +456,19 @@ export function reindentLeafCase(text: string, base: number): string {
       const ch = line[c];
       if (ch === '"') { inStr = !inStr; continue; }
       if (inStr) continue;
-      if (ch === '(') parenDepth++;
-      else if (ch === ')') parenDepth--;
+      if (ch === '(') {
+        parenDepth++;
+        if (!prevOpen) effectiveDepth++; // первая скобка в серии `(((` — один уровень
+        prevOpen = true;
+        continue;
+      }
+      if (ch === ')') { parenDepth--; sawClose = true; prevOpen = false; continue; }
+      if (ch !== ' ' && ch !== '\t') prevOpen = false;
     }
   }
   if (parenDepth < 0) return text;
 
-  const E0 = base + parenDepth;
+  const E0 = base + (sawClose ? parenDepth : effectiveDepth);
   // Стек контекстов ВЫБОР: каждый элемент — отступ КОНЕЦ (E) данного ВЫБОР.
   const stack: number[] = [E0];
   // Текущий whenInd (для продолжений условия И/ИЛИ) — обновляется на строке КОГДА.
