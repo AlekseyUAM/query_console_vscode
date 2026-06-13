@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   extractQueryStrings,
   unescapeXmlEntities,
@@ -123,5 +125,25 @@ describe('extractQueriesFromXml', () => {
   it('игнорирует прочие теги (dataSource и т.п.)', () => {
     const xml = '<dataSource>ИсточникДанных1</dataSource>';
     expect(extractQueriesFromXml(xml)).toHaveLength(0);
+  });
+});
+
+describe('extractQueriesFromXml — реальный макет', () => {
+  it('round-trip на Reports/Задачи Template.xml: сущности декодированы', () => {
+    const file = path.resolve(
+      __dirname,
+      '../../src/cf/Reports/Задачи/Templates/ОсновнаяСхемаКомпоновкиДанных/Ext/Template.xml',
+    );
+    const xml = fs.readFileSync(file, 'utf8');
+    const res = extractQueriesFromXml(xml);
+    expect(res.length).toBeGreaterThanOrEqual(1);
+    const q = res[0].text;
+    expect(q.startsWith('ВЫБРАТЬ РАЗРЕШЕННЫЕ')).toBe(true);
+    expect(q).toContain('<>');
+    expect(q).toContain('>=');
+    expect(q).toContain('&КрайнийСрок');
+    expect(q).not.toContain('&lt;');
+    expect(q).not.toContain('&amp;');
+    expect(q).not.toContain('&gt;');
   });
 });
