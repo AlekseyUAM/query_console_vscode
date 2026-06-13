@@ -117,6 +117,73 @@ export function appendIsNotNullTrailingSpace(text: string): string {
 }
 
 /**
+ * Квирк конструктора 1С (фаза 6.15.12, paren-only): «голый» вызов-приведение
+ * `ВЫРАЗИТЬ(…)`, стоящий ЦЕЛИКОМ операндом сравнения (`ВЫРАЗИТЬ(…) cmp X` или
+ * `X cmp ВЫРАЗИТЬ(…)`), конструктор печатает в скобках: `(ВЫРАЗИТЬ(…)) cmp X`.
+ * Правило УЗКОЕ — подтверждено MCP-пробами:
+ *   - `ВЫРАЗИТЬ(…).Поле <> …` (доступ к полю после приведения) — НЕ оборачивается;
+ *   - `ТИПЗНАЧЕНИЯ(…) = ТИП(…)` и обычные вызовы функций — НЕ оборачиваются;
+ *   - оборачивается ТОЛЬКО операнд, а не всё сравнение; работает с обеих сторон.
+ * Применяется к листу булева слота (ГДЕ/ИМЕЮЩИЕ/ПО). Лист с переводом строки или с
+ * верхнеуровневым булевым оператором сюда не приходит (это уже не лист-сравнение).
+ */
+const COMPARE_OPS = new Set(['=', '<>', '<', '>', '<=', '>=']);
+export function wrapBareCastOperand(text: string): string {
+  if (text.includes('\n')) return text;
+  let toks: Token[];
+  try {
+    toks = tokenize(text);
+  } catch {
+    return text;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length === 0) return text;
+  // Найти ЕДИНСТВЕННЫЙ верхнеуровневый оператор сравнения (глубина скобок 0).
+  let depth = 0;
+  let cmpIdx = -1;
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    const v = t.text ?? t.value;
+    if (v === '(') { depth++; continue; }
+    if (v === ')') { if (depth > 0) depth--; continue; }
+    if (depth !== 0) continue;
+    if (t.type === 'punct' && COMPARE_OPS.has(v)) {
+      if (cmpIdx !== -1) return text; // более одного — не наш случай
+      cmpIdx = i;
+    }
+  }
+  if (cmpIdx === -1) return text;
+  const left = sig.slice(0, cmpIdx);
+  const right = sig.slice(cmpIdx + 1);
+  // Голый вызов-приведение ВЫРАЗИТЬ: токены `ВЫРАЗИТЬ` `(` … сбалансированно `)`,
+  // покрывающие ВЕСЬ операнд (за `)` ничего нет — иначе это `.Поле` или арифметика).
+  const isBareCast = (ops: Token[]): boolean => {
+    if (ops.length < 3) return false;
+    const head = ops[0];
+    if ((head.text ?? head.value).toUpperCase() !== 'ВЫРАЗИТЬ') return false;
+    if ((ops[1].text ?? ops[1].value) !== '(') return false;
+    let d = 0;
+    for (let i = 1; i < ops.length; i++) {
+      const v = ops[i].text ?? ops[i].value;
+      if (v === '(') d++;
+      else if (v === ')') { d--; if (d === 0) return i === ops.length - 1; }
+    }
+    return false;
+  };
+  const opStr = (ops: Token[]): string => {
+    const first = ops[0];
+    const last = ops[ops.length - 1];
+    const end = last.pos + (last.text ?? last.value).length;
+    return text.slice(first.pos, end);
+  };
+  const cmp = sig[cmpIdx].text ?? sig[cmpIdx].value;
+  const leftStr = isBareCast(left) ? `(${opStr(left)})` : opStr(left);
+  const rightStr = isBareCast(right) ? `(${opStr(right)})` : opStr(right);
+  if (leftStr === opStr(left) && rightStr === opStr(right)) return text;
+  return `${leftStr} ${cmp} ${rightStr}`;
+}
+
+/**
  * Содержит ли лист верхнеуровневый булев оператор И/ИЛИ (вне скобок и вне `МЕЖДУ a
  * И b`). Такой «лист» — на самом деле булево значение-выражение, которое конструктор
  * раскладывает по строкам с переносом по оператору; сплющивать его нельзя.
@@ -1134,7 +1201,9 @@ function renderBool(
       return renderCaseE(node, caseE, ctx);
     }
     case 'leaf': {
-      const t = ctx.stripNotParens ? stripNegatedFieldParens(node.text) : node.text;
+      let t = ctx.stripNotParens ? stripNegatedFieldParens(node.text) : node.text;
+      // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении — в скобках (фаза 6.15.12).
+      t = wrapBareCastOperand(t);
       // Подзапрос внутри листа — перебазировка на контекстный отступ (фаза 6.15.9).
       const rebased = reindentLeafSubquery(t, subInd ?? ind + subDelta(orLvl, ctx));
       return [appendIsNotNullTrailingSpace(rebased)];

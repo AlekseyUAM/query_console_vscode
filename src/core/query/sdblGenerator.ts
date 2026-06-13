@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, wrapBareCastOperand } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -232,7 +232,14 @@ function renderArbitraryConjunct(expr: string, depth = 0): string {
  */
 function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>, depth = 0): string {
   const lines: string[] = [];
-  conditions.forEach((c, k) => {
+  // Расщепление вложенной И-цепочки конъюнкта (фаза 6.15.12): источник вида
+  // `(a = b) И (c = ЗНАЧЕНИЕ(…) И (d <> ""))` парсер делит лишь по ВНЕШНЕМУ И —
+  // второй конъюнкт остаётся И-цепочкой `c = ЗНАЧЕНИЕ(…) И (d <> "")`. Конструктор
+  // печатает её как ОТДЕЛЬНЫЕ конъюнкты на одном отступе base+1, каждый
+  // нестандартный — в скобках (MCP). Разворачиваем такие конъюнкты в плоский
+  // список; пьесы с ИЛИ/ВЫБОР не трогаем (их рендерит структурный путь).
+  const expanded = expandAndChainConjuncts(conditions);
+  expanded.forEach((c, k) => {
     let sub: string[];
     if (!c.custom) {
       const la = aliases.get(c.leftTableId ?? '') ?? c.leftTableId ?? '';
@@ -248,6 +255,73 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
     lines.push(...sub);
   });
   return lines.join('\n');
+}
+
+/**
+ * Делит выражение на конъюнкты по ВЕРХНЕУРОВНЕВОМУ `И` (вне скобок и строк); `И`
+ * диапазона `МЕЖДУ a И b` не считается. Возвращает массив подвыражений (trim).
+ */
+function splitTopLevelAnd(expr: string): string[] {
+  const n = expr.length;
+  const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  const parts: string[] = [];
+  let depth = 0;
+  let inStr = false;
+  let betweenPending = 0;
+  let start = 0;
+  for (let i = 0; i < n; i++) {
+    const c = expr[i];
+    if (inStr) { if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '(') { depth++; continue; }
+    if (c === ')') { depth--; continue; }
+    if (depth !== 0) continue;
+    if (!isWordChar(expr[i - 1])) {
+      const up = expr.slice(i, i + 5).toUpperCase();
+      if (up.startsWith('МЕЖДУ') && !isWordChar(expr[i + 5])) { betweenPending++; continue; }
+      if (expr[i].toUpperCase() === 'И' && !isWordChar(expr[i + 1])) {
+        if (betweenPending > 0) { betweenPending--; continue; }
+        parts.push(expr.slice(start, i).trim());
+        start = i + 1;
+      }
+    }
+  }
+  parts.push(expr.slice(start).trim());
+  return parts;
+}
+
+/** Снимает ровно один полностью охватывающий слой скобок `(…)`, если он есть. */
+function stripOneEnclosingParen(expr: string): string {
+  const e = expr.trim();
+  if (!(e.startsWith('(') && e.endsWith(')'))) return e;
+  let depth = 0;
+  for (let i = 0; i < e.length; i++) {
+    if (e[i] === '(') depth++;
+    else if (e[i] === ')') { depth--; if (depth === 0 && i !== e.length - 1) return e; }
+  }
+  return e.slice(1, -1).trim();
+}
+
+/**
+ * Разворачивает конъюнкты-И-цепочки в плоский список конъюнктов (фаза 6.15.12).
+ * Конъюнкт с верхнеуровневым `И` БЕЗ ИЛИ/ВЫБОР делится по `И`; каждая пьеса
+ * освобождается от одного охватывающего слоя скобок (скобки восстановит
+ * пер-конъюнктная логика). Конъюнкты с ИЛИ/ВЫБОР и не-custom оставляем как есть.
+ */
+function expandAndChainConjuncts(conditions: NonNullable<Join['conditions']>): NonNullable<Join['conditions']> {
+  const out: NonNullable<Join['conditions']> = [];
+  for (const c of conditions) {
+    const e = (c.expression ?? '').trim();
+    if (c.custom && e && hasTopLevelBooleanOp(e) && !/(^|[^\p{L}\p{N}_])(ИЛИ|ВЫБОР)([^\p{L}\p{N}_]|$)/iu.test(e)) {
+      const parts = splitTopLevelAnd(e);
+      if (parts.length > 1) {
+        for (const p of parts) out.push({ custom: true, expression: stripOneEnclosingParen(p) });
+        continue;
+      }
+    }
+    out.push(c);
+  }
+  return out;
 }
 
 /**
@@ -918,7 +992,8 @@ function buildConditionStrings(
       // (фаза 6.15.9, MCP): корневое ГДЕ — 3 (= 1+2), условия внутри В-подзапроса
       // и ИМЕЮЩИЕ — 2 (= 1+1); ведущие НЕ листа добавляют +1 (внутри хелпера).
       const subBase = slot === 'where' && !inConditionSubquery ? 3 : 2;
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase)))));
+      // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении — в скобках (фаза 6.15.12).
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(wrapBareCastOperand(normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase))))));
       continue;
     }
     if (!c.path) continue;
