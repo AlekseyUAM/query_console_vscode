@@ -17,7 +17,7 @@ const NAMED_XML_ENTITIES: Record<string, string> = {
  * `&amp;lt;` → литерал `&lt;` (а не `<`).
  */
 export function unescapeXmlEntities(s: string): string {
-  return s.replace(/&(amp|lt|gt|quot|apos|#[xX]?[0-9a-fA-F]+);/g, (m, ent: string) => {
+  return s.replace(/&(amp|lt|gt|quot|apos|#[xX][0-9a-fA-F]+|#[0-9]+);/g, (m, ent: string) => {
     if (ent[0] === '#') {
       const code =
         ent[1] === 'x' || ent[1] === 'X'
@@ -156,6 +156,14 @@ export function extractQueriesFromXml(xmlSource: string): ExtractedQuery[] {
 
 // ---- CLI ----
 
+function readSource(file: string): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 function walk(dir: string, ext: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -197,12 +205,8 @@ export function run(): void {
   // .bsl: код модулей по всему CONFIG_DIR.
   const bslFiles = walk(cfRoot, '.bsl').sort();
   for (const file of bslFiles) {
-    let source: string;
-    try {
-      source = fs.readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
+    const source = readSource(file);
+    if (source === null) continue;
     const rel = path.relative(cfRoot, file).split(path.sep).join('-');
     extractQueryStrings(source).forEach((q, idx) => writeQuery(q, rel, idx));
   }
@@ -212,12 +216,8 @@ export function run(): void {
   if (fs.existsSync(reportsDir)) {
     const xmlFiles = walk(reportsDir, '.xml').sort();
     for (const file of xmlFiles) {
-      let source: string;
-      try {
-        source = fs.readFileSync(file, 'utf8');
-      } catch {
-        continue;
-      }
+      const source = readSource(file);
+      if (source === null) continue;
       const rel = path.relative(cfRoot, file).split(path.sep).join('-');
       extractQueriesFromXml(source).forEach((q, idx) => writeQuery(q, rel, idx));
     }
