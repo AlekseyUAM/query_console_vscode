@@ -105,6 +105,21 @@ export function leafHasSubquery(raw: string): boolean {
 }
 
 /**
+ * Содержит ли лист вложенный ВЫБОР…КОНЕЦ (`ВЫБОР… КОНЕЦ <op> …` как значение-слот).
+ * Такой CASE конструктор раскладывает построчно (reindentLeafCase) — лист сплющивать
+ * нельзя, иначе схлопнется в одну строку (фаза 6.15.21).
+ */
+export function leafHasCase(raw: string): boolean {
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return false;
+  }
+  return toks.some((t) => (t.type === 'keyword' || t.type === 'ident') && t.value.toUpperCase() === 'ВЫБОР');
+}
+
+/**
  * Квирк конструктора 1С: листовое булево условие, оканчивающееся предикатом
  * `ЕСТЬ НЕ NULL`, печатается с ОДНИМ хвостовым пробелом (`… ЕСТЬ НЕ NULL `). Форма
  * без `НЕ` (`ЕСТЬ NULL`) хвостового пробела НЕ получает. Подтверждено по корпусу:
@@ -1412,7 +1427,11 @@ class Parser {
     // оператора И/ИЛИ (значение-слот вида `a ИЛИ b` конструктор переотрисовывает с
     // переносом по оператору — не сплющиваем, сохраняя структуру исходника).
     const flat =
-      this.flattenLeaves && raw.includes('\n') && !leafHasSubquery(raw) && !leafHasTopBoolean(raw)
+      this.flattenLeaves &&
+      raw.includes('\n') &&
+      !leafHasSubquery(raw) &&
+      !leafHasTopBoolean(raw) &&
+      !leafHasCase(raw)
         ? flattenLeafText(raw)
         : raw;
     return normalizeLeafCase(flat);
@@ -1667,12 +1686,27 @@ class Parser {
    */
   private parseValue(): Node {
     if (!this.atEof() && isCase(this.peek())) {
-      return this.parseCase();
+      // Значение-слот, начинающийся с ВЫБОР, — вложенный CASE-узел ТОЛЬКО если ВЫБОР
+      // занимает весь слот (за его КОНЕЦ сразу граница слота: КОГДА/ИНАЧЕ/КОНЕЦ/`)`/
+      // eof). Если за КОНЕЦ идёт оператор (`КОНЕЦ <> &П`), значение — это выражение
+      // `ВЫБОР… <op> …`, и его нужно держать листом (КОНЕЦ несёт хвост; фаза 6.15.21,
+      // MCP). Пробуем разобрать CASE; если за ним не граница — откатываемся к листу.
+      const save = this.i;
+      const caseNode = this.parseCase();
+      if (this.atEof()) return caseNode;
+      const t = this.peek();
+      const boundary =
+        isWhen(t) || isElse(t) || isEnd(t) || (t.type === 'punct' && t.value === ')');
+      if (boundary) return caseNode;
+      this.i = save; // откат: значение — лист `ВЫБОР… <op> …`
     }
     const startTok = this.peek();
     const from = startTok.pos;
     let to = from;
     let depth = 0;
+    // Глубина вложенных ВЫБОР…КОНЕЦ внутри значения-листа (`ВЫБОР… КОНЕЦ <op> …`):
+    // их КОГДА/ИНАЧЕ/КОНЕЦ — НЕ границы внешнего слота (фаза 6.15.21).
+    let caseDepth = 0;
     while (!this.atEof()) {
       const t = this.peek();
       if (t.type === 'punct' && t.value === '(') {
@@ -1688,7 +1722,14 @@ class Parser {
         this.i++;
         continue;
       }
-      if (depth === 0 && (isWhen(t) || isElse(t) || isEnd(t))) break;
+      if (depth === 0 && isCase(t)) {
+        caseDepth++;
+      } else if (depth === 0 && isEnd(t)) {
+        if (caseDepth === 0) break;
+        caseDepth--;
+      } else if (depth === 0 && caseDepth === 0 && (isWhen(t) || isElse(t))) {
+        break;
+      }
       to = t.pos + t.value.length;
       this.i++;
     }
