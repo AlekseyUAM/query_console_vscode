@@ -575,14 +575,18 @@ export function reindentLeafCase(text: string, base: number): string {
     }
     return d;
   };
-  const tabsOf = (s: string): number => (s.match(/^\t*/u) ?? [''])[0].length;
+  // Ведущий отступ листа может быть НАБРАН ПРОБЕЛАМИ (исходник конструктора иногда
+  // отбивает CASE пробелами, а не табами). Функция переотрисовывает ВСЕ отступы от
+  // base по структуре ВЫБОР/КОГДА/ТОГДА и от ВХОДНОГО отступа не зависит — поэтому
+  // распознаём ключевые слова и считаем глубину игнорируя и пробелы, и табы.
+  const tabsOf = (s: string): number => (s.match(/^[\t ]*/u) ?? [''])[0].length;
   // Переустановка ведущих табов + нормализация хвостовых пробелов: конструктор
   // срезает хвостовой пробел структурных строк, КРОМЕ предиката `ЕСТЬ НЕ NULL `,
   // который сохраняет ровно один хвостовой пробел (см. appendIsNotNullTrailingSpace).
   const reTab = (s: string, n: number): string =>
-    '\t'.repeat(n) + appendIsNotNullTrailingSpace(s.replace(/^\t+/u, '').replace(/\s+$/u, ''));
+    '\t'.repeat(n) + appendIsNotNullTrailingSpace(s.replace(/^[\t ]+/u, '').replace(/\s+$/u, ''));
   const firstWord = (s: string): string => {
-    const m = /^\t*([\p{L}]+)/u.exec(s);
+    const m = /^[\t ]*([\p{L}]+)/u.exec(s);
     return m ? m[1].toUpperCase() : '';
   };
   // Предсканирование условия КОГДА (строка startIdx — сама КОГДА): какие скобочные
@@ -2038,8 +2042,12 @@ function renderBool(
         if (k === 0) {
           lines.push(...renderBool(op, ind, andCont, orLvl, ctx, caseE, subInd));
         } else {
-          // operandK на отступе andCont; CASE-операнд → E=andCont+1.
-          const sub = renderBool(op, andCont, andCont + 1, orLvl, ctx, andCont + 1);
+          // operandK на отступе andCont; CASE-операнд → E=andCont+1 на ВЕРХНЕМ уровне
+          // И-цепочки ГДЕ (склейка `И ВЫБОР`, фаза 6.15.19). Но когда сама И-цепочка —
+          // ОПЕРАНД верхнеуровневого ИЛИ (orLvl>0: `A ИЛИ B И ВЫБОР…КОНЕЦ`), конструктор
+          // выравнивает КОНЕЦ ВЫБОР со строкой `И ВЫБОР` (E=andCont) — корпус.
+          const condCaseE = orLvl === 0 ? andCont + 1 : andCont;
+          const sub = renderBool(op, andCont, andCont + 1, orLvl, ctx, condCaseE);
           sub[0] = tabs(andCont) + 'И ' + sub[0];
           lines.push(...sub);
         }
@@ -2211,16 +2219,36 @@ function stripEnclosingParens(text: string): string {
 }
 
 function renderOrValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: string, kwInd: number): string[] | null {
-  if (value.includes('\n')) return null;
   let tree: Node;
   try {
     tree = new Parser(value.trim(), false).parse();
   } catch {
     return null;
   }
-  if (tree.kind !== 'or') return null;
+  // Верхнеуровневый ИЛИ конструктор раскладывает многострочно (фаза 6.15.28); такой
+  // же раскладке (операнд0 инлайн, продолжения на kwInd+2) подчиняется и
+  // верхнеуровневый И — значение ветки ТОГДА/ИНАЧЕ, являющееся булевой И-цепочкой
+  // (`ТОГДА A\n\t\tИ B`, delta=2 от ТОГДА; корпус, 17/17). Для ИЛИ значение может
+  // быть однострочным в исходнике (конструктор сам переносит); для И — только уже
+  // многострочный исходник (однострочное `ТОГДА A И B` конструктор оставляет инлайн).
+  // Однострочное значение конструктор переносит сам только для ИЛИ; однострочную
+  // И-цепочку (`ТОГДА A И B`) он оставляет ИНЛАЙН. Поэтому И раскладываем лишь когда
+  // исходник УЖЕ многострочный (delta=2 от ключевого слова, корпус 17/17). ИЛИ —
+  // в любом случае (однострочный исходник тоже).
+  if (tree.kind === 'and') {
+    if (!value.includes('\n')) return null;
+  } else if (tree.kind !== 'or') {
+    return null;
+  }
+  // Вложенный ВЫБОР как операнд (`ИНАЧЕ ВЫБОР…КОНЕЦ И ВЫБОР…`) этой раскладке не
+  // подчиняется — его геометрию (E = отступ ключевого слова + 1) даёт основной путь
+  // renderCaseE; здесь обрабатываем только листовые/скобочные/НЕ-операнды.
+  if (tree.operands.some((op) => op.kind === 'case' || (op.kind === 'group' && op.child.kind === 'case'))) {
+    return null;
+  }
+  const op0Word = tree.kind === 'or' ? 'ИЛИ' : 'И';
   const ctx: RenderCtx = { cont: 1, caseBoolean: false };
-  const iliInd = kwInd + 2;
+  const contInd = kwInd + 2;
   const lines: string[] = [];
   tree.operands.forEach((op, k) => {
     // Снять охватывающие скобки операнда (избыточная группировка). Структурную
@@ -2229,8 +2257,8 @@ function renderOrValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: string,
     const bare = op.kind === 'group' ? op.child
       : op.kind === 'leaf' ? ({ kind: 'leaf', text: stripEnclosingParens(op.text) } as Node)
       : op;
-    const sub = renderSelectBool(bare, k === 0 ? kwInd : iliInd, iliInd + 1, 1, ctx, iliInd + 1);
-    sub[0] = k === 0 ? `${tabs(kwInd)}${keyword} ${sub[0]}` : `${tabs(iliInd)}ИЛИ ${sub[0]}`;
+    const sub = renderSelectBool(bare, k === 0 ? kwInd : contInd, contInd + 1, 1, ctx, contInd + 1);
+    sub[0] = k === 0 ? `${tabs(kwInd)}${keyword} ${sub[0]}` : `${tabs(contInd)}${op0Word} ${sub[0]}`;
     lines.push(...sub);
   });
   return lines;

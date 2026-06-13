@@ -255,7 +255,7 @@ function splitTopLevelBoolConjuncts(expr: string): { op: string; text: string }[
   const n = expr.length;
   const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
   const parts: { op: string; text: string }[] = [];
-  let depth = 0, inStr = false, between = 0, start = 0, op = '';
+  let depth = 0, inStr = false, between = 0, start = 0, op = '', caseDepth = 0;
   for (let i = 0; i < n; i++) {
     const c = expr[i];
     if (inStr) { if (c === '"') inStr = false; continue; }
@@ -265,6 +265,12 @@ function splitTopLevelBoolConjuncts(expr: string): { op: string; text: string }[
     if (depth !== 0) continue;
     if (!isWordChar(expr[i - 1])) {
       const up = expr.slice(i, i + 6).toUpperCase();
+      // ВЫБОР…КОНЕЦ — сбалансированная область: `И`/`ИЛИ` ВНУТРИ CASE (продолжение
+      // условия КОГДА или значения ТОГДА) не является границей верхнеуровневого
+      // конъюнкта. Без этого учёта `И НЕ …` внутри КОГДА дробит CASE-блок.
+      if (up.startsWith('ВЫБОР') && !isWordChar(expr[i + 5])) { caseDepth++; continue; }
+      if (up.startsWith('КОНЕЦ') && !isWordChar(expr[i + 5])) { if (caseDepth > 0) caseDepth--; continue; }
+      if (caseDepth > 0) continue;
       if (up.startsWith('МЕЖДУ') && !isWordChar(expr[i + 5])) { between++; continue; }
       const isIli = up.startsWith('ИЛИ') && !isWordChar(expr[i + 3]);
       const isI = expr[i].toUpperCase() === 'И' && !isWordChar(expr[i + 1]);
