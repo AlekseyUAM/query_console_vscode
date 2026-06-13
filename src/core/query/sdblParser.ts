@@ -1654,6 +1654,14 @@ function interpretCondition(
   if (hasTopLevelOr(tokens)) {
     return { custom: true, expression: customText() };
   }
+  // Отрицание условия-подзапроса (`НЕ <поле> В [ИЕРАРХИИ] (ВЫБРАТЬ …)`): снимаем
+  // ведущее `НЕ`, разбираем остаток как условие-подзапрос, помечаем negated —
+  // генератор печатает `НЕ ` и сдвигает блок подзапроса (фаза 6.15.NN). Только
+  // для подзапросного результата; обычные негативы остаются произвольным текстом.
+  if (tokens.length > 1 && isNotToken(tokens[0])) {
+    const inner = trySimpleCondition(tokens.slice(1), source, aliasToId, soleSource, aliasSpelling);
+    if (inner && inner.subquery) return { ...inner, negated: true };
+  }
   const simple = trySimpleCondition(tokens, source, aliasToId, soleSource, aliasSpelling);
   if (simple) return simple;
   return { custom: true, expression: customText() };
@@ -1713,9 +1721,19 @@ function trySimpleCondition(
   // Мышкой подзапрос не задать ⇒ custom (галочка «Произвольное»); expression НЕ
   // задаём — рендер остаётся структурным (многострочный перенос подзапроса).
   if (op === 'В') {
-    const sub = trySubqueryParam(paramTokens, source);
+    // Модификатор `ИЕРАРХИИ` перед подзапросом (`В ИЕРАРХИИ (ВЫБРАТЬ …)`):
+    // отделяем его, разбираем подзапрос, помечаем флагом hierarchy (фаза 6.15.NN).
+    let subTokens = paramTokens;
+    let hierarchy = false;
+    const head = subTokens[0];
+    if (head && (head.type === 'ident' || head.type === 'keyword') &&
+        head.text.toUpperCase() === 'ИЕРАРХИИ') {
+      subTokens = subTokens.slice(1);
+      hierarchy = true;
+    }
+    const sub = trySubqueryParam(subTokens, source);
     if (sub) {
-      return { custom: true, ...base, subquery: sub };
+      return { custom: true, ...base, subquery: sub, ...(hierarchy ? { hierarchy: true } : {}) };
     }
   }
 

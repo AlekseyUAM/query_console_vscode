@@ -24,6 +24,11 @@ let suppressAutoAlias = false;
  */
 let inConditionSubquery = false;
 
+/** Экранирует спецсимволы регулярного выражения в литеральной строке. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Оборачивает выражение в SDBL-функцию агрегирования. */
 function wrapAggregate(func: AggregateFunction, expr: string): string {
   switch (func) {
@@ -86,13 +91,31 @@ function renderConditionSubquery(subquery: QueryDocument, baseTabs: number): str
   const prevInSubquery = inConditionSubquery;
   suppressAutoAlias = true;
   inConditionSubquery = true;
-  let inner: string[];
+  let text: string;
   try {
-    inner = generateDocument(subquery).split('\n');
+    text = generateDocument(subquery);
   } finally {
     suppressAutoAlias = prev;
     inConditionSubquery = prevInSubquery;
   }
+  // Источник подзапроса-операнда с СИНТЕЗИРОВАННЫМ псевдонимом печатается ГОЛЫМ
+  // (без `КАК`, см. renderFrom), и конструктор 1С квалифицирует его поля ИМЕНЕМ
+  // источника как написано (`ИЗ Справочник.Пользователи` →
+  // `Справочник.Пользователи.Ссылка`), а не авто-псевдонимом `defaultTableAlias`
+  // (фаза 6.15.NN, MCP). Парсер/генератор уже разметили поля авто-псевдонимом —
+  // переписываем `<авто>.` → `<имяИсточника>.` для каждого такого источника.
+  // (У одно-сегментных временных таблиц авто-псевдоним совпадает с именем —
+  // замена холостая.) Коррелированные/именованные источники не трогаем.
+  for (const member of subquery.members) {
+    for (const t of member.model.tables) {
+      if (!t.aliasSynthesized || t.subquery) continue;
+      const auto = defaultTableAlias(t);
+      if (auto === t.fullName) continue;
+      const re = new RegExp(`(^|[^\\p{L}\\p{N}_.])${escapeRegExp(auto)}\\.`, 'gu');
+      text = text.replace(re, `$1${t.fullName}.`);
+    }
+  }
+  const inner = text.split('\n');
   return inner
     .map((l, k) => (k === 0 ? `${pad}(${l}` : `${pad}${l}`))
     .join('\n') + ')';
@@ -1044,7 +1067,13 @@ function buildConditionStrings(
     // (условие ГДЕ на отступе 1 → `(ВЫБРАТЬ` на 3 табах; тело +1 → 4 таба).
     // `renderConditions` добавит ведущий `\t` к первой строке (отступ 1 условия).
     if (c.subquery) {
-      conds.push(`${alias}.${c.path} ${op}\n${renderConditionSubquery(c.subquery, 3)}`);
+      // `В ИЕРАРХИИ (ВЫБРАТЬ …)` — модификатор ИЕРАРХИИ перед переносом подзапроса
+      // (фаза 6.15.NN). Внутри подзапроса-условия отступ блока на 1 меньше.
+      // Ведущее `НЕ` (negated) сдвигает блок подзапроса на +1 (геометрия 1С).
+      const opText = c.hierarchy ? `${op} ИЕРАРХИИ` : op;
+      const negPrefix = c.negated ? 'НЕ ' : '';
+      const subBase = (inConditionSubquery ? 2 : 3) + (c.negated ? 1 : 0);
+      conds.push(`${negPrefix}${alias}.${c.path} ${opText}\n${renderConditionSubquery(c.subquery, subBase)}`);
       continue;
     }
     const param = normalizeLeafCase(c.param ?? `&${c.path.split('.').pop()}`);
