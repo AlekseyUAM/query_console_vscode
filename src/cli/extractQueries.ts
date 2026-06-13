@@ -2,6 +2,33 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfig } from './corpusConfig';
 
+const NAMED_XML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+/**
+ * Декодирует XML-сущности в тексте за один проход слева направо.
+ * Обрабатывает именованные (&lt; &gt; &amp; &quot; &apos;) и числовые
+ * (&#nn; / &#xHH;) сущности. Проход слева направо корректно разбирает
+ * `&amp;lt;` → литерал `&lt;` (а не `<`).
+ */
+export function unescapeXmlEntities(s: string): string {
+  return s.replace(/&(amp|lt|gt|quot|apos|#x?[0-9a-fA-F]+);/g, (_m, ent: string) => {
+    if (ent[0] === '#') {
+      const code =
+        ent[1] === 'x' || ent[1] === 'X'
+          ? parseInt(ent.slice(2), 16)
+          : parseInt(ent.slice(1), 10);
+      return String.fromCodePoint(code);
+    }
+    return NAMED_XML_ENTITIES[ent];
+  });
+}
+
 export interface ExtractedQuery {
   text: string;
   lineStart: number;

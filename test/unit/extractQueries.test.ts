@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { extractQueryStrings } from '../../src/cli/extractQueries';
+import {
+  extractQueryStrings,
+  unescapeXmlEntities,
+  extractQueriesFromXml,
+} from '../../src/cli/extractQueries';
 
 describe('extractQueryStrings', () => {
   it('извлекает один многострочный запрос с | и корректным lineStart', () => {
@@ -62,5 +66,27 @@ describe('extractQueryStrings', () => {
     const res = extractQueryStrings(src);
     expect(res).toHaveLength(1);
     expect(res[0].text).toBe('ВЫБРАТЬ 1');
+  });
+});
+
+describe('unescapeXmlEntities', () => {
+  it('декодирует основные сущности', () => {
+    expect(unescapeXmlEntities('a &lt; b &gt; c &amp; d')).toBe('a < b > c & d');
+  });
+
+  it('декодирует &quot; и &apos;', () => {
+    expect(unescapeXmlEntities('&quot;x&quot; &apos;y&apos;')).toBe('"x" \'y\'');
+  });
+
+  it('приоритет слева направо: &amp;lt; → литерал &lt;, а не <', () => {
+    expect(unescapeXmlEntities('&amp;lt;')).toBe('&lt;');
+  });
+
+  it('декодирует числовые сущности (dec и hex)', () => {
+    expect(unescapeXmlEntities('&#1041;&#x42E;')).toBe('БЮ');
+  });
+
+  it('строку без сущностей возвращает без изменений', () => {
+    expect(unescapeXmlEntities('ВЫБРАТЬ Поле')).toBe('ВЫБРАТЬ Поле');
   });
 });
