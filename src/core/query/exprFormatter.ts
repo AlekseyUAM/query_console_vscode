@@ -1856,7 +1856,12 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
     // ГДЕ (orDelta=2, ИЛИ на 3) — эмулируем стартовым orLvl=1.
     const startOrLvl = slot === 'having' ? 1 : 0;
     if (tree.kind === 'case') {
-      body = renderCase(tree, ctx.cont, ctx, true).join('\n');
+      // Отдельный ВЫБОР-конъюнкт ИМЕЮЩИЕ (парсер дробит `A <> X И ВЫБОР…КОНЕЦ` на два
+      // условия; второе — голый ВЫБОР, конъюнкты склеивает renderHaving хвостовым ` И`)
+      // конструктор печатает на отступе условия: КОНЕЦ = cont, КОГДА = cont+1 (а НЕ
+      // в булевом слоте cont+1/КОНЕЦ). В ГДЕ конъюнкты склеиваются префиксом `И ВЫБОР`,
+      // и там ВЫБОР остаётся в булевом слоте (E = cont+1) — фаза 6.15.19, MCP.
+      body = renderCase(tree, ctx.cont, ctx, slot === 'where').join('\n');
     } else if (tree.kind === 'not' && tree.child.kind === 'group') {
       // НЕ-блок целиком (`НЕ (…)`): конструктор печатает `НЕ(` слитно и держит
       // скобки независимо от наличия ИЛИ внутри (фаза 6.14, MCP).
