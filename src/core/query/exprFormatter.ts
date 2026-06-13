@@ -559,8 +559,102 @@ function enclosingFunctionIs(sig: Token[], idx: number, names: Set<string>): boo
   return false;
 }
 
+/**
+ * Канонизация лексики листа (фаза 6.15.10): конструктор 1С нормализует ряд
+ * англоязычных/перестановочных форм предикатов внутри листового выражения. Правила
+ * подтверждены MCP-пробами `validate_query`:
+ *   1) `IS NULL`   → `ЕСТЬ NULL`   (англоязычная форма предиката ЕСТЬ NULL);
+ *   2) `ISNULL(`   → `ЕСТЬNULL(`   (англоязычное имя функции ЕСТЬNULL);
+ *   3) `x НЕ В (…)` → `НЕ x В (…)`  (отрицание оператора В выносится перед операндом).
+ * Применяется к листу до нормализации регистра/пробелов (`normalizeLeafCase`). Замены
+ * делаются по позициям токенов справа налево, исходные пробелы между токенами не
+ * затрагиваются (кроме переноса `НЕ ` в правиле 3). Многострочный лист в правило 3 не
+ * попадает: предикат `В` приходит листом-сравнением без переносов строк.
+ */
+export function canonicalizeLeafLexemes(raw: string): string {
+  if (!raw) return raw;
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return raw;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length === 0) return raw;
+  const upOf = (t: Token): string => (t.text ?? t.value).toUpperCase();
+  const isW = (t: Token | undefined): boolean => !!t && (t.type === 'ident' || t.type === 'keyword');
+  // Сегмент пути после точки трогать нельзя (это идентификатор).
+  const afterDot = (k: number): boolean => {
+    const p = sig[k - 1];
+    return !!p && p.type === 'punct' && p.value === '.';
+  };
+
+  let out = raw;
+
+  // Правила 1 и 2 — позиционные текстовые замены (длина меняется), справа налево.
+  type Repl = { pos: number; len: number; to: string };
+  const repls: Repl[] = [];
+  for (let k = 0; k < sig.length; k++) {
+    const t = sig[k];
+    if (!isW(t) || afterDot(k)) continue;
+    const u = upOf(t);
+    const text = t.text ?? t.value;
+    // 2) ISNULL( → ЕСТЬNULL(
+    if (u === 'ISNULL') {
+      const nx = sig[k + 1];
+      if (nx && nx.type === 'punct' && nx.value === '(') {
+        repls.push({ pos: t.pos, len: text.length, to: 'ЕСТЬNULL' });
+      }
+      continue;
+    }
+    // 1) IS NULL → ЕСТЬ NULL (NULL приводит к ВЕРХнему регистру normalizeLeafCase).
+    if (u === 'IS') {
+      const nx = sig[k + 1];
+      if (nx && isW(nx) && upOf(nx) === 'NULL') {
+        repls.push({ pos: t.pos, len: text.length, to: 'ЕСТЬ' });
+      }
+    }
+  }
+  if (repls.length) {
+    repls.sort((a, b) => b.pos - a.pos);
+    for (const r of repls) out = out.slice(0, r.pos) + r.to + out.slice(r.pos + r.len);
+  }
+
+  // 3) x НЕ В (…) → НЕ x В (…). Срабатывает только на однострочном листе-сравнении
+  //    (без переносов): ищем `НЕ`, за которым непосредственно следует оператор `В`,
+  //    при наличии операнда слева. Переносим `НЕ ` в начало операнда (= начало листа).
+  if (!out.includes('\n')) {
+    let toks2: Token[];
+    try {
+      toks2 = tokenize(out);
+    } catch {
+      return out;
+    }
+    const sig2 = toks2.filter((t) => t.type !== 'eof');
+    for (let k = 1; k < sig2.length - 1; k++) {
+      const t = sig2[k];
+      if (!isW(t) || upOf(t) !== 'НЕ') continue;
+      const nx = sig2[k + 1];
+      const isVOp = !!nx && nx.type === 'keyword' && upOf(nx) === 'В';
+      if (!isVOp) continue;
+      // Операнд — всё от начала листа до токена `НЕ` (лист атомарен: верхнеуровневых
+      // булевых операторов в нём нет, они расщепляются раньше).
+      const operandStart = sig2[0].pos;
+      if (t.pos <= operandStart) continue;
+      const neEnd = t.pos + (t.text ?? t.value).length;
+      // Кусок между `НЕ` и оператором `В` (обычно один пробел) — сохраняем как разделитель.
+      const before = out.slice(operandStart, t.pos).replace(/\s+$/u, '');
+      out = out.slice(0, operandStart) + 'НЕ ' + before + out.slice(neEnd);
+      break; // одно вхождение на лист
+    }
+  }
+
+  return out;
+}
+
 export function normalizeLeafCase(raw: string): string {
   if (!raw) return raw;
+  raw = canonicalizeLeafLexemes(raw);
   let toks: Token[];
   try {
     toks = tokenize(raw);

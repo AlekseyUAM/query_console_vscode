@@ -596,6 +596,40 @@ function parseOneField(cur: Cursor): RawField {
   if (bodyTokens.length === 0) {
     throw cur.error('пустой элемент выборки', cur.peek());
   }
+
+  // Неявный псевдоним (фаза 6.15.10): поле без `КАК`, тело которого оканчивается
+  // голым идентификатором ПОСЛЕ завершённого первичного выражения
+  // (`"" АльтернативныйПуть`, `Т.Поле Алиас`, `СУММА(Т.Поле) Итог`). В SDBL такой
+  // хвостовой идентификатор — это псевдоним без `КАК`; конструктор печатает его как
+  // `<выражение> КАК <Алиас>`. Снимаем хвостовой токен в `alias`, чтобы дальнейшая
+  // интерпретация и рендер совпали с каноном. Подтверждено MCP-пробами validate_query.
+  if (alias === undefined && bodyTokens.length >= 2 && depth === 0) {
+    const last = bodyTokens[bodyTokens.length - 1];
+    const prev = bodyTokens[bodyTokens.length - 2];
+    // Хвостовой токен — голый идентификатор и НЕ зарезервированное слово
+    // (`КОНЕЦ`, литералы, операторы, гранулярности периода), которое может быть
+    // законным окончанием самого выражения (`ВЫБОР … КОНЕЦ`, `… ЕСТЬ NULL`).
+    const lastIsBareName =
+      last.type === 'ident' &&
+      !last.value.startsWith('#') &&
+      !EXPR_STOP_WORDS.has(last.value.toUpperCase());
+    // Предыдущий токен должен ЗАВЕРШАТЬ первичное выражение: не `.` (тогда last —
+    // сегмент пути) и не оператор/открывающая скобка/запятая (тогда выражение
+    // неполно и last — его часть). Допустимые завершители: `)`, строковый/числовой/
+    // датовый литерал, параметр &X, либо идентификатор/конец пути.
+    const prevEndsPrimary =
+      prev.type === 'string' ||
+      prev.type === 'number' ||
+      prev.type === 'date' ||
+      prev.type === 'param' ||
+      prev.type === 'ident' ||
+      (prev.type === 'punct' && prev.value === ')');
+    if (lastIsBareName && prevEndsPrimary) {
+      alias = last.text;
+      bodyTokens.pop();
+    }
+  }
+
   const rawBody = sliceSource(cur.source, bodyTokens);
   return { bodyTokens, alias, rawBody };
 }
