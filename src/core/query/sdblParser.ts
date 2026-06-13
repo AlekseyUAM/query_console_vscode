@@ -57,6 +57,7 @@ import type { BatchDocument } from './batchModel';
 import type { MetadataResolver } from './metadataResolver';
 import { expandStarFields } from './expandStarFields';
 import { expandTabSectionFields } from './expandTabSectionFields';
+import { wrapTabSectionAggregates } from './wrapTabSectionAggregates';
 import { dropUserIBConditions } from './dropUserIBConditions';
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
@@ -2936,6 +2937,9 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     // Развёртка простого поля-ссылки на табличную часть в проекцию её колонок
     // (фаза 6.15.23). После звёздной развёртки, до назначения автопсевдонимов.
     expandTabSectionFields(model, resolver);
+    // Обёртка поля выборки с агрегатом над колонкой ТЧ в проекцию этой ТЧ
+    // (фаза 6.15.26, по метаданным). После звёздной/ТЧ-развёртки, до автопсевдонимов.
+    wrapTabSectionAggregates(model, resolver);
     // Тихий дроп конъюнкта ГДЕ, навигирующего к идентификационным реквизитам ИБ
     // через ссылку на пользователя (фаза 6.15.23, по типам метаданных).
     dropUserIBConditions(model, resolver);

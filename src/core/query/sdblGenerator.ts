@@ -737,11 +737,30 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
 
   const tsLine = (tsf: SelectedTabSectionField): string => {
     const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
-    const subLines = tsf.fields.map((f, i) => {
-      // Псевдоним колонки: отличный — печатаем как есть, иначе авто `<поле> КАК <поле>`.
-      const colAlias = tsf.fieldAliases?.[i] ?? f;
-      return `\t\t${f} КАК ${colAlias}${i < tsf.fields.length - 1 ? ',' : ''}`;
-    });
+    let subLines: string[];
+    if (tsf.exprFields && tsf.exprFields.length > 0) {
+      // Проекция ТЧ из произвольных выражений (агрегат над колонкой ТЧ, фаза 6.15.26).
+      // Каждое выражение печатается как поле выборки, сдвинутое на +2 таба (содержимое
+      // проекции глубже на 1 уровень от обычного поля = 1 таб → база 2), с синтетическим
+      // псевдонимом `Поле{n}`. Запятая между элементами.
+      subLines = tsf.exprFields.flatMap((ef, i) => {
+        // formatSelectExpression выдаёт ПЕРВУЮ строку без отступа (вызывающий добавляет
+        // 1 таб поля), продолжения — абсолютно из расчёта база первой строки = 1.
+        // В проекции ТЧ база содержимого = 2: первой строке даём 2 таба, каждому
+        // продолжению — +1 таб относительно его абсолютной позиции (rebase 1 → 2).
+        const rows = formatSelectExpression(ef.expression).split('\n');
+        const shifted = rows.map((l, j) => (j === 0 ? '\t\t' + l : '\t' + l));
+        const comma = i < tsf.exprFields!.length - 1 ? ',' : '';
+        shifted[shifted.length - 1] = shifted[shifted.length - 1] + ' КАК ' + ef.alias + comma;
+        return shifted;
+      });
+    } else {
+      subLines = tsf.fields.map((f, i) => {
+        // Псевдоним колонки: отличный — печатаем как есть, иначе авто `<поле> КАК <поле>`.
+        const colAlias = tsf.fieldAliases?.[i] ?? f;
+        return `\t\t${f} КАК ${colAlias}${i < tsf.fields.length - 1 ? ',' : ''}`;
+      });
+    }
     return `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.alias ?? tsf.tsName}`;
   };
 
