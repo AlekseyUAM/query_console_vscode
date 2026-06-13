@@ -23,7 +23,8 @@ describe('fieldAlias', () => {
 });
 
 describe('deriveUnionColumns', () => {
-  it('merges columns sharing the same alias into a single column', () => {
+  it('выравнивает колонки ПОЗИЦИОННО: i-я ячейка = i-е поле участника как есть (6.15.22)', () => {
+    // Одинаковые псевдонимы в разных позициях НЕ сливаются: 1С берёт столбцы по индексу.
     const m0 = member('Запрос 1', {
       tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
       fields: [
@@ -39,13 +40,14 @@ describe('deriveUnionColumns', () => {
       ],
     });
     const cols = deriveUnionColumns([m0, m1]);
-    expect(cols.map(c => c.alias)).toEqual(['Ссылка', 'Код', 'Наименование']);
+    // Заголовки — псевдонимы полей участника 0 по позициям.
+    expect(cols.map(c => c.alias)).toEqual(['Ссылка', 'Код']);
     expect(cols[0].cells).toEqual(['Валюты.Ссылка', 'ВариантыОтветовАнкет.Ссылка']);
-    expect(cols[1].cells).toEqual(['Валюты.Код', null]);
-    expect(cols[2].cells).toEqual([null, 'ВариантыОтветовАнкет.Наименование']);
+    // Позиция 2: «Код» участника 0 vs «Наименование» участника 1 — берутся как есть.
+    expect(cols[1].cells).toEqual(['Валюты.Код', 'ВариантыОтветовАнкет.Наименование']);
   });
 
-  it('orders columns by first appearance: member-0 fields first, then new ones', () => {
+  it('заголовки колонок — псевдонимы полей участника 0 по позициям', () => {
     const m0 = member('Q1', {
       tables: [{ id: 't1', fullName: 'Справочник.А' }],
       fields: [
@@ -61,21 +63,26 @@ describe('deriveUnionColumns', () => {
       ],
     });
     const cols = deriveUnionColumns([m0, m1]);
-    expect(cols.map(c => c.alias)).toEqual(['X', 'Y', 'Z']);
+    expect(cols.map(c => c.alias)).toEqual(['X', 'Y']);
+    expect(cols[1].cells).toEqual(['А.Y', 'Б.Z']);
   });
 
-  it('uses NULL (null cell) for missing fields', () => {
+  it('недостающее поле участника (ширина меньше) → null (→ NULL)', () => {
     const m0 = member('Q1', {
       tables: [{ id: 't1', fullName: 'Справочник.А' }],
-      fields: [{ tableId: 't1', path: 'X', alias: 'X' }],
+      fields: [
+        { tableId: 't1', path: 'X', alias: 'X' },
+        { tableId: 't1', path: 'W', alias: 'W' },
+      ],
     });
     const m1 = member('Q2', {
       tables: [{ id: 't2', fullName: 'Справочник.Б' }],
       fields: [{ tableId: 't2', path: 'Y', alias: 'Y' }],
     });
     const cols = deriveUnionColumns([m0, m1]);
-    expect(cols[0].cells).toEqual(['А.X', null]);
-    expect(cols[1].cells).toEqual([null, 'Б.Y']);
+    expect(cols[0].cells).toEqual(['А.X', 'Б.Y']);
+    // У участника 1 второго столбца нет → null.
+    expect(cols[1].cells).toEqual(['А.W', null]);
   });
 
   it('handles expression fields as cell expressions', () => {

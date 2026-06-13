@@ -33,40 +33,33 @@ export function fieldAlias(field: SelectedField): string {
 /**
  * Колонки вертикального объединения.
  *
- * 1. Порядок колонок — по первому появлению псевдонима среди участников
- *    (сначала поля участника 0, затем новые псевдонимы участника 1 и т.д.).
- *    Учитываются только `model.fields` (табличные части и хвостовые поля
- *    в объединении не участвуют).
- * 2. Для каждой колонки `cells[i]` — выражение поля участника i, чей псевдоним
- *    совпадает с псевдонимом колонки, иначе null.
+ * 1С выравнивает столбцы объединения ПОЗИЦИОННО (по индексу), а не по псевдониму:
+ *   - количество колонок = число полей у участника 0 (он задаёт «форму» union;
+ *     при расхождении ширины 1С ругается, но если ширина прочих участников больше,
+ *     лишние ячейки тоже выводятся, поэтому берём максимум по всем участникам);
+ *   - заголовок i-й колонки = псевдоним i-го поля участника 0;
+ *   - `cells[k][i]` = выражение i-го поля участника k «как есть» (даже если функция
+ *     или псевдоним отличаются от других веток); отсутствующее поле → null (→ NULL).
+ *
+ * Учитываются только `model.fields` (табличные части и хвостовые поля в объединении
+ * не участвуют).
  */
 export function deriveUnionColumns(members: UnionMember[]): UnionColumn[] {
-  const order: string[] = [];
-  const index = new Map<string, number>();
+  const width = members.reduce((w, m) => Math.max(w, m.model.fields.length), 0);
+  const head = members[0]?.model.fields ?? [];
 
-  for (const m of members) {
-    for (const f of m.model.fields) {
-      const alias = fieldAlias(f);
-      if (!index.has(alias)) {
-        index.set(alias, order.length);
-        order.push(alias);
-      }
-    }
+  const columns: UnionColumn[] = [];
+  for (let i = 0; i < width; i++) {
+    const headField = head[i];
+    columns.push({
+      // Заголовок колонки — псевдоним соответствующего поля первого участника.
+      alias: headField ? fieldAlias(headField) : `Поле${i + 1}`,
+      cells: members.map(m => {
+        const f = m.model.fields[i];
+        return f ? fieldExpr(m.model, f) : null;
+      }),
+    });
   }
-
-  const columns: UnionColumn[] = order.map(alias => ({
-    alias,
-    cells: members.map(() => null as string | null),
-  }));
-
-  members.forEach((m, i) => {
-    for (const f of m.model.fields) {
-      const alias = fieldAlias(f);
-      const col = columns[index.get(alias)!];
-      // Первое поле с данным псевдонимом у участника определяет выражение ячейки.
-      if (col.cells[i] === null) col.cells[i] = fieldExpr(m.model, f);
-    }
-  });
 
   return columns;
 }

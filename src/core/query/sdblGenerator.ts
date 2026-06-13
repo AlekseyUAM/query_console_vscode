@@ -810,9 +810,17 @@ export function fieldExpr(model: QueryModel, field: SelectedField): string {
   if (field.expression) return formatSelectExpression(field.expression);
   const aliases = resolveAliases(model.tables);
   const tableAlias = aliases.get(field.tableId) ?? field.tableId;
-  const func = field.func ?? (model.grouping?.aggregates ?? []).find(
+  // Функция агрегата берётся ПРЯМО с поля. Общий список `grouping.aggregates` —
+  // лишь резерв для legacy-моделей (UI), где `func` на полях не задан. Если хотя бы
+  // одно поле модели несёт `func`, модель «новая» (парсерная) и резерв не применяем,
+  // иначе плоское поле, делящее операнд с агрегатом (`КОЛИЧЕСТВО(Ответ)` в одной
+  // ветке union и плоский `Ответ` в другой), ошибочно подхватывало бы чужую функцию
+  // (тот же баг, что и 6.15.11a в `buildFieldLines`; здесь — для ветки объединения).
+  const fieldsCarryFunc = model.fields.some(f => f.func !== undefined)
+    || (model.trailingFields ?? []).some(f => f.func !== undefined);
+  const func = field.func ?? (fieldsCarryFunc ? undefined : (model.grouping?.aggregates ?? []).find(
     a => a.tableId === field.tableId && a.path === field.path
-  )?.func;
+  )?.func);
   const lhs = `${tableAlias}.${field.path}`;
   return func ? wrapAggregate(func, lhs) : lhs;
 }
