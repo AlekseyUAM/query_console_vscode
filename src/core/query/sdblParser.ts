@@ -1272,7 +1272,9 @@ function fillAccounting(
 /**
  * Разбор `( arg0, arg1, … )` в массив сырых строк-аргументов (по срезам
  * исходника). Аргумент может быть пустым (`''`) для пропущенной позиции.
- * Запятые верхнего уровня — разделители; скобки внутри учитываются.
+ * Запятые верхнего уровня — разделители; вложенные группы `(…)` И `{…}` (СКД-блок
+ * построителя с собственными запятыми и псевдонимами `КАК`) считаются
+ * сбалансированными — запятые внутри них НЕ дробят аргумент (фаза 6.16).
  */
 function parsePositionalArgs(cur: Cursor): string[] {
   cur.expectPunct('(');
@@ -1295,8 +1297,8 @@ function parsePositionalArgs(cur: Cursor): string[] {
       flush();
       continue;
     }
-    if (t.type === 'punct' && t.value === '(') depth++;
-    else if (t.type === 'punct' && t.value === ')') depth--;
+    if (t.type === 'punct' && (t.value === '(' || t.value === '{')) depth++;
+    else if (t.type === 'punct' && (t.value === ')' || t.value === '}')) depth--;
     curTokens.push(cur.next());
   }
   flush();
