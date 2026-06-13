@@ -1309,7 +1309,7 @@ type Node =
   | { kind: 'and'; operands: Node[] }
   | { kind: 'not'; child: Node }
   | { kind: 'group'; child: Node } // скобочная группа верхнего уровня
-  | { kind: 'case'; clauses: CaseClause[]; elseExpr?: Node | null; elseText?: string; selector?: string }
+  | { kind: 'case'; clauses: CaseClause[]; elseExpr?: Node | null; elseText?: string; selector?: string; trailing?: string }
   | { kind: 'leaf'; text: string };
 
 interface CaseClause {
@@ -1650,6 +1650,44 @@ class Parser {
   }
 
   /**
+   * Хвост после `КОНЕЦ` value-слотового ВЫБОР: `<op> value` (`КОНЕЦ <> &П`).
+   * Возвращает нормализованный текст хвоста (`<> &П`) ТОЛЬКО для узкой формы —
+   * ровно один верхнеуровневый оператор сравнения, листовой операнд, без вложенного
+   * ВЫБОР и без верхнеуровневых И/ИЛИ. Иначе undefined (позицию НЕ двигает).
+   * Эта форма позволяет CASE идти структурным путём с приклеенным хвостом к КОНЕЦ.
+   */
+  private tryParseSimpleCaseTrailing(): string | undefined {
+    const save = this.i;
+    const startTok = this.peek();
+    // Хвост обязан начинаться с оператора сравнения.
+    if (!(startTok.type === 'punct' && COMPARE_OPS.has(startTok.value))) return undefined;
+    const from = startTok.pos;
+    let to = from;
+    let depth = 0;
+    let cmpCount = 0;
+    while (!this.atEof()) {
+      const t = this.peek();
+      if (t.type === 'punct' && t.value === '(') { depth++; to = t.pos + t.value.length; this.i++; continue; }
+      if (t.type === 'punct' && t.value === ')') {
+        if (depth === 0) break; // граница чужой группы
+        depth--; to = t.pos + t.value.length; this.i++; continue;
+      }
+      if (depth === 0) {
+        // Границы value-слота / структурные ключевые слова — стоп.
+        if (isWhen(t) || isElse(t) || isEnd(t)) break;
+        // Вложенный ВЫБОР или верхнеуровневый булев оператор → форма не простая.
+        if (isCase(t) || isOr(t) || isAnd(t)) { this.i = save; return undefined; }
+        if (t.type === 'punct' && COMPARE_OPS.has(t.value)) cmpCount++;
+      }
+      to = t.pos + t.value.length;
+      this.i++;
+    }
+    // Ровно один верхнеуровневый оператор сравнения (тот, с которого начали).
+    if (cmpCount !== 1) { this.i = save; return undefined; }
+    return normalizeLeafWhitespace(this.leafText(from, to));
+  }
+
+  /**
    * Селектор формы `ВЫБОР <выражение> КОГДА …` — листовое выражение между ВЫБОР и
    * первым верхнеуровневым КОГДА. Печатается инлайн; нормализуется как лист.
    */
@@ -1698,6 +1736,17 @@ class Parser {
       const boundary =
         isWhen(t) || isElse(t) || isEnd(t) || (t.type === 'punct' && t.value === ')');
       if (boundary) return caseNode;
+      // За КОНЕЦ идёт оператор (`КОНЕЦ <> &П`). Если хвост — ПРОСТОЕ сравнение
+      // (один верхнеуровневый оператор сравнения и листовой операнд, без вложенного
+      // ВЫБОР и без верхнеуровневых И/ИЛИ), конструктор переотрисовывает CASE
+      // структурно и приклеивает хвост к КОНЕЦ (`КОНЕЦ <> &П`). Берём этот путь
+      // ТОЛЬКО для такой узкой формы; всё прочее (CASE внутри функции, булев хвост)
+      // оставляем листом (фаза 6.15.21).
+      const trailing = this.tryParseSimpleCaseTrailing();
+      if (trailing !== undefined && caseNode.kind === 'case') {
+        caseNode.trailing = trailing;
+        return caseNode;
+      }
       this.i = save; // откат: значение — лист `ВЫБОР… <op> …`
     }
     const startTok = this.peek();
@@ -2032,7 +2081,7 @@ function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): 
       lines.push(tabs(elseInd) + 'ИНАЧЕ ' + reindentLeafSubquery(flattenMultilineLeaf(valueText(node.elseExpr)), elseInd + 2));
     }
   }
-  lines.push(tabs(E) + 'КОНЕЦ');
+  lines.push(tabs(E) + 'КОНЕЦ' + (node.trailing ? ' ' + node.trailing : ''));
   return lines;
 }
 
