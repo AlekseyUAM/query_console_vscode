@@ -4,6 +4,7 @@
  */
 import { parseBatch } from '../core/query/sdblParser';
 import { generateBatch } from '../core/query/sdblGenerator';
+import type { MetadataResolver } from '../core/query/metadataResolver';
 
 export type OracleReason = 'parse-exception' | 'mismatch';
 
@@ -25,10 +26,14 @@ export function firstDiffLine(a: string, b: string): { line: number; a: string; 
   return { line: 0, a: '', b: '' };
 }
 
-export function acceptAgainstOracle(input: string, queryText: string): OracleAcceptResult {
+export function acceptAgainstOracle(
+  input: string,
+  queryText: string,
+  resolver?: MetadataResolver
+): OracleAcceptResult {
   let ours: string;
   try {
-    ours = generateBatch(parseBatch(input));
+    ours = generateBatch(parseBatch(input, resolver));
   } catch (e) {
     return { ok: false, reason: 'parse-exception', detail: e instanceof Error ? e.message : String(e) };
   }

@@ -54,6 +54,8 @@ import type { Token } from './sdblLexer';
 import { fieldAlias } from './unionModel';
 import type { QueryDocument, UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
+import type { MetadataResolver } from './metadataResolver';
+import { expandStarFields } from './expandStarFields';
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
 const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
@@ -2787,7 +2789,7 @@ function splitUnionMembers(tokens: Token[], source: string): RawUnionMember[] {
  * (поле i-й колонки получает псевдоним i-й колонки участника 0), а поля-заглушки
  * `NULL` отбрасываются — у такого участника нет поля в этой колонке.
  */
-export function parseDocument(text: string): QueryDocument {
+export function parseDocument(text: string, resolver?: MetadataResolver): QueryDocument {
   const tokens = tokenize(text);
   const raw = splitUnionMembers(tokens, text);
 
@@ -2798,6 +2800,9 @@ export function parseDocument(text: string): QueryDocument {
     const ctxOut: { ctx?: SectionResolveContext } = {};
     const model = parseSingleQuery(new Cursor(r.tokens, text), i > 0 ? firstCtx : undefined, ctxOut);
     if (i === 0) firstCtx = ctxOut.ctx;
+    // Развёртка `*` по метаданным (фаза 6.15.15): до назначения автопсевдонимов
+    // `ПолеN`, чтобы развёрнутые/удалённые звёзды не получали лишний `Поле1`.
+    expandStarFields(model, resolver);
     return model;
   });
 
@@ -2960,7 +2965,7 @@ function splitBatchText(text: string): string[] {
  * разделителя и без объединения корректно даёт пакет из одного документа с одним
  * участником.
  */
-export function parseBatch(text: string): BatchDocument {
+export function parseBatch(text: string, resolver?: MetadataResolver): BatchDocument {
   // Хвостовой разделитель пакета `;` (с возможными пробелами/переводами строк)
   // конструктор отбрасывает: `;` — концерн МЕЖДУ операторами, после последнего
   // оператора его нет. Снимаем до разбиения, чтобы он не попал в текст условия.
@@ -2969,6 +2974,6 @@ export function parseBatch(text: string): BatchDocument {
   // следующего запроса) конструктор отбрасывает — канон заканчивается последним
   // запросом без хвостового разделителя.
   const chunks = splitBatchText(normalized).filter((c) => c.trim() !== '');
-  const members = chunks.map(parseDocument);
+  const members = chunks.map((c) => parseDocument(c, resolver));
   return { members };
 }

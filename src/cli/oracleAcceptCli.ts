@@ -6,6 +6,27 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { acceptAgainstOracle } from './oracleAccept';
+import { loadMetadataFromYaml } from '../core/metadata/yamlLoader';
+import type { MetadataResolver } from '../core/query/metadataResolver';
+import type { MetaTable } from '../core/metadata/types';
+
+/**
+ * Резолвер метаданных для развёртки `*` (фаза 6.15.15): строит индекс по fullName
+ * из YAML корпуса (`tmp/parser_data/cf`). Если каталог отсутствует/пуст — резолвер
+ * пустой (звезда не разворачивается, поведение прежнее).
+ */
+function buildResolver(): MetadataResolver | undefined {
+  const cfDir = path.resolve('tmp/parser_data/cf');
+  if (!fs.existsSync(cfDir)) return undefined;
+  const model = loadMetadataFromYaml(cfDir);
+  const byFull = new Map<string, MetaTable>();
+  for (const t of model.tables) {
+    // Развёртка `*` идёт по РЕАЛЬНОЙ таблице (не по виртуальным срезам).
+    if (t.virtual) continue;
+    if (!byFull.has(t.fullName)) byFull.set(t.fullName, t);
+  }
+  return { tableByFullName: (fullName) => byFull.get(fullName) };
+}
 
 interface Golden { file: string; valid: boolean; input: string; query_text: string; }
 interface ReportEntry { file: string; reason: string; detail?: string; }
@@ -18,6 +39,8 @@ function run(): void {
   const golden: Golden[] = fs.readFileSync(goldenPath, 'utf8').split('\n')
     .filter((l) => l.trim()).map((l) => JSON.parse(l));
 
+  const resolver = buildResolver();
+
   const report: ReportEntry[] = [];
   const byReason: Record<string, number> = { 'parse-exception': 0, mismatch: 0 };
   const topMessages: Record<string, number> = {};
@@ -27,7 +50,7 @@ function run(): void {
 
   for (const g of golden) {
     if (!g.valid) { oracleInvalid++; continue; }
-    const res = acceptAgainstOracle(g.input, g.query_text);
+    const res = acceptAgainstOracle(g.input, g.query_text, resolver);
     if (res.ok) { accepted++; continue; }
     const reason = res.reason ?? 'parse-exception';
     byReason[reason] = (byReason[reason] ?? 0) + 1;
