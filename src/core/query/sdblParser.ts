@@ -157,6 +157,17 @@ class Cursor {
     );
   }
 
+  /**
+   * Дальше начинается ОПЦИОНАЛЬНОЕ соединение построителя `{<вид> СОЕДИНЕНИЕ …}`
+   * (фаза 6.15.13): punct `{` + ключевое слово вида соединения
+   * (ВНУТРЕННЕЕ/ЛЕВОЕ/ПРАВОЕ/ПОЛНОЕ).
+   */
+  isBuilderJoinStart(): boolean {
+    if (!this.isPunct('{')) return false;
+    const t = this.peek(1);
+    return t.type === 'keyword' && JOIN_KEYWORDS.has(t.value);
+  }
+
   error(message: string, t: Token = this.peek()): Error {
     return new Error(`Ошибка разбора ${t.line}:${t.col} — ${message} (получено «${t.value || '<конец>'}»)`);
   }
@@ -671,6 +682,8 @@ interface RawJoin {
   condText: string;
   /** Глубина правовложенного дерева (0 — верхняя цепочка); см. Join.depth. */
   depth: number;
+  /** Опциональное соединение построителя: всё соединение обёрнуто в `{…}`. */
+  optional?: boolean;
 }
 
 interface FromResult {
@@ -758,10 +771,44 @@ function parseFrom(cur: Cursor): FromResult {
     }
   };
 
+  /**
+   * Опциональные соединения построителя отчётов (фаза 6.15.13): после основной
+   * цепочки соединений конструктор пишет ДИНАМИЧЕСКИЕ соединения целиком в
+   * фигурных скобках — `{<вид> СОЕДИНЕНИЕ <источник> ПО <условие>}`. Каждое такое
+   * соединение самостоятельно (не левоассоциативно цепляется к предыдущему):
+   * затравка/корень для классификации условия — КОРЕНЬ всей цепочки `ИЗ`
+   * (`rootSeedAlias`), что соответствует стандартной форме `<корень>.поле cmp
+   * <присоединяемая>.поле` без скобок (MCP-пробы).
+   */
+  const parseBuilderJoins = (rootSeedAlias: string): void => {
+    while (cur.isBuilderJoinStart()) {
+      cur.expectPunct('{');
+      const kind = cur.next().value as RawJoin['kind'];
+      cur.expectKeyword('СОЕДИНЕНИЕ');
+      const joinedSource = readSource();
+      tables.push(joinedSource);
+      const joinedHead = joinedSource.alias!;
+      cur.expectKeyword('ПО');
+      const { tokens, text } = readJoinCondition(cur, /* stopOnBrace */ true);
+      cur.expectPunct('}');
+      joins.push({
+        kind,
+        seedAlias: rootSeedAlias,
+        joinedAlias: joinedHead,
+        chainSeedAlias: rootSeedAlias,
+        condTokens: tokens,
+        condText: text,
+        depth: 0,
+        optional: true,
+      });
+    }
+  };
+
   for (;;) {
     const seed = readSource();
     tables.push(seed);
     parseJoinChainFrom(seed.alias!, 0);
+    parseBuilderJoins(seed.alias!);
     if (cur.matchPunct(',')) continue;
     break;
   }
@@ -867,7 +914,7 @@ const JOIN_COND_STOP = new Set<string>([
  * уровня / конца секции ИЗ (ГДЕ/СГРУППИРОВАТЬ/секция/«;»/eof). Скобки учитываются,
  * чтобы запятые и ключевые слова внутри не обрывали условие.
  */
-function readJoinCondition(cur: Cursor): { tokens: Token[]; text: string } {
+function readJoinCondition(cur: Cursor, stopOnBrace = false): { tokens: Token[]; text: string } {
   const tokens: Token[] = [];
   let depth = 0;
   for (;;) {
@@ -876,10 +923,13 @@ function readJoinCondition(cur: Cursor): { tokens: Token[]; text: string } {
     if (depth === 0) {
       if (t.type === 'punct' && t.value === ',') break;
       if (t.type === 'punct' && t.value === ';') break;
+      // Закрывающая `}` опционального соединения построителя завершает условие.
+      if (stopOnBrace && t.type === 'punct' && t.value === '}') break;
       if (isJoinKeyword(cur)) break;
       if (t.type === 'keyword' && JOIN_COND_STOP.has(t.value)) break;
-      // Блок построителя (`{ГДЕ …}` сразу после условия ПО) — не часть условия.
-      if (cur.isBuilderStart()) break;
+      // Блок построителя (`{ГДЕ …}` или `{<вид> СОЕДИНЕНИЕ …}` сразу после условия
+      // ПО) — не часть условия.
+      if (cur.isBuilderStart() || cur.isBuilderJoinStart()) break;
     }
     if (t.type === 'punct' && t.value === '(') depth++;
     else if (t.type === 'punct' && t.value === ')') depth--;
@@ -2033,6 +2083,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
       conditions,
       // depth добавляется только у вложенных — плоские модели не меняются.
       ...(raw.depth > 0 ? { depth: raw.depth } : {}),
+      ...(raw.optional ? { optional: true } : {}),
     };
   }
 
@@ -2049,6 +2100,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
     joinedTableId: joinedId,
     conditions,
     ...(raw.depth > 0 ? { depth: raw.depth } : {}),
+    ...(raw.optional ? { optional: true } : {}),
   };
 }
 

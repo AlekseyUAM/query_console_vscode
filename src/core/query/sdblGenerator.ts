@@ -451,11 +451,14 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
       const poOwnLine = inConditionSubquery;
       const cond = renderJoinCondition(p.join, aliases, p.depth, poOwnLine);
       if (!cond) continue;
+      // Опциональное соединение построителя (фаза 6.15.13) закрывается `}` после
+      // условия `ПО`.
+      const close = p.join.optional ? '}' : '';
       if (poOwnLine) {
         lines.push(`\t\t${'\t'.repeat(p.depth)}ПО`);
-        lines.push(cond);
+        lines.push(`${cond}${close}`);
       } else {
-        lines.push(`\t\t${'\t'.repeat(p.depth)}ПО ${cond}`);
+        lines.push(`\t\t${'\t'.repeat(p.depth)}ПО ${cond}${close}`);
       }
     }
   };
@@ -481,7 +484,10 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
       inChain.add(seedId);
     }
     inChain.add(seedId);
-    lines.push(`\t\t${'\t'.repeat(depth)}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined)}`);
+    // Опциональное соединение построителя (фаза 6.15.13) открывается `{` перед видом
+    // соединения; закрывается `}` после условия `ПО` (см. flushPo).
+    const open = join.optional ? '{' : '';
+    lines.push(`\t\t${'\t'.repeat(depth)}${open}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined)}`);
     inChain.add(joinedId);
     pendingPo.push({ join, depth });
   });
