@@ -3,7 +3,7 @@ import { defaultTableAlias } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, wrapBareCastOperand } from './exprFormatter';
+import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, wrapBareCastOperand } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -631,7 +631,10 @@ export function formatSelectExpression(expression: string): string {
     // печатает одной строкой — сплющиваем до нормализации (фаза 6.15.3).
     // Лист-подзапрос (`ИСТИНА В\n(ВЫБРАТЬ …)`) перебазируется на отступ 2 (= 1+1,
     // фаза 6.15.9, MCP).
-    : appendIsNotNullTrailingSpace(normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expression), 2)));
+    // Вложенный в лист ВЫБОР (`СУММА(ВЫБОР …)`, `… - ВЫБОР …`) переотрисовывается
+    // конструктором по глубине обрамляющих скобок: КОНЕЦ на (отступ поля = 1) +
+    // число НЕзакрытых скобок перед ВЫБОР (фаза 6.15.9b, MCP).
+    : appendIsNotNullTrailingSpace(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expression), 2), 1)));
 }
 
 /**
@@ -993,7 +996,7 @@ function buildConditionStrings(
       // и ИМЕЮЩИЕ — 2 (= 1+1); ведущие НЕ листа добавляют +1 (внутри хелпера).
       const subBase = slot === 'where' && !inConditionSubquery ? 3 : 2;
       // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении — в скобках (фаза 6.15.12).
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(wrapBareCastOperand(normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase))))));
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNegatedFieldParens(wrapBareCastOperand(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase), 1))))));
       continue;
     }
     if (!c.path) continue;

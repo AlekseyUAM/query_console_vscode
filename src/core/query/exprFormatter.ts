@@ -369,6 +369,139 @@ export function reindentLeafSubquery(text: string, base: number): string {
 }
 
 /**
+ * Канонический отступ блока ВЫБОР, ВЛОЖЕННОГО внутрь листа (фаза 6.15.9b, MCP-пробы).
+ * Конструктор 1С переотрисовывает ВЫБОР/КОГДА/ТОГДА/ИНАЧЕ/КОНЕЦ даже когда ВЫБОР стоит
+ * внутри вызова функции (`СУММА(ВЫБОР … КОНЕЦ)`), арифметики (`… - ВЫБОР … КОНЕЦ`) или
+ * условия соединения (`ПО (ВЫБОР … КОНЕЦ)`) — то есть там, где парсер выражений
+ * поглощает весь блок одним листом и не строит узел case. Раскладка (проба
+ * `СУММА(ВЫБОР …)`): КОНЕЦ = E, КОГДА = E+1, продолжения условия (`И`/`ИЛИ`) = E+3
+ * (whenInd+2), ТОГДА = E+2, ИНАЧЕ = E+1, где E = `base` + число НЕзакрытых скобок,
+ * стоящих между началом листа и словом ВЫБОР. Вложенный ВЫБОР после ТОГДА/ИНАЧЕ
+ * получает свой E = (отступ ТОГДА/ИНАЧЕ) + 1.
+ *
+ * Реализация — построчная переустановка ведущих табов СТРУКТУРНЫХ строк (тех, что
+ * начинаются ключевым словом ВЫБОР/КОГДА/ТОГДА/ИНАЧЕ/КОНЕЦ/И/ИЛИ); прочее содержимое
+ * (тексты значений, хвосты) сохраняется побайтно. Полный ре-парс не используем —
+ * он терял бы дословный текст листьев. Консервативно: при любой неожиданной
+ * геометрии (значение на нескольких строках, рассинхрон стека ВЫБОР/КОНЕЦ,
+ * подзапрос внутри) функция возвращает исходный текст без изменений.
+ */
+export function reindentLeafCase(text: string, base: number): string {
+  if (!text.includes('\n')) return text;
+  // Подзапросы внутри листа обрабатывает reindentLeafSubquery — здесь не трогаем.
+  if (/\bВЫБРАТЬ\b/u.test(text)) return text;
+  const lines = text.split('\n');
+
+  // Найти первую строку, ОКАНЧИВАЮЩУЮСЯ словом ВЫБОР (открытие CASE — конструктор
+  // всегда переносит после ВЫБОР). До неё считаем баланс скобок (вне литералов).
+  const endsWithVybor = (s: string): boolean => /(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(s);
+  let openIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (endsWithVybor(lines[i])) { openIdx = i; break; }
+  }
+  if (openIdx < 0) return text;
+
+  // Баланс скобок от начала листа до слова ВЫБОР на строке openIdx.
+  let parenDepth = 0;
+  let inStr = false;
+  for (let i = 0; i <= openIdx; i++) {
+    const line = lines[i];
+    for (let c = 0; c < line.length; c++) {
+      const ch = line[c];
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '(') parenDepth++;
+      else if (ch === ')') parenDepth--;
+    }
+  }
+  if (parenDepth < 0) return text;
+
+  const E0 = base + parenDepth;
+  // Стек контекстов ВЫБОР: каждый элемент — отступ КОНЕЦ (E) данного ВЫБОР.
+  const stack: number[] = [E0];
+  // Текущий whenInd (для продолжений условия И/ИЛИ) — обновляется на строке КОГДА.
+  let curWhen = -1;
+  // Баланс скобок внутри текущего условия КОГДА (сбрасывается на КОГДА): продолжение
+  // (`И`/`ИЛИ`), стоящее внутри вложенной скобочной группы условия, конструктор
+  // отступает на +1 за каждый незакрытый уровень скобок.
+  let condParen = 0;
+  // Чистый баланс скобок строки (вне строковых литералов).
+  const parenDelta = (s: string): number => {
+    let d = 0;
+    let inS = false;
+    for (let c = 0; c < s.length; c++) {
+      const ch = s[c];
+      if (ch === '"') { inS = !inS; continue; }
+      if (inS) continue;
+      if (ch === '(') d++;
+      else if (ch === ')') d--;
+    }
+    return d;
+  };
+  const tabsOf = (s: string): number => (s.match(/^\t*/u) ?? [''])[0].length;
+  // Переустановка ведущих табов + нормализация хвостовых пробелов: конструктор
+  // срезает хвостовой пробел структурных строк, КРОМЕ предиката `ЕСТЬ НЕ NULL `,
+  // который сохраняет ровно один хвостовой пробел (см. appendIsNotNullTrailingSpace).
+  const reTab = (s: string, n: number): string =>
+    '\t'.repeat(n) + appendIsNotNullTrailingSpace(s.replace(/^\t+/u, '').replace(/\s+$/u, ''));
+  const firstWord = (s: string): string => {
+    const m = /^\t*([\p{L}]+)/u.exec(s);
+    return m ? m[1].toUpperCase() : '';
+  };
+
+  for (let i = openIdx + 1; i < lines.length; i++) {
+    const raw = lines[i];
+    if (raw.trim() === '') continue; // пустые/разделительные строки не трогаем
+    const E = stack[stack.length - 1];
+    if (E === undefined) return text; // стек опустошён раньше времени — нестандартно
+    const w = firstWord(raw);
+    if (w === 'КОГДА') {
+      const whenInd = E + 1;
+      curWhen = whenInd;
+      condParen = 0;
+      lines[i] = reTab(raw, whenInd);
+      condParen += parenDelta(raw);
+    } else if (w === 'И' || w === 'ИЛИ') {
+      // Продолжение условия КОГДА: базовый отступ whenInd+2, плюс по +1 за каждый
+      // незакрытый уровень скобок условия (вложенная группа `И (… ИЛИ …)`).
+      if (curWhen < 0) return text;
+      lines[i] = reTab(raw, curWhen + 2 + condParen);
+      condParen += parenDelta(raw);
+    } else if (w === 'ТОГДА') {
+      lines[i] = reTab(raw, E + 2);
+      if (endsWithVybor(raw)) { stack.push(E + 2 + 1); curWhen = -1; }
+    } else if (w === 'ИНАЧЕ') {
+      lines[i] = reTab(raw, E + 1);
+      if (endsWithVybor(raw)) { stack.push(E + 1 + 1); curWhen = -1; }
+    } else if (w === 'КОНЕЦ') {
+      lines[i] = reTab(raw, E);
+      stack.pop();
+      curWhen = -1;
+      if (stack.length === 0) {
+        // Достигли КОНЕЦ внешнего ВЫБОР: оставшиеся строки (если есть непустые) —
+        // нестандартный хвост, который не должен возникать; всё ок если их нет.
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() !== '') return text;
+        }
+        break;
+      }
+    } else {
+      // Строка не начинается структурным ключевым словом: это либо значение
+      // ТОГДА/ИНАЧЕ, перенесённое на свою строку (геометрия не каноническая),
+      // либо неожиданная конструкция. Сверяем её отступ — если он уже совпадает с
+      // ожидаемым (значение инлайн с ТОГДА/ИНАЧЕ кладётся на ту же строку, сюда
+      // такие не попадают), пропускаем; иначе bail.
+      const t = tabsOf(raw);
+      if (t < E) return text; // мельче КОНЕЦ — точно чужая геометрия
+      // Иное продолжение значения — не трогаем абсолютную позицию (bail безопаснее).
+      return text;
+    }
+  }
+  if (stack.length !== 0) return text; // не все ВЫБОР закрылись — нестандартно
+  return lines.join('\n');
+}
+
+/**
  * Правая часть простого условия `<op> <param>`. Конструктор 1С не ставит пробел перед
  * скобкой списка значений у оператора `В` (и `В ИЕРАРХИИ`): `В (&Список)` → `В(&Список)`,
  * `В ИЕРАРХИИ (&Род)` → `В ИЕРАРХИИ(&Род)`. Перед подзапросом (`В (ВЫБРАТЬ …)`) конструктор
@@ -1300,7 +1433,9 @@ function renderBool(
       t = wrapBareCastOperand(t);
       // Подзапрос внутри листа — перебазировка на контекстный отступ (фаза 6.15.9).
       const rebased = reindentLeafSubquery(t, subInd ?? ind + subDelta(orLvl, ctx));
-      return [appendIsNotNullTrailingSpace(rebased)];
+      // Вложенный в лист ВЫБОР (`(ВЫБОР …)`, `СУММА(ВЫБОР …)`) — КОНЕЦ на ind +
+      // число обрамляющих скобок перед ВЫБОР (фаза 6.15.9b).
+      return [appendIsNotNullTrailingSpace(reindentLeafCase(rebased, ind))];
     }
   }
 }
@@ -1620,7 +1755,11 @@ export function formatJoinConjunct(raw: string, first: boolean, base = 2): strin
   // скобках, голых нет) — скобки исходника сняты классификатором, восстанавливаем
   // раскладкой скобочной группы (`renderCaseE` + внешние скобки).
   if (tree.kind === 'case') {
-    const sub = renderCaseE(tree, ind, ctx);
+    // Восстановленная внешняя скобка `(ВЫБОР … КОНЕЦ)` фиксирует КОНЕЦ на base+1
+    // (КОГДА=base+2) НЕЗАВИСИМО от позиции конъюнкта: первый конъюнкт стоит на
+    // base, последующий `И …` — на base+1, но скобка выравнивает КОНЕЦ обоих на
+    // base+1 (фаза 6.15.9b, MCP/корпус: bsl_14 первый, bsl_195 второй).
+    const sub = renderCaseE(tree, base + 1, ctx);
     sub[0] = '(' + sub[0];
     sub[sub.length - 1] += ')';
     return sub.join('\n') + tail;
@@ -1638,7 +1777,9 @@ function renderJoinConjunct(node: Node, ind: number, ctx: RenderCtx, orLvl: numb
     case 'leaf':
       // Подзапрос конъюнкта ПО — на base+2 для любого конъюнкта: первый (ind=base,
       // orLvl=0 → +2) и И-конъюнкт (ind=base+1, orLvl=1 → +1) дают один отступ (MCP).
-      return reindentLeafSubquery(node.text, ind + subDelta(orLvl, ctx)).split('\n');
+      // Вложенный в лист ВЫБОР (`(ВЫБОР …)`) — КОНЕЦ на ind + число обрамляющих
+      // скобок перед ВЫБОР (фаза 6.15.9b).
+      return reindentLeafCase(reindentLeafSubquery(node.text, ind + subDelta(orLvl, ctx)), ind).split('\n');
     case 'case':
       return renderCase(node, ind, ctx, true);
     case 'not': {
@@ -1654,8 +1795,12 @@ function renderJoinConjunct(node: Node, ind: number, ctx: RenderCtx, orLvl: numb
         return renderBool(child, ind, ind + 1, orLvl, ctx);
       }
       if (child.kind === 'case') {
-        // `(ВЫБОР … КОНЕЦ)` в ПО: КОНЕЦ на отступе ind (value-слот), внешние скобки.
-        const sub = renderCaseE(child, ind, ctx);
+        // `(ВЫБОР … КОНЕЦ)` в ПО: внешняя скобка фиксирует КОНЕЦ на base+1 независимо
+        // от позиции конъюнкта. Здесь base восстанавливается из ind: первый конъюнкт
+        // (orLvl=0) ind=base → КОНЕЦ=ind+1; последующий `И …` (orLvl=1) ind=base+1 →
+        // КОНЕЦ=ind (фаза 6.15.9b; корпус: bsl_14 первый, bsl_195 второй).
+        const caseEnd = orLvl === 0 ? ind + 1 : ind;
+        const sub = renderCaseE(child, caseEnd, ctx);
         sub[0] = '(' + sub[0];
         sub[sub.length - 1] += ')';
         return sub;
