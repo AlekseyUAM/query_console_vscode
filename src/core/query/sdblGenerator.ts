@@ -128,10 +128,15 @@ function renderConditionSubquery(subquery: QueryDocument, baseTabs: number): str
     .join('\n') + ')';
 }
 
-function renderSource(t: SelectedTable): string {
+function renderSource(t: SelectedTable, bodyTabs = 1): string {
   if (t.subquery) {
+    // Тело подзапроса-источника конструктор отбивает по отступу СТРОКИ источника:
+    // первая строка инлайн (`(ВЫБРАТЬ`), продолжения — на `bodyTabs` табов. Источник
+    // в списке ИЗ стоит на 1 табе (bodyTabs=1, по умолчанию); ПРИСОЕДИНЯЕМЫЙ источник
+    // соединения — на 2+depth табах, его тело глубже соответственно (фаза 6.15.19, MCP).
     const inner = generateDocument(t.subquery).split('\n');
-    return inner.map((l, k) => (k === 0 ? '(' + l : '\t' + l)).join('\n') + ')';
+    const pad = '\t'.repeat(bodyTabs);
+    return inner.map((l, k) => (k === 0 ? '(' + l : pad + l)).join('\n') + ')';
   }
   if (!t.virtual) return t.fullName;
   const v = t.virtual;
@@ -421,15 +426,15 @@ function renderJoinCondition(join: Join, aliases: Map<string, string>, depth = 0
  *   после неё через запятую (последняя строка цепочки получает запятую).
  */
 function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
-  const sourceLine = (t: SelectedTable): string => {
+  const sourceLine = (t: SelectedTable, bodyTabs = 1): string => {
     // ВНУТРИ подзапроса-операнда условия (`В (ВЫБРАТЬ … ИЗ ВТ)`) конструктор 1С НЕ
     // печатает `КАК <имя>` для источника с СИНТЕЗИРОВАННЫМ псевдонимом (во вводе не
     // было явного `КАК`/голого псевдонима) — источник остаётся голым (`ИЗ ВТ`).
     // На верхнем уровне конструктор такой `КАК` добавляет (фаза 6.15.11c, MCP).
     if (inConditionSubquery && t.aliasSynthesized && !t.subquery) {
-      return renderSource(t);
+      return renderSource(t, bodyTabs);
     }
-    return `${renderSource(t)} КАК ${aliases.get(t.id) ?? t.id}`;
+    return `${renderSource(t, bodyTabs)} КАК ${aliases.get(t.id) ?? t.id}`;
   };
 
   const joins = model.joins ?? [];
@@ -494,7 +499,9 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
     // Опциональное соединение построителя (фаза 6.15.13) открывается `{` перед видом
     // соединения; закрывается `}` после условия `ПО` (см. flushPo).
     const open = join.optional ? '{' : '';
-    lines.push(`\t\t${'\t'.repeat(depth)}${open}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined)}`);
+    // Присоединяемый источник стоит на отступе 2+depth — тело его подзапроса (если
+    // источник — подзапрос) отбивается по этому же отступу (фаза 6.15.19).
+    lines.push(`\t\t${'\t'.repeat(depth)}${open}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined, 2 + depth)}`);
     inChain.add(joinedId);
     pendingPo.push({ join, depth });
   });
