@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { getConfig } from './corpusConfig';
 
 const NAMED_XML_ENTITIES: Record<string, string> = {
@@ -154,6 +155,32 @@ export function extractQueriesFromXml(xmlSource: string): ExtractedQuery[] {
   return result;
 }
 
+/**
+ * Имя файла корпуса для запроса `idx` из источника `rel`. Обычно
+ * `${rel}_${idx+1}.txt`, но длинные пути (глубокая вложенность форм) могут дать имя
+ * длиннее лимита файловой системы (255 байт). В этом случае префикс пути
+ * усекается по границе символов до бюджета, а уникальность сохраняет короткий
+ * sha1-хэш полного `rel`: `${усечённый}-${hash8}_${idx+1}.txt`.
+ */
+export function corpusFileName(rel: string, idx: number): string {
+  const MAX_NAME_BYTES = 255;
+  const suffix = `_${idx + 1}.txt`;
+  const base = `${rel}${suffix}`;
+  if (Buffer.byteLength(base, 'utf8') <= MAX_NAME_BYTES) return base;
+  const hash = crypto.createHash('sha1').update(rel).digest('hex').slice(0, 8);
+  const tail = `-${hash}${suffix}`;
+  const budget = MAX_NAME_BYTES - Buffer.byteLength(tail, 'utf8');
+  let truncated = '';
+  let used = 0;
+  for (const chunk of rel) {
+    const b = Buffer.byteLength(chunk, 'utf8');
+    if (used + b > budget) break;
+    truncated += chunk;
+    used += b;
+  }
+  return `${truncated}${tail}`;
+}
+
 // ---- CLI ----
 
 function readSource(file: string): string | null {
@@ -198,7 +225,7 @@ export function run(): void {
     if (seen.has(q.text)) return;
     seen.add(q.text);
     uniqueWritten++;
-    const outFile = path.join(outDir, `${rel}_${idx + 1}.txt`);
+    const outFile = path.join(outDir, corpusFileName(rel, idx));
     fs.writeFileSync(outFile, q.text, 'utf8');
   };
 

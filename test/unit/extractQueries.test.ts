@@ -5,6 +5,7 @@ import {
   extractQueryStrings,
   unescapeXmlEntities,
   extractQueriesFromXml,
+  corpusFileName,
 } from '../../src/cli/extractQueries';
 
 describe('extractQueryStrings', () => {
@@ -153,5 +154,36 @@ describe('extractQueriesFromXml — реальный макет', () => {
     expect(q).not.toContain('&lt;');
     expect(q).not.toContain('&amp;');
     expect(q).not.toContain('&gt;');
+  });
+});
+
+describe('corpusFileName', () => {
+  it('короткое имя отдаёт как есть: `${rel}_${idx+1}.txt`', () => {
+    expect(corpusFileName('Catalogs-Товары-Ext-ManagerModule.bsl', 0)).toBe(
+      'Catalogs-Товары-Ext-ManagerModule.bsl_1.txt',
+    );
+    expect(corpusFileName('a', 4)).toBe('a_5.txt');
+  });
+
+  it('длинное имя усекается под лимит 255 байт', () => {
+    const rel = 'Catalogs-' + 'Очень'.repeat(80) + '-Ext-Form-Module.bsl';
+    const name = corpusFileName(rel, 0);
+    expect(Buffer.byteLength(name, 'utf8')).toBeLessThanOrEqual(255);
+    expect(name.endsWith('_1.txt')).toBe(true);
+    // короткий sha1-хэш полного rel перед суффиксом
+    expect(name).toMatch(/-[0-9a-f]{8}_1\.txt$/u);
+  });
+
+  it('разные длинные rel дают разные имена (хэш по полному rel)', () => {
+    const a = 'X'.repeat(300);
+    const b = 'Y'.repeat(300);
+    expect(corpusFileName(a, 0)).not.toBe(corpusFileName(b, 0));
+  });
+
+  it('один длинный rel с разными idx различается суффиксом', () => {
+    const rel = 'Z'.repeat(300);
+    expect(corpusFileName(rel, 0)).not.toBe(corpusFileName(rel, 1));
+    expect(corpusFileName(rel, 0).endsWith('_1.txt')).toBe(true);
+    expect(corpusFileName(rel, 1).endsWith('_2.txt')).toBe(true);
   });
 });
