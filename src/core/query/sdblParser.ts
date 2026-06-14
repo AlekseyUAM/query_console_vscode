@@ -61,8 +61,12 @@ import { expandStarFields } from './expandStarFields';
 import { expandTabSectionFields } from './expandTabSectionFields';
 import { wrapTabSectionAggregates } from './wrapTabSectionAggregates';
 import { dropUserIBConditions } from './dropUserIBConditions';
-import { qualifyBareFields, qualifyBareSectionFields } from './qualifyBareFields';
+import { qualifyBareFields, qualifyBareSectionFields, setSubqueryParser } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
+
+// Инжектируем разборщик подзапросов в пасс квалификации голых полей (для подзапросов,
+// встроенных в СЫРЫЕ выражения условий/полей), избегая циклического импорта.
+setSubqueryParser((text, r) => parseDocument(text, r));
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
 const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
@@ -3738,6 +3742,9 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     // источник — им и квалифицируем; несколько — только при однозначном владельце по
     // метаданным. После прочих пассов, до назначения автопсевдонимов.
     qualifyBareFields(model, resolver);
+    // Дотированный автопсевдоним квалифицированного поля с НЕРЕЗОЛВИМОЙ навигацией
+    // по источнику-ВТ (фаза 6.18). После квалификации, до автопсевдонимов.
+    markDottedAutoAlias(model, resolver);
     // Пометка иерархических источников (для суффикса ИЕРАРХИЯ в УПОРЯДОЧИТЬ ПО,
     // фаза 6.16.6). По метаданным; без резолвера флаг не ставится.
     if (resolver) {
@@ -3778,6 +3785,42 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
   // автопсевдонимов и выравнивания колонок объединения (фаза 6.17).
   qualifyBareSectionFields(doc, resolver);
   return doc;
+}
+
+/**
+ * Помечает квалифицированные поля выборки, чей автопсевдоним конструктор 1С
+ * оставляет ПОЛНЫМ точечным путём (а не склейкой сегментов), — навигация по
+ * НЕРЕЗОЛВИМОМУ полю источника-ВРЕМЕННОЙ таблицы (фаза 6.18). Сверено с golden:
+ * во ВСЕХ случаях оракул печатает `<ВТ>.СтавкаНДС.Перечисление КАК СтавкаНДС.Перечисление`
+ * (дотированный псевдоним), когда:
+ *  - источник — односегментный `fullName` (имя ВТ, а не `Тип.Объект` метаданных),
+ *    не подзапрос и не виртуальная таблица;
+ *  - путь навигированный (≥2 сегмента, есть точка);
+ *  - ВЕДУЩИЙ сегмент пути НЕ является колонкой ВТ — т.е. ВТ либо неизвестна
+ *    резолверу (создана в другом операторе пакета), либо известна, но такой
+ *    колонки в ней нет. Тогда конструктор не может развернуть навигацию по
+ *    метаданным и сохраняет путь дословно как псевдоним.
+ * Если ВЕДУЩИЙ сегмент — реальная колонка ВТ (навигация резолвится), действует
+ * обычная склейка (`qualifiedAutoAlias`), флаг не ставится. Без резолвера —
+ * консервативно НЕ ставим флаг (поведение прежнее).
+ */
+function markDottedAutoAlias(model: QueryModel, resolver: MetadataResolver | undefined): void {
+  if (!resolver) return;
+  for (const f of model.fields) {
+    if (!f.qualified || f.alias !== undefined) continue;
+    const segs = f.path.split('.');
+    if (segs.length < 2) continue;
+    const t = model.tables.find(tb => tb.id === f.tableId);
+    if (!t || t.subquery || t.virtual || !t.fullName) continue;
+    // Источник метаданных всегда многосегментный (`Справочник.X`); односегментное
+    // имя — временная таблица (placed `ПОМЕСТИТЬ`).
+    if (t.fullName.split('.').length !== 1) continue;
+    const meta = resolver.tableByFullName(t.fullName);
+    const leadIsColumn = !!meta && meta.fields.some(
+      mf => mf.name.toUpperCase() === segs[0].toUpperCase()
+    );
+    if (!leadIsColumn) f.autoAliasDotted = true;
+  }
 }
 
 /**

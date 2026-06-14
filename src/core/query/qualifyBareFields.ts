@@ -37,6 +37,11 @@ const STRUCTURAL = new Set([
   'ИЕРАРХИИ', 'ИЕРАРХИЯ', 'ВЫБРАТЬ', 'ИЗ', 'ГДЕ', 'ПО',
   // Модификаторы выборки/агрегата внутри выражений (`КОЛИЧЕСТВО(РАЗЛИЧНЫЕ …)`).
   'РАЗЛИЧНЫЕ', 'РАЗРЕШЕННЫЕ', 'ПЕРВЫЕ', 'ВСЕ', 'ОБЪЕДИНИТЬ',
+  // Структурные слова СЕКЦИЙ/СОЕДИНЕНИЙ встроенного подзапроса (тело разбирается
+  // как `ВЫБРАТЬ … ИЗ … СОЕДИНЕНИЕ … ГДЕ … СГРУППИРОВАТЬ … ПОМЕСТИТЬ`): они не поля.
+  'ЛЕВОЕ', 'ПРАВОЕ', 'ВНУТРЕННЕЕ', 'ПОЛНОЕ', 'ВНЕШНЕЕ', 'СОЕДИНЕНИЕ',
+  'СГРУППИРОВАТЬ', 'УПОРЯДОЧИТЬ', 'ИМЕЮЩИЕ', 'ИТОГИ', 'ИНДЕКСИРОВАТЬ', 'ПОМЕСТИТЬ',
+  'ДЛЯ', 'ИЗМЕНЕНИЯ',
   // Английские эквиваленты операторов/литералов (встречаются в нетиповых запросах).
   'IS', 'NULL', 'AND', 'OR', 'NOT', 'AS', 'BETWEEN', 'LIKE', 'TRUE', 'FALSE',
 ]);
@@ -78,6 +83,28 @@ interface OwnerContext {
   /** Источники объемлющих запросов (для разрешения коррелированных голых полей). */
   outerSources: SourceInfo[];
   sources: SourceInfo[];
+  /** Резолвер метаданных (для контекста встроенных в сырое выражение подзапросов). */
+  resolver?: MetadataResolver;
+  /**
+   * Разбор текста подзапроса в документ (инжектится парсером во избежание
+   * циклического импорта). Нужен для квалификации голых полей внутри встроенного в
+   * СЫРОЕ выражение подзапроса `(ВЫБРАТЬ … ИЗ …)` (tuple-LHS `В`, булева цепочка,
+   * подзапрос в `ВЫБОР`), который не разобран структурно в `c.subquery`.
+   */
+  parseDoc?: ParseDocFn;
+}
+
+/** Сигнатура `parseDocument` (инжектится, чтобы не импортировать парсер). */
+export type ParseDocFn = (text: string, resolver?: MetadataResolver) => QueryDocument;
+
+/**
+ * Инжектированный разборщик подзапросов (модульный уровень — пасс синхронный,
+ * однопоточный). Парсер вызывает `setSubqueryParser(parseDocument)` один раз при
+ * загрузке модуля; так избегаем циклического импорта `qualifyBareFields ↔ sdblParser`.
+ */
+let activeParseDoc: ParseDocFn | undefined;
+export function setSubqueryParser(fn: ParseDocFn): void {
+  activeParseDoc = fn;
 }
 
 function up(s: string): string {
@@ -130,7 +157,7 @@ function buildContext(
       sources.push({ alias, wildcard: true });
     }
   }
-  return { aliases, outerAliases, outerSources, sources };
+  return { aliases, outerAliases, outerSources, sources, resolver, parseDoc: activeParseDoc };
 }
 
 /**
@@ -171,6 +198,49 @@ function ownerAlias(ctx: OwnerContext, name: string, requireMeta: boolean): stri
   return undefined;
 }
 
+/** Индекс парной `)` для `(` на позиции `openIdx` в массиве токенов, иначе -1. */
+function matchCloseIndex(sig: Token[], openIdx: number): number {
+  let d = 0;
+  for (let k = openIdx; k < sig.length; k++) {
+    const tk = sig[k];
+    if (tk.type === 'punct' && tk.value === '(') d++;
+    else if (tk.type === 'punct' && tk.value === ')') {
+      d--;
+      if (d === 0) return k;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Квалификация голых полей внутри ВСТРОЕННОГО в сырое выражение подзапроса
+ * `ВЫБРАТЬ … ИЗ …` (текст БЕЗ внешних скобок). Подзапрос несёт собственную область
+ * видимости: разбираем его текст инжектированным `parseDoc`, строим контекст по его
+ * `ИЗ`, и квалифицируем тело тем же `qualifyExpression` (псевдонимы внешнего запроса
+ * — как коррелированные, чтобы их не трогать и распознавать корреляции). Имена
+ * источников после `ИЗ`/`КАК` и так пропускаются (они в `aliases`/после `КАК`/типы),
+ * а структурные слова соединений — в `STRUCTURAL`. Без `parseDoc` — текст как есть.
+ */
+function qualifySubquerySpan(innerRaw: string, outerCtx: OwnerContext): string {
+  const parseDoc = outerCtx.parseDoc;
+  if (!parseDoc) return innerRaw;
+  let innerDoc: QueryDocument;
+  try {
+    innerDoc = parseDoc(innerRaw, outerCtx.resolver);
+  } catch {
+    return innerRaw;
+  }
+  const m0 = innerDoc.members[0]?.model;
+  if (!m0) return innerRaw;
+  // Внешние псевдонимы/источники подзапроса = текущие + унаследованные внешние
+  // (коррелированные ссылки на колонки объемлющих запросов).
+  const innerOuterAliases = new Set([...outerCtx.outerAliases, ...outerCtx.aliases]);
+  const innerOuterSources = [...outerCtx.outerSources, ...outerCtx.sources];
+  const innerCtx = buildContext(m0, outerCtx.resolver, innerOuterAliases, innerOuterSources);
+  if (innerCtx.sources.length === 0) return innerRaw;
+  return qualifyExpression(innerRaw, innerCtx);
+}
+
 /**
  * Квалифицирует голые ссылки на поля в сыром выражении. Возвращает переписанный
  * текст (или исходный, если ничего не изменилось/не токенизируется).
@@ -184,11 +254,6 @@ function qualifyExpression(raw: string, ctx: OwnerContext): string {
     return raw;
   }
   const sig = toks.filter(t => t.type !== 'eof');
-  // Вложенный подзапрос (`… В (ВЫБРАТЬ …)`) несёт собственную область видимости:
-  // голые поля внутри принадлежат ВНУТРЕННИМ источникам, а не текущим. Безопасно
-  // не трогать всё выражение целиком (такие случаи разбираются структурно через
-  // c.subquery, либо остаются голыми — это лучше неверной квалификации).
-  if (sig.some(t => up(t.text ?? t.value) === 'ВЫБРАТЬ')) return raw;
 
   // Глубина скобок, на которой открыт вызов ЗНАЧЕНИЕ(…)/ТИП(…): внутри его аргументов
   // ВСЕ идентификаторы — имена типов метаданных (`ВидДвиженияНакопления.Приход`,
@@ -196,13 +261,33 @@ function qualifyExpression(raw: string, ctx: OwnerContext): string {
   const metaCallDepths: number[] = [];
   let depth = 0;
 
-  // Вставки `(pos, alias+'.')` — применяем с конца, чтобы не сбить позиции.
-  const inserts: { pos: number; text: string }[] = [];
+  // Правки текста по позициям: чистая вставка `alias+'.'` (start===end) ИЛИ замена
+  // подстроки встроенного подзапроса на квалифицированную версию. Применяем с конца.
+  const edits: { start: number; end: number; text: string }[] = [];
   for (let i = 0; i < sig.length; i++) {
     const t = sig[i];
     if (t.type === 'punct' && t.value === '(') {
       const head = sig[i - 1];
       const headV = head ? up(head.text ?? head.value) : '';
+      // Встроенный подзапрос `(ВЫБРАТЬ …)` в СЫРОМ выражении (tuple-LHS `В`, булева
+      // цепочка, подзапрос в `ВЫБОР`) — у него СОБСТВЕННАЯ область видимости. Не
+      // трогаем его внешним контекстом: находим парную `)`, строим внутренний
+      // контекст по его `ИЗ` и рекурсивно квалифицируем тело (внешние псевдонимы —
+      // как коррелированные). Перепрыгиваем токены подзапроса.
+      const nextT = sig[i + 1];
+      if (nextT && (nextT.type === 'keyword' || nextT.type === 'ident')
+          && up(nextT.text ?? nextT.value) === 'ВЫБРАТЬ') {
+        const close = matchCloseIndex(sig, i);
+        if (close > i) {
+          const innerStart = sig[i].pos + 1;            // сразу после `(`
+          const innerEnd = sig[close].pos;              // позиция `)`
+          const innerRaw = raw.slice(innerStart, innerEnd);
+          const rewritten = qualifySubquerySpan(innerRaw, ctx);
+          if (rewritten !== innerRaw) edits.push({ start: innerStart, end: innerEnd, text: rewritten });
+          i = close;
+          continue;
+        }
+      }
       depth++;
       if (headV === 'ЗНАЧЕНИЕ' || headV === 'ТИП') metaCallDepths.push(depth);
       continue;
@@ -235,6 +320,10 @@ function qualifyExpression(raw: string, ctx: OwnerContext): string {
     if (prev && prev.type === 'punct' && prev.value === '.') continue;
     // Псевдоним после `КАК` — не поле.
     if (prevV === 'КАК') continue;
+    // ИМЯ ИСТОЧНИКА встроенного подзапроса (`ИЗ <Имя>`, `СОЕДИНЕНИЕ <Имя>`,
+    // `ПОМЕСТИТЬ <Имя>`) — не поле (и не нуждается в префиксе): пропускаем. Покрывает
+    // временные таблицы `#Имя` и односегментные имена, не попавшие в `aliases`.
+    if (prevV === 'ИЗ' || prevV === 'СОЕДИНЕНИЕ' || prevV === 'ПОМЕСТИТЬ') continue;
     // Имя примитивного типа после `КАК` уже отсечено; в ТИП(СТРОКА) — пропускаем тип.
     if (PRIMITIVE_TYPES.has(word) && (prevV === 'КАК' || prevV === '(')) continue;
     // Вызов функции — имя перед `(`.
@@ -253,13 +342,13 @@ function qualifyExpression(raw: string, ctx: OwnerContext): string {
 
     const alias = ownerAlias(ctx, t.text ?? t.value, !!hasDotAfter);
     if (alias === undefined) continue;
-    inserts.push({ pos: t.pos, text: alias + '.' });
+    edits.push({ start: t.pos, end: t.pos, text: alias + '.' });
   }
-  if (inserts.length === 0) return raw;
-  inserts.sort((a, b) => b.pos - a.pos);
+  if (edits.length === 0) return raw;
+  edits.sort((a, b) => b.start - a.start);
   let out = raw;
-  for (const ins of inserts) {
-    out = out.slice(0, ins.pos) + ins.text + out.slice(ins.pos);
+  for (const e of edits) {
+    out = out.slice(0, e.start) + e.text + out.slice(e.end);
   }
   return out;
 }
@@ -367,6 +456,22 @@ function processModel(
   };
   (model.conditions ?? []).forEach(doCond);
   (model.having ?? []).forEach(doCond);
+
+  // Произвольные условия СОЕДИНЕНИЯ (`ПО …`): встроенный подзапрос
+  // `(ВЫБРАТЬ … ИЗ …)` в сыром тексте `ПО` несёт собственную область видимости —
+  // его голые поля квалифицируем владельцем подзапроса (псевдонимы соединяемых
+  // источников — как коррелированные). Уже квалифицированные ссылки `Алиас.Поле`
+  // самого `ПО` идемпотентно пропускаются (голова — псевдоним источника).
+  for (const j of model.joins ?? []) {
+    if (j.custom && j.expression !== undefined && j.expression.trim()) {
+      j.expression = qualifyExpression(j.expression, ctx);
+    }
+    for (const jc of j.conditions ?? []) {
+      if (jc.custom && jc.expression !== undefined && jc.expression.trim()) {
+        jc.expression = qualifyExpression(jc.expression, ctx);
+      }
+    }
+  }
 
   const doFieldRef = (fr: FieldRef): void => {
     if (fr.expression !== undefined) fr.expression = qualifyExpression(fr.expression, ctx);

@@ -967,6 +967,10 @@ function qualifiedAutoAlias(path: string, tabularSource: boolean): string {
  */
 export function synthesizedFieldAlias(model: QueryModel, field: SelectedField): string {
   if (field.qualified) {
+    // Нерезолвимая навигация по источнику-ВТ: автопсевдоним = ПОЛНЫЙ точечный путь
+    // дословно (`СтавкаНДС.Перечисление`), без склейки сегментов (фаза 6.18, парсер
+    // `markDottedAutoAlias`).
+    if (field.autoAliasDotted) return field.path;
     const t = model.tables.find(tb => tb.id === field.tableId);
     return qualifiedAutoAlias(field.path, isTabularSectionSource(t));
   }
