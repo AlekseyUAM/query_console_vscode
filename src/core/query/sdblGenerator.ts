@@ -1237,6 +1237,10 @@ function renderOrder(order: Order | undefined, model: QueryModel, includeAuto = 
         // Параметр `&Имя` — дословно; вызов функции/арифметика — через нормализацию
         // выражений выборки (пробелы, скобки, регистр), как печатает конструктор 1С.
         ? (f.expression.trim().startsWith('&') ? f.expression : formatSelectExpression(f.expression))
+        // Голый псевдоним выборки — дословно (дизамбигуация полей с общим (tableId, path),
+        // фаза 6.16.47).
+        : f.selectAlias !== undefined
+        ? f.selectAlias
         : f.qualified
         ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
         : sectionFieldRefText(model, tableAliases, f.tableId, f.path);

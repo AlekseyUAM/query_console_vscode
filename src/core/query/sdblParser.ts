@@ -3142,8 +3142,20 @@ function parseOrder(cur: Cursor, ctx: SectionResolveContext): Order {
         fields.push({ tableId: bareOwner, path: segs.join('.'), direction, qualified: true, ...hier });
       } else {
         // Голая ссылка — псевдоним выборки (или нерезолвимое имя): остаётся как есть.
-        const ref = resolveSelectAlias(segs.join('.'), aliasMap);
-        fields.push({ tableId: ref.tableId, path: ref.path, direction, ...hier });
+        const aliasKey = segs.join('.');
+        const ref = resolveSelectAlias(aliasKey, aliasMap);
+        // Если имя — РЕАЛЬНЫЙ псевдоним выборки, запоминаем его дословно: несколько
+        // полей могут делить (tableId, path) при разных псевдонимах (агрегаты
+        // МАКСИМУМ/МИНИМУМ над одним полем) — поиск по (tableId, path) в генераторе
+        // иначе возьмёт первый и потеряет нужный псевдоним (фаза 6.16.47).
+        const isSelectAlias = aliasMap.has(aliasKey);
+        fields.push({
+          tableId: ref.tableId,
+          path: ref.path,
+          direction,
+          ...(isSelectAlias ? { selectAlias: aliasKey } : {}),
+          ...hier,
+        });
       }
 
       if (cur.matchPunct(',')) continue;
