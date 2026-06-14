@@ -51,7 +51,7 @@ export function expandStarFields(model: QueryModel, resolver?: MetadataResolver)
   // поле сохраняет свой псевдоним.
   const reserved = new Set<string>();
   for (const f of model.fields) {
-    if (parseStar(f) || f.tableId === 't1') continue;
+    if (parseStar(f)) continue;
     const a = fieldAlias(f, model);
     if (a) reserved.add(a.toUpperCase());
   }
