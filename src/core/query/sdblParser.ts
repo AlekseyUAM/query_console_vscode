@@ -221,7 +221,10 @@ interface RawField {
 
 /** Одна сырая колонка проекции ТЧ: простое поле или произвольное выражение. */
 type RawTabColumn =
-  | { kind: 'field'; field: string; alias?: string }
+  // `aliasExplicit` — колонка имела явный `КАК` в исходнике (даже если псевдоним
+  // совпал с именем поля и был отброшен из `alias`). Нужен генератору, чтобы НЕ
+  // навешивать позиционный `Поле{n}` на колонки, у которых автор написал `КАК`.
+  | { kind: 'field'; field: string; alias?: string; aliasExplicit?: boolean }
   | { kind: 'expr'; rawBody: string; alias?: string };
 
 /** Сырая табличная часть `<alias>.<tsName>.( … ) КАК <tsName>`. */
@@ -951,8 +954,15 @@ function parseTabColumn(cur: Cursor, tsName: string, tableAlias: string): RawTab
         cur.next();
         colAlias = a.text;
       }
-      // Совпадающий с именем псевдоним не сохраняем (авто `Поле КАК Поле`).
-      return { kind: 'field', field: fieldText, alias: colAlias !== undefined && colAlias !== fieldText ? colAlias : undefined };
+      // Совпадающий с именем псевдоним не сохраняем (авто `Поле КАК Поле`), но
+      // ФАКТ явного `КАК` запоминаем (`aliasExplicit`) — генератор по нему отличает
+      // автопсевдоним от явного при позиционной нумерации `Поле{n}` глубоких ТЧ.
+      return {
+        kind: 'field',
+        field: fieldText,
+        alias: colAlias !== undefined && colAlias !== fieldText ? colAlias : undefined,
+        aliasExplicit: colAlias !== undefined,
+      };
     }
   }
 
@@ -1088,7 +1098,7 @@ function resolveTabSection(
   const prefix = `${ts.tableAlias}.${ts.tsName}`;
 
   const columns: TabSectionColumn[] = ts.columns.map(c => {
-    if (c.kind === 'field') return { kind: 'field', field: c.field, alias: c.alias };
+    if (c.kind === 'field') return { kind: 'field', field: c.field, alias: c.alias, aliasExplicit: c.aliasExplicit };
     // Внутри выражения: голые ссылки на колонки ТЧ получают полный префикс
     // `<таблица>.<ТЧ>.`, уже квалифицированные/литералы/вызовы — без изменений.
     const expression = requalifyTabSectionExpr(c.rawBody, prefix, aliasSpelling, tableAliasUp, ts.tsName);
@@ -1099,11 +1109,16 @@ function resolveTabSection(
   // (downstream-потребители без поддержки `columns`). Генератор предпочитает `columns`.
   const fields = ts.columns.filter(c => c.kind === 'field').map(c => (c as { field: string }).field);
   const fieldAliases = ts.columns.filter(c => c.kind === 'field').map(c => (c as { alias?: string }).alias);
+  const fieldAliasExplicit = ts.columns
+    .filter(c => c.kind === 'field')
+    .map(c => (c as { aliasExplicit?: boolean }).aliasExplicit === true);
   const hasColAlias = fieldAliases.some(a => a !== undefined);
+  const hasExplicit = fieldAliasExplicit.some(Boolean);
 
   return {
     tableId, tsName: ts.tsName, tsFullName, fields, alias: ts.alias,
     ...(hasColAlias ? { fieldAliases } : {}),
+    ...(hasExplicit ? { fieldAliasExplicit } : {}),
     ...(hasExpr ? { columns } : {}),
   };
 }
@@ -1526,20 +1541,30 @@ function canBeBareAlias(cur: Cursor): boolean {
 const JOIN_KEYWORDS = new Set(['ВНУТРЕННЕЕ', 'ЛЕВОЕ', 'ПРАВОЕ', 'ПОЛНОЕ']);
 function isJoinKeyword(cur: Cursor): boolean {
   const t = cur.peek();
-  return t.type === 'keyword' && JOIN_KEYWORDS.has(t.value);
+  // Голое `СОЕДИНЕНИЕ` без вида — 1С трактует как ВНУТРЕННЕЕ (inner join);
+  // оракул рендерит его как `ВНУТРЕННЕЕ СОЕДИНЕНИЕ` (фаза 6.16).
+  return t.type === 'keyword' && (JOIN_KEYWORDS.has(t.value) || t.value === 'СОЕДИНЕНИЕ');
 }
 
 /**
  * Снимает вид соединения (`ВНУТРЕННЕЕ`/`ЛЕВОЕ`/`ПРАВОЕ`/`ПОЛНОЕ`), опциональное
  * шумовое слово `ВНЕШНЕЕ` (1С допускает `ЛЕВОЕ ВНЕШНЕЕ СОЕДИНЕНИЕ`; конструктор его
  * отбрасывает — фаза 6.16) и обязательное `СОЕДИНЕНИЕ`. Возвращает вид соединения.
+ * Голое `СОЕДИНЕНИЕ` без префикса вида — ВНУТРЕННЕЕ (inner join).
  */
 function consumeJoinKind(cur: Cursor): RawJoin['kind'] {
-  const kind = cur.next().value as RawJoin['kind'];
-  // `ВНЕШНЕЕ` лексится как идентификатор (не ключевое слово) — снимаем, если стоит
-  // перед `СОЕДИНЕНИЕ`.
-  const t = cur.peek();
-  if (t.type === 'ident' && t.value.toUpperCase() === 'ВНЕШНЕЕ') cur.next();
+  // Голое `СОЕДИНЕНИЕ` без вида: вид по умолчанию — ВНУТРЕННЕЕ, сам токен
+  // `СОЕДИНЕНИЕ` снимется общим `expectKeyword` ниже.
+  let kind: RawJoin['kind'];
+  if (cur.peek().value === 'СОЕДИНЕНИЕ') {
+    kind = 'ВНУТРЕННЕЕ';
+  } else {
+    kind = cur.next().value as RawJoin['kind'];
+    // `ВНЕШНЕЕ` лексится как идентификатор (не ключевое слово) — снимаем, если стоит
+    // перед `СОЕДИНЕНИЕ`.
+    const t = cur.peek();
+    if (t.type === 'ident' && t.value.toUpperCase() === 'ВНЕШНЕЕ') cur.next();
+  }
   cur.expectKeyword('СОЕДИНЕНИЕ');
   return kind;
 }
@@ -3458,7 +3483,17 @@ function resolveSectionFieldRef(segs: string[], ctx: SectionResolveContext): Fie
   if (owner !== undefined) {
     return { tableId: owner, path: segs.join('.'), qualified: true };
   }
-  const ref = resolveSelectAlias(segs.join('.'), ctx.aliasMap);
+  const aliasKey = segs.join('.');
+  const ref = resolveSelectAlias(aliasKey, ctx.aliasMap);
+  // Если адресованный псевдоним РАЗОШЁЛСЯ с псевдонимом первого поля выборки с тем же
+  // (tableId, path) — две колонки делят базовый путь под разными псевдонимами
+  // (`Т.X КАК A, Т.X КАК B`) — фиксируем именно адресованный псевдоним, иначе генератор
+  // (по first-match (tableId,path)) напечатает чужой псевдоним (фаза 6.16.59).
+  const firstSame = ctx.fields.find(f => f.tableId === ref.tableId && f.path === ref.path && !f.expression);
+  const firstAlias = firstSame?.alias ?? (ref.path.split('.').pop() ?? ref.path);
+  if (ctx.aliasMap.has(aliasKey) && aliasKey !== firstAlias) {
+    return { tableId: ref.tableId, path: ref.path, selectAlias: aliasKey };
+  }
   return { tableId: ref.tableId, path: ref.path };
 }
 

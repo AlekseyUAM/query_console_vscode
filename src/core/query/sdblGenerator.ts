@@ -493,7 +493,92 @@ function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number):
       body = reindentLeafCase(body, caseEndBase);
     }
   }
-  return `(${normalizeLeafCase(body)})`;
+  // Конъюнкт-отрицание `НЕ (<сравнение>)`: конструктор снимает скобки вокруг
+  // ЕДИНСТВЕННОГО операнда `НЕ`, ОХВАТЫВАЮЩИХ всё выражение, и печатает `НЕ ` с
+  // пробелом — `НЕ ВТ_321.С170 = 0` (а не `НЕ(…)`, что дал бы normalizeLeafCase).
+  // ВАЖНО: в `ПО` конструктор СОХРАНЯЕТ прочие избыточные скобки (`(ВЫРАЗИТЬ(…)) = X`),
+  // поэтому общий stripRedundantLeafParens здесь неприменим — снимаем строго пару
+  // вокруг операнда ведущего `НЕ` (фаза 6.16.59).
+  return `(${normalizeLeafCase(stripLeadingNotOperandParens(body))})`;
+}
+
+/**
+ * `(a, b) НЕ В …` → `НЕ (a, b) В …`: переносит `НЕ` оператора членства кортежа
+ * ПЕРЕД кортеж (как печатает конструктор 1С). Срабатывает СТРОГО когда выражение
+ * НАЧИНАЕТСЯ с охватывающего кортежа `(…)` с верхнеуровневой запятой, за которым
+ * сразу следует `НЕ В` (или `НЕ В ИЕРАРХИИ`). Иначе текст без изменений.
+ */
+function moveNotBeforeTuple(text: string): string {
+  if (text[0] !== '(') return text;
+  // Закрывающая скобка кортежа.
+  let depth = 0;
+  let inStr = false;
+  let close = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '(') depth++;
+    else if (c === ')') { depth--; if (depth === 0) { close = i; break; } }
+  }
+  if (close < 0) return text;
+  const tuple = text.slice(0, close + 1);
+  // Кортеж = скобка с верхнеуровневой запятой (а не группировка/вызов).
+  if (!hasTopLevelComma(text.slice(1, close))) return text;
+  const rest = text.slice(close + 1);
+  const m = /^\s+НЕ\s+(В)(\s+ИЕРАРХИИ)?(?![\p{L}\p{N}_])/u.exec(rest);
+  if (!m) return text;
+  const tail = rest.slice(m[0].length);
+  return `НЕ ${tuple} В${m[2] ?? ''}${tail}`;
+}
+
+/** Есть ли запятая на ВЕРХНЕМ уровне скобок/строк (признак списка/кортежа). */
+function hasTopLevelComma(text: string): boolean {
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === ',' && depth === 0) return true;
+  }
+  return false;
+}
+
+/**
+ * `НЕ (<выражение>)` → `НЕ <выражение>`, когда `(` сразу после ведущего `НЕ` парна
+ * ПОСЛЕДНЕМУ символу строки (скобка охватывает ВЕСЬ операнд отрицания) и внутри нет
+ * верхнеуровневой запятой (не список) и нет верхнеуровневого И/ИЛИ (раскладку
+ * структурного булева слота не трогаем). Однострочный лист; иначе текст без изменений.
+ */
+function stripLeadingNotOperandParens(text: string): string {
+  if (text.includes('\n')) return text;
+  const m = /^НЕ\s*\(/iu.exec(text);
+  if (!m) return text;
+  const open = m[0].length - 1; // позиция '('
+  // Парная закрывающая для этой '(' должна быть последним символом строки.
+  let depth = 0;
+  let inStr = false;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0) {
+        if (i !== text.length - 1) return text;
+        const inner = text.slice(open + 1, i).trim();
+        // Список (`НЕ (a, b)`) или булева цепочка (`НЕ (a И b)`) — НЕ снимаем: смысл/
+        // раскладка изменятся (такие конъюнкты обычно идут отдельным сложным путём).
+        if (hasTopLevelComma(inner) || hasTopLevelBooleanOp(inner)) return text;
+        return `НЕ ${inner}`;
+      }
+    }
+  }
+  return text;
 }
 
 /**
@@ -994,6 +1079,27 @@ export function renderTabProjection(
   opts: { suppress: boolean; outerAlias?: (name: string, explicit: string | undefined) => string }
 ): string {
   const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
+  // Проекция ТЧ, ДОСТИГНУТАЯ через ссылочную навигацию (путь до `.(` длиннее одного
+  // сегмента, напр. `СтатусыОтправки.Основание.ПричиныОтказа` — таблица → ссылка
+  // `Основание` → её ТЧ `ПричиныОтказа`), нумерует автопсевдонимы ГОЛЫХ колонок
+  // позиционно `Поле{n}` вместо имени поля. Для ПРЯМОЙ ТЧ (`Таблица.ТЧ`, tsName без
+  // точки) автопсевдоним = имя поля. Сверено по всему golden-корпусу: 206 прямых
+  // голых колонок → имя; глубокие → Поле1/Поле2/… (фаза 6.16.59). Касается лишь
+  // голых колонок БЕЗ явного псевдонима; явные `КАК` сохраняются как есть.
+  const deepPath = tsf.tsName.includes('.');
+  // Позиционный `Поле{n}` — ТОЛЬКО для голой колонки (без явного `КАК`) глубокой ТЧ.
+  // `alias` — сохранённый явный псевдоним (≠ имени поля); `wasExplicit` — был ли
+  // явный `КАК` вообще (в т.ч. совпавший с именем). Явный псевдоним печатается всегда.
+  const autoColAlias = (
+    alias: string | undefined,
+    fieldName: string,
+    pos: number,
+    wasExplicit: boolean
+  ): string => {
+    if (alias !== undefined) return alias;
+    if (deepPath && !wasExplicit) return `Поле${pos + 1}`;
+    return fieldName;
+  };
   const tsExprLines = (expression: string, alias: string | undefined, comma: string): string[] => {
     const rows = formatSelectExpression(expression).split('\n');
     const shifted = rows.map((l, j) => (j === 0 ? '\t\t' + l : '\t' + l));
@@ -1009,7 +1115,7 @@ export function renderTabProjection(
         // Голая колонка: первый участник — `<поле> КАК <псевдоним>`; прочие — `<поле>`.
         // Нормализация регистра головы: литерал-колонка `Неопределено`/`ЛОЖЬ` → ВЕРХ;
         // имя поля (`ДокументОснование`) не распознаётся как литерал и не трогается.
-        const tail = opts.suppress ? '' : ` КАК ${c.alias ?? c.field}`;
+        const tail = opts.suppress ? '' : ` КАК ${autoColAlias(c.alias, c.field, i, c.aliasExplicit === true)}`;
         return [`\t\t${normalizeLeafCase(c.field)}${tail}${comma}`];
       }
       return tsExprLines(c.expression, c.alias, comma);
@@ -1025,7 +1131,9 @@ export function renderTabProjection(
     });
   } else {
     subLines = tsf.fields.map((f, i) => {
-      const tail = opts.suppress ? '' : ` КАК ${tsf.fieldAliases?.[i] ?? f}`;
+      const tail = opts.suppress
+        ? ''
+        : ` КАК ${autoColAlias(tsf.fieldAliases?.[i], f, i, tsf.fieldAliasExplicit?.[i] === true)}`;
       // Литерал-колонка ТЧ (`Неопределено`/`ЛОЖЬ`/`NULL`) → ВЕРХ; имя поля не трогается.
       return `\t\t${normalizeLeafCase(f)}${tail}${i < tsf.fields.length - 1 ? ',' : ''}`;
     });
@@ -1237,8 +1345,12 @@ function sectionFieldRefText(
   model: QueryModel,
   tableAliases: Map<string, string>,
   tableId: string,
-  path: string
+  path: string,
+  selectAlias?: string
 ): string {
+  // Явно адресованный псевдоним выборки (когда несколько колонок делят (tableId,path)
+  // под разными псевдонимами) печатается дословно — иначе first-match подставит чужой.
+  if (selectAlias !== undefined) return selectAlias;
   const match = model.fields.find(f => f.tableId === tableId && f.path === path);
   if (match) return match.alias ?? (path.split('.').pop() ?? path);
   const alias = tableAliases.get(tableId);
@@ -1371,7 +1483,7 @@ export function renderIndex(indexing: Indexing | undefined, model: QueryModel): 
       ? f.expression
       : f.qualified
       ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
-      : sectionFieldRefText(model, tableAliases, f.tableId, f.path);
+      : sectionFieldRefText(model, tableAliases, f.tableId, f.path, f.selectAlias);
 
   if (indexes.length === 1) {
     const fields = indexes[0].fields;
@@ -1662,7 +1774,12 @@ function buildConditionStrings(
     // рендерится структурным путём ниже (многострочный перенос подзапроса);
     // заданное пользователем expression имеет приоритет.
     if (c.custom && ((c.expression ?? '').trim() || !c.subquery)) {
-      const expr = (c.expression ?? '').trim();
+      // `(a, b) НЕ В …` → `НЕ (a, b) В …` (фаза 6.16.59): конструктор 1С печатает
+      // отрицание членства КОРТЕЖА с `НЕ` ПЕРЕД кортежем, а не между кортежем и `В`.
+      // Ведущее `НЕ` подхватывает reindentLeafSubquery (+1 к отступу подзапроса) —
+      // как у обычного `НЕ X В (…)`. Только для кортежа (скобка с верхнеуровневой
+      // запятой); одиночный операнд `X НЕ В` сюда не попадает.
+      const expr = moveNotBeforeTuple((c.expression ?? '').trim());
       // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
       // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.
       // НЕ-блок (`НЕ (a И b)`) переотрисовывается даже без ИЛИ внутри (фаза 6.14).
