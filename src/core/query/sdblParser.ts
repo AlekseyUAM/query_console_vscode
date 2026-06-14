@@ -334,8 +334,18 @@ function parseSingleQuery(
   for (const item of items) {
     if (item.kind === 'field' && item.field.alias !== undefined) {
       explicitAliases.add(item.field.alias.toUpperCase());
-    } else if (item.kind === 'tabSection' && item.ts.alias) {
-      explicitAliases.add(item.ts.alias.toUpperCase());
+    } else if (item.kind === 'tabSection') {
+      if (item.ts.alias) explicitAliases.add(item.ts.alias.toUpperCase());
+      // Псевдонимы КОЛОНОК проекции ТЧ (`Алиас.ТЧ.(Поле КАК Кол, …)`) — тоже
+      // псевдонимы выборки: голое имя колонки в УПОРЯДОЧИТЬ/ИТОГИ/ИНДЕКСИРОВАТЬ,
+      // совпадающее с ними, конструктор оставляет голым (НЕ квалифицирует ТЧ-
+      // владельцем). Эффективный псевдоним простой колонки = `alias ?? field`
+      // (генератор печатает `<поле> КАК <поле>` без явного КАК); у выражения —
+      // только явный `alias` (сверено с живым оракулом, фаза 6.16.12).
+      for (const col of item.ts.columns) {
+        const colAlias = col.kind === 'field' ? (col.alias ?? col.field) : col.alias;
+        if (colAlias !== undefined) explicitAliases.add(colAlias.toUpperCase());
+      }
     }
   }
   let sawTabSection = false;
