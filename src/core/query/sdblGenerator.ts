@@ -951,7 +951,7 @@ function buildQueryBlock(
   // конструктор такие разделительные пустые строки НЕ ставит (фаза 6.15.11c,
   // MCP-пробы): секции идут вплотную.
   const sectionSep = inConditionSubquery ? [] : [''];
-  const groupingInner = renderGrouping(model.grouping, aliases);
+  const groupingInner = renderGrouping(model.grouping, aliases, model);
   const groupingLines = groupingInner.length ? [...sectionSep, ...groupingInner] : [];
   // ИМЕЮЩИЕ — сразу за группировкой, тоже с предшествующей пустой строкой.
   const havingLines = renderHaving(model.having, aliases);
@@ -1449,9 +1449,41 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
     byList.push(`${alias}${period}${totalKindSuffix(g.kind)}${as}`);
   }
 
-  const aggList = totals.totalFields.map(f =>
-    f.expression ? normalizeLeafCase(f.expression) : `СУММА(${selectAliasFor(model, f.tableId, f.path)})`
-  );
+  // Позиция колонки выборки в ИСХОДНОМ порядке (для сортировки агрегатов) по
+  // ПСЕВДОНИМУ колонки: индекс элемента orderedSelectElements, чей псевдоним равен
+  // операнду агрегата. Первое вхождение псевдонима.
+  const selectPosByAlias = new Map<string, number>();
+  orderedSelectElements(model).forEach((el, i) => {
+    const a = elementAlias(el, model).toUpperCase();
+    if (a !== '' && !selectPosByAlias.has(a)) selectPosByAlias.set(a, i);
+  });
+
+  // Рендер одного агрегата. Простой агрегат с распознанной колонкой-операндом
+  // (func + operandAlias) печатается канонически ФУНКЦИЯ(<псевдонимКолонки>)
+  // (операнд -> псевдоним, хвостовой КАК уже снят парсером). Прочие -- дословным
+  // expression, либо СУММА(<псевдоним>) для legacy-формы без выражения.
+  const renderAgg = (f: typeof totals.totalFields[number]): string =>
+    f.func && f.operandAlias !== undefined
+      ? wrapAggregate(f.func, f.operandAlias)
+      : f.expression
+      ? normalizeLeafCase(f.expression)
+      : `СУММА(${selectAliasFor(model, f.tableId, f.path)})`;
+
+  // Конструктор 1С СОРТИРУЕТ список агрегатов по позиции колонки-операнда в выборке
+  // (стабильно): агрегаты над колонкой выборки -- по её порядку; агрегат, операнд
+  // которого НЕ колонка (не распознан / параметр / выражение без совпадения), уходит
+  // ПОСЛЕ всех распознанных, сохраняя исходный относительный порядок (фаза 6.16).
+  const NOPOS = Number.MAX_SAFE_INTEGER;
+  const posOf = (f: typeof totals.totalFields[number]): number => {
+    const key = f.operandAlias ?? f.sortAlias;
+    if (key === undefined) return NOPOS;
+    const pos = selectPosByAlias.get(key.toUpperCase());
+    return pos === undefined ? NOPOS : pos;
+  };
+  const ordered = totals.totalFields
+    .map((f, seq) => ({ f, seq, pos: posOf(f) }))
+    .sort((a, b) => (a.pos - b.pos) || (a.seq - b.seq));
+  const aggList = ordered.map(o => renderAgg(o.f));
 
   const withCommas = (items: string[]): string[] =>
     items.map((s, i) => `\t${s}${i < items.length - 1 ? ',' : ''}`);
@@ -1719,12 +1751,64 @@ function fieldRefExpr(f: FieldRef, aliases: Map<string, string>): string {
 }
 
 /**
+ * НЕагрегатные ПРОСТЫЕ поля ВЫБРАТЬ (в порядке выборки), которых не хватает в
+ * исходном списке группировки `existing`, — для дополнения СГРУППИРОВАТЬ ПО.
+ * Сопоставление по ОТРЕНДЕРЕННОМУ тексту (тот же `fieldRefExpr`, что и у
+ * группировки), с учётом КРАТНОСТИ: поле, встречающееся в ВЫБРАТЬ N раз и в
+ * группировке M<N раз, дополняется (N−M) раз (дубли разных псевдонимов, напр.
+ * `Т.Дата КАК Период, Т.Дата КАК ДатаДокумента` → второе `Т.Дата`).
+ * Агрегаты и произвольные выражения здесь НЕ дописываются (см. ниже).
+ */
+function appendMissingGroupRefs(
+  model: QueryModel,
+  existing: FieldRef[],
+  aliases: Map<string, string>
+): FieldRef[] {
+  // Счётчик уже покрытых группировкой вхождений по тексту.
+  const covered = new Map<string, number>();
+  for (const f of existing) {
+    const key = fieldRefExpr(f, aliases);
+    covered.set(key, (covered.get(key) ?? 0) + 1);
+  }
+  const out: FieldRef[] = [];
+  // Поля, агрегированные через ОТДЕЛЬНЫЙ список `grouping.aggregates` (модель webview,
+  // где агрегат не помечен на самом поле через `func`): такие поля — агрегаты, в
+  // группировку не дописываются. Без этого корректная группировка из конструктора UI
+  // (СУММА по `aggregates`, поле в выборке скаляром) ошибочно дописывала бы агрегат.
+  const aggregated = new Set<string>();
+  for (const a of model.grouping?.aggregates ?? []) {
+    aggregated.add(`${a.tableId} ${a.path}`);
+  }
+  // Кандидаты — скалярные НЕагрегатные поля выборки (головные + хвостовые после ТЧ),
+  // в порядке выборки. Проекции ТЧ в группировку не участвуют.
+  const candidates = [...model.fields, ...(model.trailingFields ?? [])];
+  for (const f of candidates) {
+    if (f.func !== undefined) continue; // агрегат (на поле) — не группируется
+    if (aggregated.has(`${f.tableId} ${f.path}`)) continue; // агрегат (в grouping.aggregates)
+    // КОНСЕРВАТИВНАЯ половина правила (нулевые регрессии): дописываем ТОЛЬКО простые
+    // точечные поля выборки. Произвольные выражения (`ЕСТЬNULL(…)`, `ВЫБОР…`,
+    // `ПОДСТРОКА(…)`) конструктор дописывает лишь когда соответствующее ИМ поле НЕ
+    // сгруппировано (полная SQL-семантика GROUP BY) — это отдельный, рискованный
+    // случай, здесь его не реализуем.
+    if (f.expression !== undefined) continue;
+    if (f.tableId === '' || f.path === '') continue;
+    const ref: FieldRef = { tableId: f.tableId, path: f.path };
+    const key = fieldRefExpr(ref, aliases);
+    const need = covered.get(key) ?? 0;
+    if (need > 0) { covered.set(key, need - 1); continue; }
+    out.push(ref);
+  }
+  return out;
+}
+
+/**
  * Секция СГРУППИРОВАТЬ ПО (или ГРУППИРУЮЩИМ НАБОРАМ). Возвращает [] если
  * группировка не задана или неактивна — тогда вывод байт-в-байт как раньше.
  */
 function renderGrouping(
   grouping: QueryModel['grouping'],
-  aliases: Map<string, string>
+  aliases: Map<string, string>,
+  model?: QueryModel
 ): string[] {
   if (!grouping) return [];
 
@@ -1733,9 +1817,24 @@ function renderGrouping(
     // (нельзя группировать по параметру) — фаза 6.15.11a, MCP. Удаляем такие
     // элементы; прочие выражения с параметром внутри (`ВЫРАЗИТЬ(… &Имя …)`) остаются.
     const fields = grouping.groupFields.filter(f => !isConstGroupExpr(f.expression));
-    if (fields.length === 0) return [];
-    const lines = fields.map((f, i) => {
-      const comma = i < fields.length - 1 ? ',' : '';
+    // Согласование СГРУППИРОВАТЬ ПО с НЕагрегатными полями ВЫБРАТЬ (фаза 6.16):
+    // конструктор 1С дописывает в группировку каждое НЕагрегатное ПРОСТОЕ поле
+    // выборки, которого в исходной группировке НЕ ХВАТАЕТ (по числу вхождений
+    // отрендеренного текста), в порядке следования в ВЫБРАТЬ. Так воспроизводятся
+    // дубли (`Т.Дата КАК Период, Т.Дата КАК ДатаДокумента` → второе `Т.Дата`).
+    // Здесь реализована только консервативная (нулевые регрессии) половина правила:
+    // ОТБРАСЫВАНИЕ полей группировки и ДОПИСЫВАНИЕ произвольных выражений (`ВЫБОР…`,
+    // `ЕСТЬNULL(…)`, `ПОДСТРОКА(…)`) требует полной SQL-семантики зависимостей
+    // GROUP BY (выражение дописывается лишь когда его поле НЕ сгруппировано) — не
+    // делаем, чтобы не сломать множество проходящих случаев.
+    // Дописываем ТОЛЬКО при АКТИВНОЙ группировке (есть хотя бы одно явное поле
+    // группировки): пустой список = группировки нет, и дописка не должна порождать
+    // секцию СГРУППИРОВАТЬ ПО на ровном месте.
+    const appended = model && fields.length > 0 ? appendMissingGroupRefs(model, fields, aliases) : [];
+    const all = [...fields, ...appended];
+    if (all.length === 0) return [];
+    const lines = all.map((f, i) => {
+      const comma = i < all.length - 1 ? ',' : '';
       return `\t${fieldRefExpr(f, aliases)}${comma}`;
     });
     return ['СГРУППИРОВАТЬ ПО', ...lines];

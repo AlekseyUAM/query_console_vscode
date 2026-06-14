@@ -3236,7 +3236,7 @@ function parseTotals(cur: Cursor, ctx: SectionResolveContext): Totals {
   if (!cur.isKeyword('ПО')) {
     // Список агрегатов до ключевого слова ПО.
     for (;;) {
-      totalFields.push(parseTotalAggregate(cur, ctx.aliasMap));
+      totalFields.push(parseTotalAggregate(cur, ctx));
       if (cur.matchPunct(',')) continue;
       break;
     }
@@ -3260,7 +3260,8 @@ function parseTotals(cur: Cursor, ctx: SectionResolveContext): Totals {
 }
 
 /** Один агрегат итогов: сырое выражение до запятой/ПО верхнего уровня. */
-function parseTotalAggregate(cur: Cursor, aliasMap: Map<string, FieldRef>): TotalField {
+function parseTotalAggregate(cur: Cursor, ctx: SectionResolveContext): TotalField {
+  const aliasMap = ctx.aliasMap;
   const tokens: Token[] = [];
   let depth = 0;
   for (;;) {
@@ -3275,15 +3276,151 @@ function parseTotalAggregate(cur: Cursor, aliasMap: Map<string, FieldRef>): Tota
     tokens.push(cur.next());
   }
   if (tokens.length === 0) throw cur.error('ожидалось выражение агрегата итогов', cur.peek());
-  const expression = sliceSource(cur.source, tokens);
 
-  // Попытка распознать `СУММА(<псевдоним>)` → (tableId, path) по карте.
+  // Хвостовой `КАК <псевдоним>` верхнего уровня. Конструктор отбрасывает его ТОЛЬКО
+  // у ПРОСТОГО агрегата `ФУНКЦИЯ(<операнд>)` (печатается `ФУНКЦИЯ(<колонка>)` без
+  // псевдонима, MCP). У сложного выражения-агрегата (`ВЫБОР … КОНЕЦ КАК X`,
+  // `… КАК ЧИСЛО(…)) КАК X`) псевдоним СОХРАНЯЕТСЯ. Поэтому сперва пробуем распознать
+  // простой агрегат на теле БЕЗ возможного хвостового `КАК`; если распознан — `КАК`
+  // снимаем, иначе печатаем выражение как есть (с псевдонимом).
+  const hasTailKak =
+    tokens.length >= 2 &&
+    tokens[tokens.length - 2].type === 'keyword' &&
+    tokens[tokens.length - 2].value === 'КАК' &&
+    (tokens[tokens.length - 1].type === 'ident' || tokens[tokens.length - 1].type === 'keyword');
+  const tailAlias = hasTailKak ? tokens[tokens.length - 1].text : undefined;
+  const stripped = hasTailKak ? tokens.slice(0, tokens.length - 2) : tokens;
+
+  // Простой агрегат `ФУНКЦИЯ([РАЗЛИЧНЫЕ] <операнд>)`, операнд которого РАСПОЗНАН как
+  // КОЛОНКА выборки: конструктор печатает его канонически `ФУНКЦИЯ(<псевдонимКолонки>)`
+  // (операнд → псевдоним, `МАКСИМУМ(ЕСТЬNULL(…)) КАК Дата` → `МАКСИМУМ(Дата)`),
+  // ОТБРАСЫВАЯ хвостовой `КАК`, и сортирует список агрегатов по позиции этой колонки
+  // (фаза 6.16). Если операнд НЕ колонка (`МАКСИМУМ(ВЫБОР … КОНЕЦ)`, `МАКСИМУМ(&Парам)`,
+  // `МИНИМУМ(НАЧАЛОПЕРИОДА(…))`) — `КАК` СОХРАНЯЕТСЯ (агрегат печатается дословно).
+  const simple = matchSimpleAggregate(stripped);
+  if (simple) {
+    const alias = resolveAggregateOperand(simple.operand, ctx, cur.source);
+    if (alias !== undefined) {
+      const expr = sliceSource(cur.source, stripped);
+      return { tableId: '', path: '', func: simple.func, operandAlias: alias, expression: expr };
+    }
+  }
+
+  // Не распознанный простой агрегат / агрегат-выражение — печатается дословно (с
+  // хвостовым `КАК`, если был). Хвостовой `КАК <псевдоним>` служит ключом сортировки
+  // (`sortAlias`): конструктор ставит такой агрегат на позицию колонки с этим
+  // псевдонимом (`ВЫБОР … КОНЕЦ КАК ВсегоПокупок` — между НаАванс и СуммаБезНДС).
+  const expression = sliceSource(cur.source, tokens);
+  // Прежний путь: `СУММА(<псевдоним>)` → (tableId, path) без func (legacy-совместимость
+  // вывода `СУММА(<псевдоним>)` через selectAliasFor). Сюда уже не попадает простой
+  // `СУММА(ident)` (его перехватил matchSimpleAggregate); резерв для UI-моделей.
   const inner = matchSumAlias(tokens);
   if (inner) {
     const ref = aliasMap.get(inner);
-    if (ref) return { tableId: ref.tableId, path: ref.path, expression };
+    if (ref) return { tableId: ref.tableId, path: ref.path, expression, sortAlias: tailAlias };
   }
-  return { tableId: '', path: '', expression };
+  return { tableId: '', path: '', expression, sortAlias: tailAlias };
+}
+
+/**
+ * Распознаёт одиночный агрегат `<ФУНК> ( [РАЗЛИЧНЫЕ] <операнд> )`, где ВСЁ выражение
+ * — ровно один вызов агрегатной функции (первый токен — ключевое слово функции,
+ * парная закрывающая скобка — последний токен). Возвращает функцию и токены
+ * операнда (без обёртки `ФУНК(` … `)` и без ведущего `РАЗЛИЧНЫЕ`), иначе undefined.
+ */
+function matchSimpleAggregate(
+  tokens: Token[]
+): { func: AggregateFunction; operand: Token[] } | undefined {
+  if (tokens.length < 4) return undefined;
+  const head = tokens[0];
+  if (head.type !== 'keyword') return undefined;
+  const func = AGG_KEYWORD_TO_FUNC[head.value];
+  if (!func) return undefined;
+  if (!(tokens[1].type === 'punct' && tokens[1].value === '(')) return undefined;
+  const last = tokens[tokens.length - 1];
+  if (!(last.type === 'punct' && last.value === ')')) return undefined;
+  // Скобка после функции должна закрываться ИМЕННО последним токеном (иначе это не
+  // одиночный вызов, напр. `ФУНК(...) + ФУНК(...)` или `ВЫБОР … КОНЕЦ`).
+  let depth = 0;
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') {
+      depth--;
+      if (depth === 0 && i !== tokens.length - 1) return undefined;
+    }
+  }
+  let operand = tokens.slice(2, tokens.length - 1);
+  let resolvedFunc = func;
+  if (operand[0]?.type === 'keyword' && operand[0].value === 'РАЗЛИЧНЫЕ') {
+    operand = operand.slice(1);
+    if (func === 'Количество') resolvedFunc = 'КоличествоРазличных';
+  }
+  if (operand.length === 0) return undefined;
+  return { func: resolvedFunc, operand };
+}
+
+/** Нормализация текста для сравнения операнда агрегата с выражением колонки. */
+function normTotalsExpr(s: string): string {
+  return s.replace(/\s+/gu, ' ').trim().toUpperCase();
+}
+
+/**
+ * Резолвинг операнда простого агрегата ИТОГИ в ПСЕВДОНИМ КОЛОНКИ выборки (текст,
+ * который конструктор печатает внутри `ФУНКЦИЯ(…)`). Операнд может быть:
+ *   • голым именем — псевдоним колонки (по `field.alias`, в т. ч. колонки-выражения),
+ *     либо по последнему сегменту пути её поля; имя, не являющееся колонкой, не
+ *     считается операндом-колонкой;
+ *   • `Таблица.Поле` — псевдоним колонки с таким (tableId, path);
+ *   • сложным выражением — сопоставляется по нормализованному тексту с
+ *     `field.expression` колонки (как `МАКСИМУМ(ЕСТЬNULL(…))` → псевдоним колонки-ЕСТЬNULL).
+ * Возвращает псевдоним колонки или undefined.
+ */
+function resolveAggregateOperand(
+  operand: Token[],
+  ctx: SectionResolveContext,
+  source: string
+): string | undefined {
+  const aliasOfField = (f: SelectedField): string =>
+    f.alias ?? (f.path ? (f.path.split('.').pop() ?? f.path) : '');
+
+  // Голое имя или `Алиас.Путь` (только ident/keyword + точки).
+  const isNameLike = operand.every(
+    (t, i) =>
+      t.type === 'ident' ||
+      t.type === 'keyword' ||
+      (t.type === 'punct' && t.value === '.' && i > 0 && i < operand.length - 1)
+  );
+  if (isNameLike) {
+    const segs: string[] = [];
+    for (const t of operand) {
+      if (t.type === 'punct') continue;
+      segs.push(t.text);
+    }
+    if (segs.length === 0) return undefined;
+    const nameUp = segs.join('.').toUpperCase();
+    // Голое имя = псевдоним колонки (включая колонку-выражение): печатается дословно.
+    if (segs.length === 1) {
+      const byAlias = ctx.fields.find(f => aliasOfField(f).toUpperCase() === nameUp);
+      if (byAlias) return aliasOfField(byAlias);
+    }
+    // `Алиас.Путь` или имя поля — резолвинг через колонку (tableId, path).
+    const ref = resolveTotalsFieldRef(segs, ctx);
+    if (!ref.qualified) {
+      const col = ctx.fields.find(
+        f => !f.expression && f.tableId === ref.tableId && f.path === ref.path
+      );
+      if (col) return aliasOfField(col);
+    }
+    return undefined;
+  }
+  // Сложное выражение — сопоставление по тексту с выражением колонки.
+  const exprText = normTotalsExpr(sliceSource(source, operand));
+  const col = ctx.fields.find(
+    f => f.expression !== undefined && normTotalsExpr(f.expression) === exprText
+  );
+  if (col) return aliasOfField(col);
+  return undefined;
 }
 
 /** Если токены = `СУММА ( <ident> )` — возвращает имя псевдонима, иначе undefined. */

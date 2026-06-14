@@ -2695,7 +2695,13 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
           const op0CaseE = op0HasCase ? contInd : whenInd + 1;
           lines.push(...renderBool(op, whenInd, contInd + 1, 1, ctx, op0CaseE, contInd + 1, contInd));
         } else {
-          const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
+          // Операнд-продолжение `ИЛИ ВЫБОР…КОНЕЦ`: слово ВЫБОР печатается ИНЛАЙН после
+          // `ИЛИ `, поэтому КОНЕЦ вложенного ВЫБОР конструктор выравнивает СО строкой
+          // `ИЛИ ВЫБОР` (E = contInd), а не на contInd+1. Зеркало операнда0 (op0CaseE) и
+          // continuation-операнда И-цепочки условия КОГДА (фаза 6.16.62).
+          const opHasCase = op.kind === 'case' || (op.kind === 'leaf' && leafHasCase(op.text));
+          const opCaseE = opHasCase ? contInd : contInd + 1;
+          const sub = renderBool(op, contInd, contInd + 1, 1, ctx, opCaseE, contInd + 1);
           sub[0] = tabs(contInd) + 'ИЛИ ' + sub[0];
           lines.push(...sub);
         }
@@ -2717,7 +2723,11 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
           const op0CaseE = op0HasCase ? contInd : whenInd + 1;
           lines.push(...renderBool(op, whenInd, contInd, 0, ctx, op0CaseE, contInd + 1, contInd));
         } else {
-          const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
+          // Операнд-продолжение `И ВЫБОР…КОНЕЦ` — см. ИЛИ-ветку выше: КОНЕЦ на contInd
+          // (строка `И ВЫБОР`), а не contInd+1 (фаза 6.16.62).
+          const opHasCase = op.kind === 'case' || (op.kind === 'leaf' && leafHasCase(op.text));
+          const opCaseE = opHasCase ? contInd : contInd + 1;
+          const sub = renderBool(op, contInd, contInd + 1, 1, ctx, opCaseE, contInd + 1);
           sub[0] = tabs(contInd) + 'И ' + sub[0];
           lines.push(...sub);
         }
