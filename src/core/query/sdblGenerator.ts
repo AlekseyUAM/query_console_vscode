@@ -332,9 +332,53 @@ function reindentVtCondition(condition: string, base: number): string {
       r[0] = '\t'.repeat(ind) + prefix + r[0].replace(/^\t+/u, '').replace(/\s+$/u, '');
       out.push(...r);
     } else if (c.text.includes('\n')) {
+      // Многострочный конъюнкт-группа `И (… ИЛИ … И …)`. Продолжения `И`/`ИЛИ`
+      // отбиваются по приоритету (И > ИЛИ): базовый отступ ind+1 плюс +1 за каждый
+      // незакрытый уровень скобок группы, плюс ещё +1 для конъюнкта `И` на скобочном
+      // уровне, несущем верхнеуровневый `ИЛИ` (фаза 6.16.42, тот же приоритет, что
+      // в reindentLeafCase/orLevelsForCondition). Чистая `И`/`ИЛИ`-цепочка без
+      // вложенного `ИЛИ`-уровня даёт прежний плоский ind+1.
       const lines = c.text.split('\n');
+      const parenDelta = (s: string): number => {
+        let d = 0;
+        let inS = false;
+        for (let p = 0; p < s.length; p++) {
+          const ch = s[p];
+          if (ch === '"') { inS = !inS; continue; }
+          if (inS) continue;
+          if (ch === '(') d++;
+          else if (ch === ')') d--;
+        }
+        return d;
+      };
+      const firstWord = (s: string): string => {
+        const m = /^[\t ]*([\p{L}]+)/u.exec(s);
+        return m ? m[1].toUpperCase() : '';
+      };
+      // Скобочные уровни, несущие верхнеуровневый `ИЛИ` среди продолжений конъюнкта.
+      const orLevels = new Set<number>();
+      let scanLvl = parenDelta(lines[0]);
+      for (let j = 1; j < lines.length; j++) {
+        if (lines[j].trim() === '') continue;
+        const fw = firstWord(lines[j]);
+        if (fw === 'И' || fw === 'ИЛИ') {
+          if (fw === 'ИЛИ') orLevels.add(scanLvl);
+          scanLvl += parenDelta(lines[j]);
+        } else break;
+      }
       out.push('\t'.repeat(ind) + prefix + lines[0].trim());
-      for (let j = 1; j < lines.length; j++) out.push('\t'.repeat(ind + 1) + lines[j].trim());
+      // Конъюнкт-группа открывает скобку (`И (…`): отбиваем продолжения по глубине
+      // скобок + приоритету И>ИЛИ. Иначе (просто перенесённый по строкам лист, без
+      // верхнеуровневой скобки) — прежний плоский ind+1.
+      const headDelta = parenDelta(lines[0]);
+      let condParen = headDelta;
+      for (let j = 1; j < lines.length; j++) {
+        if (headDelta <= 0) { out.push('\t'.repeat(ind + 1) + lines[j].trim()); continue; }
+        const fw = firstWord(lines[j]);
+        const orShift = fw === 'И' && orLevels.has(condParen) ? 1 : 0;
+        out.push('\t'.repeat(ind + condParen + orShift) + lines[j].trim());
+        condParen += parenDelta(lines[j]);
+      }
     } else {
       out.push('\t'.repeat(ind) + prefix + c.text);
     }
