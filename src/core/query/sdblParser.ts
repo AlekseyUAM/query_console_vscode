@@ -61,6 +61,7 @@ import { expandStarFields } from './expandStarFields';
 import { expandTabSectionFields } from './expandTabSectionFields';
 import { wrapTabSectionAggregates } from './wrapTabSectionAggregates';
 import { dropUserIBConditions } from './dropUserIBConditions';
+import { qualifyBareFields, qualifyBareSectionFields } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
@@ -3645,6 +3646,11 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     // Суффикс `.*` поля построителя сохраняется только для ссылочного поля
     // (по типам метаданных); у нессылочного/нерезолвимого — снимается.
     resolveBuilderStar(model, resolver);
+    // Квалификация голых ссылок на поля псевдонимом источника-владельца (фаза 6.17):
+    // конструктор 1С печатает каждую ссылку на колонку квалифицированно. Единственный
+    // источник — им и квалифицируем; несколько — только при однозначном владельце по
+    // метаданным. После прочих пассов, до назначения автопсевдонимов.
+    qualifyBareFields(model, resolver);
     // Пометка иерархических источников (для суффикса ИЕРАРХИЯ в УПОРЯДОЧИТЬ ПО,
     // фаза 6.16.6). По метаданным; без резолвера флаг не ставится.
     if (resolver) {
@@ -3680,7 +3686,11 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     return { name: `Запрос ${i + 1}`, distinct: raw[i].distinct, model };
   });
 
-  return { members };
+  const doc: QueryDocument = { members };
+  // Квалификация простых голых полей секций УПОРЯДОЧИТЬ/ИТОГИ — после назначения
+  // автопсевдонимов и выравнивания колонок объединения (фаза 6.17).
+  qualifyBareSectionFields(doc, resolver);
+  return doc;
 }
 
 /**
