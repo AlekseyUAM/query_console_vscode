@@ -598,7 +598,19 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
 
   const byId = new Map(model.tables.map(t => [t.id, t]));
   const inChain = new Set<string>();
+
+  // Верхнеуровневые записи `ИЗ` печатаются в ПОРЯДКЕ ОБЪЯВЛЕНИЯ источников (порядок
+  // `model.tables`) — конструктор 1С сохраняет порядок разработчика. Запись — это либо
+  // одиночная таблица (не участвует ни в одном соединении), либо ЗАТРАВКА дерева
+  // соединений (печатается со всем своим поддеревом). Строки каждого дерева копятся в
+  // `chainLines`, ключ — id затравки верхнего уровня (depth 0); одиночные таблицы
+  // собираются на этапе сборки. `currentSeedId` указывает, в какую запись писать строки.
+  const chainLines = new Map<string, string[]>();
+  let currentSeedId = '';
   const lines: string[] = [];
+  const push = (line: string): void => {
+    (chainLines.get(currentSeedId) ?? lines).push(line);
+  };
 
   // Отложенные `ПО` правовложенного дерева (фаза 6.15.8): список joins — преордер
   // с глубиной; `ПО` соединения печатается после непрерывного хвоста соединений
@@ -619,10 +631,10 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
       // ставится только после ПОСЛЕДНЕГО — он помечен в `optionalBlockEnd` (фаза 6.16).
       const close = optionalBlockEnd.has(p.join) ? '}' : '';
       if (poOwnLine) {
-        lines.push(`\t\t${'\t'.repeat(p.depth)}ПО`);
-        lines.push(`${cond}${close}`);
+        push(`\t\t${'\t'.repeat(p.depth)}ПО`);
+        push(`${cond}${close}`);
       } else {
-        lines.push(`\t\t${'\t'.repeat(p.depth)}ПО ${cond}${close}`);
+        push(`\t\t${'\t'.repeat(p.depth)}ПО ${cond}${close}`);
       }
     }
   };
@@ -666,7 +678,11 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
 
     flushPo(depth);
     if (idx === 0 || (depth === 0 && !inChain.has(seedId))) {
-      lines.push(`\t${sourceLine(seed)}`);
+      // Начало новой верхнеуровневой записи `ИЗ` — заводим под неё буфер строк с
+      // ключом-затравкой, последующие строки дерева пишутся в него (через `push`).
+      currentSeedId = seedId;
+      chainLines.set(seedId, []);
+      push(`\t${sourceLine(seed)}`);
       inChain.add(seedId);
     }
     inChain.add(seedId);
@@ -676,23 +692,29 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
     const open = optionalBlockStart.has(join) ? '{' : '';
     // Присоединяемый источник стоит на отступе 2+depth — тело его подзапроса (если
     // источник — подзапрос) отбивается по этому же отступу (фаза 6.15.19).
-    lines.push(`\t\t${'\t'.repeat(depth)}${open}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined, 2 + depth)}`);
+    push(`\t\t${'\t'.repeat(depth)}${open}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined, 2 + depth)}`);
     inChain.add(joinedId);
     pendingPo.push({ join, depth });
   });
   flushPo(0);
 
-  // Таблицы, не участвующие ни в одной связи — дописываем после цепочки.
-  const trailing = model.tables.filter(t => !inChain.has(t.id));
-  if (trailing.length > 0 && lines.length > 0) {
-    lines[lines.length - 1] += ',';
-    trailing.forEach((t, i) => {
-      const comma = i < trailing.length - 1 ? ',' : '';
-      lines.push(`\t${sourceLine(t)}${comma}`);
-    });
+  // Сборка в ПОРЯДКЕ ОБЪЯВЛЕНИЯ (порядок `model.tables`). Верхнеуровневая запись — это
+  // одиночная таблица (не в `inChain`) ИЛИ затравка дерева (есть буфер в `chainLines`).
+  // Прочие таблицы (присоединяемые / непервичные затравки) пропускаем — они уже внутри
+  // буферов своих деревьев. У каждой записи, кроме последней, последняя физическая
+  // строка получает запятую (для дерева — после его последнего условия `ПО`).
+  const entries: string[][] = [];
+  for (const t of model.tables) {
+    if (chainLines.has(t.id)) entries.push(chainLines.get(t.id)!);
+    else if (!inChain.has(t.id)) entries.push([`\t${sourceLine(t)}`]);
   }
-
-  return lines;
+  const out: string[] = [];
+  entries.forEach((entry, i) => {
+    if (entry.length === 0) return;
+    if (i < entries.length - 1) entry[entry.length - 1] += ',';
+    out.push(...entry);
+  });
+  return out;
 }
 
 /**
