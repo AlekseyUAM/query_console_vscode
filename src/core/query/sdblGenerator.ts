@@ -869,6 +869,22 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
   // псевдонимами — допустимо для фазы 4.2 (UI не смешивает их с полями «Поле{n}»).
   let exprCounter = 0;
 
+  // Дедупликация автопсевдонимов простых полей (фаза 6.16, сверено MCP): при
+  // коллизии вычисленного автопсевдонима с уже занятым именем конструктор 1С
+  // добавляет наименьший целый суффикс (`Комментарий` → `Комментарий1`). Явные `КАК`
+  // и автопсевдонимы выражений (`Поле{n}`/имя параметра) регистрируются как есть.
+  // Порядок исполнения `fieldLine`/`tsLine` совпадает с порядком печати, поэтому
+  // суффикс назначается по позиции в выборке, как у оракула.
+  const usedAliases = new Set<string>();
+  const uniqueAlias = (alias: string): string => {
+    if (!usedAliases.has(alias)) { usedAliases.add(alias); return alias; }
+    let k = 1;
+    while (usedAliases.has(`${alias}${k}`)) k++;
+    const out = `${alias}${k}`;
+    usedAliases.add(out);
+    return out;
+  };
+
   const fieldLine = (f: SelectedField): string => {
     if (f.expression) {
       // В подзапросе-операнде `В` (suppressAutoAlias) конструктор НЕ добавляет
@@ -879,6 +895,7 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
         return `\t${formatSelectExpression(f.expression)}`;
       }
       const alias = f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
+      usedAliases.add(alias);
       return `\t${formatSelectExpression(f.expression)} КАК ${alias}`;
     }
     const tableAlias = aliases.get(f.tableId) ?? f.tableId;
@@ -897,7 +914,12 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     const autoAlias = !func && !suppressAutoAlias
       ? synthesizedFieldAlias(model, f)
       : undefined;
-    const effAlias = f.alias ?? autoAlias;
+    let effAlias = f.alias ?? autoAlias;
+    if (effAlias !== undefined) {
+      // Явный псевдоним регистрируется как есть; автопсевдоним простого поля —
+      // через дедуп (наименьший целый суффикс при коллизии).
+      effAlias = f.alias !== undefined ? (usedAliases.add(f.alias), f.alias) : uniqueAlias(effAlias);
+    }
     return effAlias ? `\t${lhs} КАК ${effAlias}` : `\t${lhs}`;
   };
 
@@ -950,7 +972,10 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
         return `\t\t${f} КАК ${colAlias}${i < tsf.fields.length - 1 ? ',' : ''}`;
       });
     }
-    return `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsf.alias ?? tsf.tsName}`;
+    const tsAlias = tsf.alias !== undefined
+      ? (usedAliases.add(tsf.alias), tsf.alias)
+      : uniqueAlias(tsf.tsName);
+    return `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsAlias}`;
   };
 
   // Поля до первой ТЧ (`model.fields`) — всегда первыми и в своём порядке.
