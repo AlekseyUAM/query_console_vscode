@@ -41,6 +41,9 @@ const FUNCTION_WORDS: Set<string> = (() => {
 /** Литералы-ключевые слова: всегда верхний регистр (вне пути/параметра). */
 const LITERAL_WORDS = new Set(['НЕОПРЕДЕЛЕНО', 'ИСТИНА', 'ЛОЖЬ', 'NULL']);
 
+/** Агрегатные функции — вызов `ИМЯ(…)` без пробела перед скобкой. */
+const AGGREGATE_WORDS = new Set(['СУММА', 'КОЛИЧЕСТВО', 'МАКСИМУМ', 'МИНИМУМ', 'СРЕДНЕЕ']);
+
 /** Примитивные типы: верхний регистр в позиции типа (ВЫРАЗИТЬ … КАК <Тип>, ТИП(<Тип>)). */
 const PRIMITIVE_TYPE_WORDS = new Set(['СТРОКА', 'ЧИСЛО', 'ДАТА', 'БУЛЕВО']);
 
@@ -1059,6 +1062,36 @@ export function normalizeLeafWhitespace(raw: string): string {
     if (a.type === 'punct' && a.value === ',') {
       if (gap !== ' ') edits.push({ from: gapFrom, to: gapTo, text: ' ' });
       continue;
+    }
+    // Пробел сразу ПОСЛЕ открывающей `(` конструктор 1С убирает (`( X` → `(X`,
+    // `В ( "112"` → `В ("112"`). Табы в промежутке не трогаем (форматирование).
+    if (a.type === 'punct' && a.value === '(' && !gap.includes('\t')) {
+      if (gap !== '') edits.push({ from: gapFrom, to: gapTo, text: '' });
+      continue;
+    }
+    // Пробел ПЕРЕД закрывающей `)` убирается (`X )` → `X)`), КРОМЕ квирка предиката
+    // `… ЕСТЬ [НЕ] NULL )` — конструктор сохраняет ровно один хвостовой пробел перед
+    // скобкой (см. appendIsNotNullTrailingSpace). Тогда нормализуем к одному пробелу.
+    if (b.type === 'punct' && b.value === ')' && !gap.includes('\t')) {
+      const aUp = (a.text ?? a.value).toUpperCase();
+      const prevW = sig[i - 1];
+      const isNullTail = aUp === 'NULL' && !!prevW &&
+        (prevW.value.toUpperCase() === 'НЕ' || prevW.value.toUpperCase() === 'ЕСТЬ');
+      const want = isNullTail ? ' ' : '';
+      if (gap !== want) edits.push({ from: gapFrom, to: gapTo, text: want });
+      continue;
+    }
+    // Пробел между ИМЕНЕМ АГРЕГАТА и открывающей `(` конструктор убирает
+    // (`КОЛИЧЕСТВО (…)` → `КОЛИЧЕСТВО(…)`). Ограничиваемся агрегатами: прочие слова
+    // FUNCTION_WORDS включают булевы операторы (И/ИЛИ/НЕ/В/МЕЖДУ…), у которых `(` —
+    // группирующая/тюплевая, и оракул пробел перед ней СОХРАНЯЕТ (`И (…)`, `НЕ (…, …) В`).
+    if (b.type === 'punct' && b.value === '(' &&
+        (a.type === 'ident' || a.type === 'keyword') && !gap.includes('\t')) {
+      const aUp = (a.text ?? a.value).toUpperCase();
+      if (AGGREGATE_WORDS.has(aUp) && gap !== '') {
+        edits.push({ from: gapFrom, to: gapTo, text: '' });
+        continue;
+      }
     }
     // Схлопывание серий из 2+ пробелов в один. Табы в однострочном промежутке
     // не трогаем (могут быть значимым отступом форматирования разработчика).
