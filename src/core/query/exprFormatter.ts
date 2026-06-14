@@ -504,7 +504,7 @@ export function reindentLeafSubquery(text: string, base: number): string {
  * геометрии (значение на нескольких строках, рассинхрон стека ВЫБОР/КОНЕЦ,
  * подзапрос внутри) функция возвращает исходный текст без изменений.
  */
-export function reindentLeafCase(text: string, base: number): string {
+export function reindentLeafCase(text: string, base: number, funcParenDepth = false): string {
   if (!text.includes('\n')) return text;
   // Подзапросы внутри листа обрабатывает reindentLeafSubquery — здесь не трогаем.
   if (/\bВЫБРАТЬ\b/u.test(text)) return text;
@@ -525,30 +525,51 @@ export function reindentLeafCase(text: string, base: number): string {
   // даёт КОНЕЦ на base+2, а не base+3) — фаза 6.15.19, MCP. Если перед ВЫБОР
   // встречается закрывающая скобка (нетривиальная геометрия), эффективную глубину не
   // считаем и откатываемся на полный баланс (консервативно).
+  //
+  // `funcParenDepth` (фаза 6.16.14, MCP-пробы оракула `Справочник.Валюты` для слотов
+  // ВЫБОРКА/ГДЕ): глубину CASE задают ТОЛЬКО ВЫЗОВ-функции скобки, остающиеся ОТКРЫТЫМИ
+  // к слову ВЫБОР; скобка-ГРУППИРОВКА бинарной арифметики (`ВЫРАЗИТЬ(A * (B - ВЫБОР …`)
+  // уровня НЕ добавляет, тогда как «эффективная» глубина (для слота ПО/ВТ, где скобка
+  // вокруг вызова считается) её бы засчитала. Вызов-скобка — `(`, перед которой (без
+  // пробелов) стоит символ идентификатора (имя функции).
+  const isIdentChar = (ch: string | undefined): boolean =>
+    ch !== undefined && /[\p{L}\p{N}_]/u.test(ch);
   let parenDepth = 0;
   let effectiveDepth = 0;
   let sawClose = false;
   let prevOpen = false;
+  const callStack: boolean[] = [];
+  let unbalanced = false;
+  let prevNonSpace = '';
   let inStr = false;
   for (let i = 0; i <= openIdx; i++) {
     const line = lines[i];
     for (let c = 0; c < line.length; c++) {
       const ch = line[c];
-      if (ch === '"') { inStr = !inStr; continue; }
+      if (ch === '"') { inStr = !inStr; prevOpen = false; prevNonSpace = ch; continue; }
       if (inStr) continue;
       if (ch === '(') {
         parenDepth++;
         if (!prevOpen) effectiveDepth++; // первая скобка в серии `(((` — один уровень
         prevOpen = true;
+        callStack.push(isIdentChar(prevNonSpace));
+        prevNonSpace = ch;
         continue;
       }
-      if (ch === ')') { parenDepth--; sawClose = true; prevOpen = false; continue; }
-      if (ch !== ' ' && ch !== '\t') prevOpen = false;
+      if (ch === ')') {
+        parenDepth--; sawClose = true; prevOpen = false;
+        if (callStack.pop() === undefined) unbalanced = true;
+        prevNonSpace = ch;
+        continue;
+      }
+      if (ch !== ' ' && ch !== '\t') { prevOpen = false; prevNonSpace = ch; }
     }
   }
-  if (parenDepth < 0) return text;
+  if (parenDepth < 0 || unbalanced) return text;
 
-  const E0 = base + (sawClose ? parenDepth : effectiveDepth);
+  const E0 = funcParenDepth
+    ? base + callStack.filter(Boolean).length
+    : base + (sawClose ? parenDepth : effectiveDepth);
   // Стек контекстов ВЫБОР: каждый элемент — отступ КОНЕЦ (E) данного ВЫБОР.
   const stack: number[] = [E0];
   // Текущий whenInd (для продолжений условия И/ИЛИ) — обновляется на строке КОГДА.

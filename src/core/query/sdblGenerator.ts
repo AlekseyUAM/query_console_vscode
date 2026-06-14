@@ -983,7 +983,7 @@ export function formatSelectExpression(expression: string): string {
     // булев принтер её не трогает.
     // Избыточные скобки вокруг всего листового поля (`(Поле ЕСТЬ NULL) КАК Алиас` →
     // `Поле ЕСТЬ NULL КАК Алиас`, `(Поле)` → `Поле`) конструктор снимает — как оракул.
-    : appendIsNotNullTrailingSpace(normalizeLeafCase(reprintLeafArithmetic(reindentLeafBool(reindentLeafCase(reindentLeafSubquery(stripRedundantLeafParens(flattenMultilineLeaf(expression)), 2), 1), 1))));
+    : appendIsNotNullTrailingSpace(normalizeLeafCase(reprintLeafArithmetic(reindentLeafBool(reindentLeafCase(reindentLeafSubquery(stripRedundantLeafParens(flattenMultilineLeaf(expression)), 2), 1, true), 1))));
 }
 
 /**
@@ -1390,7 +1390,12 @@ function buildConditionStrings(
       // Снятие избыточных скобок предиката в ГДЕ/ИМЕЮЩИЕ (как оракул): `НЕ (X В (…))`
       // → `НЕ X В (…)`, `(X ЕСТЬ NULL)` → `X ЕСТЬ NULL` (ПО — отдельный путь, скобки
       // там сохраняются). Применяем к простому листовому условию (без formatExpression).
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase), 1))))))));
+      // ВЫБОР внутри листа-условия ГДЕ/ИМЕЮЩИЕ конструктор отступает на один уровень
+      // ГЛУБЖЕ, чем в листе поля выборки (КОНЕЦ = отступ листа + 1 + число обрамляющих
+      // ВЫЗОВ-функции скобок) — то есть базовый отступ CASE здесь `subBase − 1`
+      // (root ГДЕ: subBase=3 → base=2; внутри В-подзапроса/ИМЕЮЩИЕ: subBase=2 → base=1).
+      // MCP-пробы оракула: `ГДЕ ЕСТЬNULL(ВЫБОР…)` даёт КОНЕЦ на 3 (поле — на 2).
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase), subBase - 1, true))))))));
       continue;
     }
     // Нессылочный левый операнд `В`-подзапроса (`1 В (ВЫБРАТЬ …)`, фаза 6.15.27):
