@@ -873,8 +873,10 @@ function buildQueryBlock(
   return [
     'ВЫБРАТЬ' + selectionModifiers(model.selection),
     ...lines,
-    ...builderSelect,
+    // {ВЫБРАТЬ …} конструктор печатает ПОСЛЕ ПОМЕСТИТЬ/ДОБАВИТЬ (если те есть),
+    // перед ИЗ; без ПОМЕСТИТЬ placeLines пуст и блок идёт сразу за списком полей.
     ...placeLines,
+    ...builderSelect,
     ...fromLines,
     ...conditionLines,
     ...builderWhere,
