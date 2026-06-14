@@ -667,7 +667,14 @@ function parseSingleQuery(
     if (!grouping.multiple && groupingFromClause && !groupingFromClause.multiple) {
       const baseRefs = grouping.groupFields.filter(g => g.expression === undefined);
       const present = new Set(baseRefs.map(g => `${g.tableId} ${g.path}`));
-      for (const f of fields) {
+      // Таблицы, чья ССЫЛКА (ключ) в группировке: все их простые поля выборки
+      // функционально зависимы от ключа и тоже дописываются (сверено живым оракулом:
+      // `СГРУППИРОВАТЬ ПО Т.Ссылка` + выбор `Т.Наименование`, `Т.Код` → дописываются).
+      const keyedTables = new Set(baseRefs.filter(g => g.path === 'Ссылка').map(g => g.tableId));
+      // Кандидаты — НЕагрегатные простые поля выборки в порядке ВЫБРАТЬ (головные +
+      // хвостовые после ТЧ).
+      const candidates = [...fields, ...(model.trailingFields ?? [])];
+      for (const f of candidates) {
         if (f.func !== undefined || f.expression !== undefined) continue;
         if (f.tableId === '' || f.path === '') continue;
         const key = `${f.tableId} ${f.path}`;
@@ -675,7 +682,10 @@ function parseSingleQuery(
         const isExtension = baseRefs.some(
           g => g.tableId === f.tableId && f.path.startsWith(`${g.path}.`)
         );
-        if (!isExtension) continue;
+        // Поле таблицы со сгруппированной ссылкой (без точки — реквизит/измерение
+        // этой таблицы) тоже функционально зависимо.
+        const isKeyDependent = keyedTables.has(f.tableId);
+        if (!isExtension && !isKeyDependent) continue;
         present.add(key);
         grouping.groupFields.push({ tableId: f.tableId, path: f.path });
       }
