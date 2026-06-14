@@ -1401,7 +1401,11 @@ export function generate(model: QueryModel): string {
  */
 function renderAutoOrder(order: Order | undefined, hadSection: boolean): string {
   if (!order?.auto) return '';
-  return (hadSection ? '\n' : '\n\n') + 'АВТОУПОРЯДОЧИВАНИЕ';
+  // АВТОУПОРЯДОЧИВАНИЕ — всегда последняя строка, отбивается ОДНИМ `\n` от тела
+  // (и от предшествующей секции порядок/ИТОГИ/индекс). Конструктор 1С не вставляет
+  // пустую строку перед бесхозным АВТОУПОРЯДОЧИВАНИЕ (фаза 6.16.46).
+  void hadSection;
+  return '\n' + 'АВТОУПОРЯДОЧИВАНИЕ';
 }
 
 /**
