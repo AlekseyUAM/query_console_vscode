@@ -2405,7 +2405,13 @@ function renderBool(
   orLvl: number,
   ctx: RenderCtx,
   caseE: number = ind + 1,
-  subInd?: number
+  subInd?: number,
+  // База отступа продолжения для скобочной группы, ОТКРЫВАЮЩЕЙСЯ на ведущей строке
+  // этого поддерева (строка КОГДА): первый операнд печатается инлайн, поэтому `(`
+  // встаёт на строке КОГДА, и продолжения (`ИЛИ`/`И`) внутри этой группы конструктор
+  // отбивает на whenInd+2+глубина_скобок, а НЕ на ind+orDelta (ind=whenInd инлайна).
+  // Зеркало листового правила (condParen в reindentLeafCase, фаза 6.16.44).
+  leadParenBase?: number
 ): string[] {
   switch (node.kind) {
     case 'or': {
@@ -2417,7 +2423,7 @@ function renderBool(
         if (k === 0) {
           // operand0 печатается на отступе ind; CASE-операнд → E=ind.
           // Подзапрос листа-операнда — на childAnd (выравнен с операндами ИЛИ).
-          const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, ind, childAnd);
+          const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, ind, childAnd, leadParenBase);
           sub[0] = '(' + sub[0];
           lines.push(...sub);
         } else {
@@ -2434,7 +2440,7 @@ function renderBool(
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderBool(op, ind, andCont, orLvl, ctx, caseE, subInd));
+          lines.push(...renderBool(op, ind, andCont, orLvl, ctx, caseE, subInd, leadParenBase));
         } else {
           // operandK на отступе andCont; CASE-операнд → E=andCont+1 на ВЕРХНЕМ уровне
           // И-цепочки ГДЕ (склейка `И ВЫБОР`, фаза 6.15.19). Но когда сама И-цепочка —
@@ -2464,9 +2470,28 @@ function renderBool(
     case 'group': {
       const child = node.child;
       if (child.kind === 'or') {
+        // Группа, чья `(` открывается на ВЕДУЩЕЙ строке (инлайн после КОГДА), И
+        // вложенная в верхнеуровневый ИЛИ условия (orLvl≥1): её ИЛИ конструктор
+        // отбивает от базы продолжения условия (leadParenBase=whenInd+2), а не от
+        // ind=whenInd инлайна — иначе вышло бы ind+orDelta=whenInd+1 (на 2 мельче).
+        // При orLvl=0 (верх условия — чистое И) ведущая группа уже корректна через
+        // orDelta=2 (ind+2=whenInd+2), поэтому НЕ подменяем. Зеркало листового правила
+        // (condParen + приоритет И>ИЛИ в reindentLeafCase, фаза 6.16.44).
+        if (leadParenBase !== undefined && orLvl >= 1) {
+          return renderBool(child, leadParenBase, andCont, orLvl, ctx, caseE, subInd, leadParenBase + 1);
+        }
         return renderBool(child, ind, andCont, orLvl, ctx, caseE, subInd);
       }
-      const sub = renderBool(child, ind, andCont, orLvl, ctx, caseE, subInd);
+      const sub = renderBool(
+        child,
+        ind,
+        andCont,
+        orLvl,
+        ctx,
+        caseE,
+        subInd,
+        leadParenBase === undefined ? undefined : leadParenBase + 1
+      );
       sub[0] = '(' + sub[0];
       sub[sub.length - 1] += ')';
       return sub;
@@ -2528,7 +2553,7 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
           // лист-CASE так же выравнивается на contInd (фаза 6.16.20, MCP).
           const op0HasCase = op.kind === 'case' || (op.kind === 'leaf' && leafHasCase(op.text));
           const op0CaseE = op0HasCase ? contInd : whenInd + 1;
-          lines.push(...renderBool(op, whenInd, contInd + 1, 1, ctx, op0CaseE, contInd + 1));
+          lines.push(...renderBool(op, whenInd, contInd + 1, 1, ctx, op0CaseE, contInd + 1, contInd));
         } else {
           const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
           sub[0] = tabs(contInd) + 'ИЛИ ' + sub[0];
@@ -2550,7 +2575,7 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
           // плюс число вызов-скобок; фаза 6.16.20, MCP).
           const op0HasCase = op.kind === 'case' || (op.kind === 'leaf' && leafHasCase(op.text));
           const op0CaseE = op0HasCase ? contInd : whenInd + 1;
-          lines.push(...renderBool(op, whenInd, contInd, 0, ctx, op0CaseE, contInd + 1));
+          lines.push(...renderBool(op, whenInd, contInd, 0, ctx, op0CaseE, contInd + 1, contInd));
         } else {
           const sub = renderBool(op, contInd, contInd + 1, 1, ctx, contInd + 1, contInd + 1);
           sub[0] = tabs(contInd) + 'И ' + sub[0];
