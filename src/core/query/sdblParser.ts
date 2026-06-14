@@ -812,21 +812,46 @@ function parseFieldList(cur: Cursor): RawSelectItem[] {
 
 /**
  * Пытается разобрать табличную часть `<alias>.<tsName>.( <f> КАК <f>, … ) КАК <tsName>`.
- * Распознаётся по образцу `ident . ident . (` в начале элемента. Возвращает undefined,
- * если образца нет (тогда элемент — обычное поле), не сдвигая курсор.
+ * Распознаётся по образцу `ident (. ident)+ . (` в начале элемента: голова —
+ * `<alias>`, путь до проекции — `<seg>(.<seg>)*` (один сегмент = обычная ТЧ
+ * `alias.ТЧ.(…)`, два и более — НАВИГИРОВАННАЯ голова `alias.refField.….ТЧ.(…)`,
+ * проходящая через ссылочные колонки; фаза 6.16). `tsName` хранит ВЕСЬ путь до
+ * проекции (генератор печатает `<alias>.<tsName>.(`), а переквалификация колонок
+ * идёт по полному префиксу `<alias>.<tsName>`. Возвращает undefined, если образца
+ * нет (тогда элемент — обычное поле), не сдвигая курсор.
  */
 function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
-  // Образец: ident '.' ident '.' '(' .
+  // Образец: ident '.' ident ('.' ident)* '.' '(' . Сканируем без сдвига курсора:
+  // нужна цепочка из ≥2 имён через точки, после которой идёт `.(`.
   if (cur.peek(0).type !== 'ident' && cur.peek(0).type !== 'keyword') return undefined;
   if (!cur.isPunct('.', 1)) return undefined;
-  if (cur.peek(2).type !== 'ident' && cur.peek(2).type !== 'keyword') return undefined;
-  if (!cur.isPunct('.', 3)) return undefined;
-  if (!cur.isPunct('(', 4)) return undefined;
+  // Идём по `name . name . …`, пока за именем стоит `.`. Голова проекции — когда
+  // ПОСЛЕ имени стоит `.` и затем `(`.
+  let off = 0; // позиция текущего имени
+  let segCount = 0;
+  for (;;) {
+    const nameTok = cur.peek(off);
+    if (nameTok.type !== 'ident' && nameTok.type !== 'keyword') return undefined;
+    if (!cur.isPunct('.', off + 1)) return undefined; // за именем обязана идти `.`
+    segCount++;
+    // `name . (` → нашли проекцию (нужно ≥2 имён: alias + хотя бы 1 сегмент ТЧ).
+    if (cur.isPunct('(', off + 2)) {
+      if (segCount < 2) return undefined;
+      break;
+    }
+    off += 2; // к следующему имени
+  }
 
   const tableAlias = cur.next().text; // ident
   cur.expectPunct('.');
-  const tsName = cur.next().text; // ident
-  cur.expectPunct('.');
+  // Путь до проекции: все сегменты между головой и `.(`.
+  const tsSegs: string[] = [];
+  for (;;) {
+    tsSegs.push(cur.next().text);
+    cur.expectPunct('.');
+    if (cur.isPunct('(')) break;
+  }
+  const tsName = tsSegs.join('.');
   cur.expectPunct('(');
 
   // Внутри: список колонок через запятую. Колонка — либо ПРОСТОЕ поле (голое имя или

@@ -1,7 +1,7 @@
 import type { QueryModel, SelectedTable, SelectedField, SelectedTabSectionField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField, Indexing } from './queryModel';
 import { defaultTableAlias, accountingPositionKeys } from './queryModel';
 import type { QueryDocument } from './unionModel';
-import { deriveUnionColumns } from './unionModel';
+import { deriveUnionColumns, unionHasTabSection, orderedSelectElements, elementAlias, type UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
 import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic } from './exprFormatter';
 
@@ -841,6 +841,62 @@ export function synthesizedFieldAlias(model: QueryModel, field: SelectedField): 
 }
 
 /**
+ * Многострочный рендер проекции ТЧ (`<алиас>.<ТЧ>.(\n\t\t<колонки>\n\t) КАК <алиас>`).
+ * Единый источник правды для одиночного запроса (`buildFieldLines`) и для ячеек
+ * вертикального объединения (`generateDocument`). Опция `suppress` (для НЕ-первого
+ * участника объединения) убирает внешний `КАК <алиас>` И внутренние псевдонимы
+ * колонок (как делает конструктор 1С для позиционных столбцов: первый участник
+ * задаёт псевдонимы, остальные печатают голые проекции — сверено с golden-корпусом).
+ * `outerAlias` — функция выбора псевдонима всей ТЧ (для дедупликации в одиночном
+ * запросе); при `suppress` не вызывается.
+ */
+export function renderTabProjection(
+  model: QueryModel,
+  tsf: SelectedTabSectionField,
+  aliases: Map<string, string>,
+  opts: { suppress: boolean; outerAlias?: (name: string, explicit: string | undefined) => string }
+): string {
+  const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
+  const tsExprLines = (expression: string, alias: string | undefined, comma: string): string[] => {
+    const rows = formatSelectExpression(expression).split('\n');
+    const shifted = rows.map((l, j) => (j === 0 ? '\t\t' + l : '\t' + l));
+    const tail = !opts.suppress && alias !== undefined ? ' КАК ' + alias : '';
+    shifted[shifted.length - 1] = shifted[shifted.length - 1] + tail + comma;
+    return shifted;
+  };
+  let subLines: string[];
+  if (tsf.columns && tsf.columns.length > 0) {
+    subLines = tsf.columns.flatMap((c, i) => {
+      const comma = i < tsf.columns!.length - 1 ? ',' : '';
+      if (c.kind === 'field') {
+        // Голая колонка: первый участник — `<поле> КАК <псевдоним>`; прочие — `<поле>`.
+        const tail = opts.suppress ? '' : ` КАК ${c.alias ?? c.field}`;
+        return [`\t\t${c.field}${tail}${comma}`];
+      }
+      return tsExprLines(c.expression, c.alias, comma);
+    });
+  } else if (tsf.exprFields && tsf.exprFields.length > 0) {
+    subLines = tsf.exprFields.flatMap((ef, i) => {
+      const rows = formatSelectExpression(ef.expression).split('\n');
+      const shifted = rows.map((l, j) => (j === 0 ? '\t\t' + l : '\t' + l));
+      const comma = i < tsf.exprFields!.length - 1 ? ',' : '';
+      const tail = opts.suppress ? '' : ' КАК ' + ef.alias;
+      shifted[shifted.length - 1] = shifted[shifted.length - 1] + tail + comma;
+      return shifted;
+    });
+  } else {
+    subLines = tsf.fields.map((f, i) => {
+      const tail = opts.suppress ? '' : ` КАК ${tsf.fieldAliases?.[i] ?? f}`;
+      return `\t\t${f}${tail}${i < tsf.fields.length - 1 ? ',' : ''}`;
+    });
+  }
+  const body = `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t)`;
+  if (opts.suppress) return body;
+  const tsAlias = opts.outerAlias ? opts.outerAlias(tsf.tsName, tsf.alias) : (tsf.alias ?? tsf.tsName);
+  return `${body} КАК ${tsAlias}`;
+}
+
+/**
  * Автопсевдоним произвольного поля выборки без явного `КАК`. Конструктор 1С
  * для голого параметра `&Имя` ставит псевдоним = имени параметра (без `&`),
  * для остального — сквозной `Поле{n}`. Возвращает выбранный псевдоним; для
@@ -925,60 +981,14 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     return effAlias ? `\t${lhs} КАК ${effAlias}` : `\t${lhs}`;
   };
 
-  // Печать одной строки колонки-выражения проекции ТЧ: формат как поле выборки, но
-  // сдвинутый на +1 таб (содержимое проекции глубже на уровень: база 1 → 2). Псевдоним —
-  // на последней строке. `comma` — добавляемая запятая (между колонками).
-  const tsExprLines = (expression: string, alias: string | undefined, comma: string): string[] => {
-    const rows = formatSelectExpression(expression).split('\n');
-    const shifted = rows.map((l, j) => (j === 0 ? '\t\t' + l : '\t' + l));
-    const tail = alias !== undefined ? ' КАК ' + alias : '';
-    shifted[shifted.length - 1] = shifted[shifted.length - 1] + tail + comma;
-    return shifted;
-  };
-
-  const tsLine = (tsf: SelectedTabSectionField): string => {
-    const tableAlias = aliases.get(tsf.tableId) ?? tsf.tableId;
-    let subLines: string[];
-    if (tsf.columns && tsf.columns.length > 0) {
-      // Смешанная проекция ТЧ (простые поля + произвольные выражения, в исходном
-      // порядке). Простая колонка — голая (`<поле> КАК <псевдоним>`); выражение —
-      // через formatSelectExpression с переквалификацией (выполнена парсером).
-      subLines = tsf.columns.flatMap((c, i) => {
-        const comma = i < tsf.columns!.length - 1 ? ',' : '';
-        if (c.kind === 'field') {
-          const colAlias = c.alias ?? c.field;
-          return [`\t\t${c.field} КАК ${colAlias}${comma}`];
-        }
-        return tsExprLines(c.expression, c.alias, comma);
-      });
-    } else if (tsf.exprFields && tsf.exprFields.length > 0) {
-      // Проекция ТЧ из произвольных выражений (агрегат над колонкой ТЧ, фаза 6.15.26).
-      // Каждое выражение печатается как поле выборки, сдвинутое на +2 таба (содержимое
-      // проекции глубже на 1 уровень от обычного поля = 1 таб → база 2), с синтетическим
-      // псевдонимом `Поле{n}`. Запятая между элементами.
-      subLines = tsf.exprFields.flatMap((ef, i) => {
-        // formatSelectExpression выдаёт ПЕРВУЮ строку без отступа (вызывающий добавляет
-        // 1 таб поля), продолжения — абсолютно из расчёта база первой строки = 1.
-        // В проекции ТЧ база содержимого = 2: первой строке даём 2 таба, каждому
-        // продолжению — +1 таб относительно его абсолютной позиции (rebase 1 → 2).
-        const rows = formatSelectExpression(ef.expression).split('\n');
-        const shifted = rows.map((l, j) => (j === 0 ? '\t\t' + l : '\t' + l));
-        const comma = i < tsf.exprFields!.length - 1 ? ',' : '';
-        shifted[shifted.length - 1] = shifted[shifted.length - 1] + ' КАК ' + ef.alias + comma;
-        return shifted;
-      });
-    } else {
-      subLines = tsf.fields.map((f, i) => {
-        // Псевдоним колонки: отличный — печатаем как есть, иначе авто `<поле> КАК <поле>`.
-        const colAlias = tsf.fieldAliases?.[i] ?? f;
-        return `\t\t${f} КАК ${colAlias}${i < tsf.fields.length - 1 ? ',' : ''}`;
-      });
-    }
-    const tsAlias = tsf.alias !== undefined
-      ? (usedAliases.add(tsf.alias), tsf.alias)
-      : uniqueAlias(tsf.tsName);
-    return `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t) КАК ${tsAlias}`;
-  };
+  const tsLine = (tsf: SelectedTabSectionField): string =>
+    renderTabProjection(model, tsf, aliases, {
+      suppress: false,
+      // Дедупликация псевдонима всей ТЧ (как раньше): явный — как есть, авто — через
+      // наименьший целый суффикс при коллизии.
+      outerAlias: (name, explicit) =>
+        explicit !== undefined ? (usedAliases.add(explicit), explicit) : uniqueAlias(name),
+    });
 
   // Поля до первой ТЧ (`model.fields`) — всегда первыми и в своём порядке.
   const headLines = model.fields.map(fieldLine);
@@ -1283,6 +1293,64 @@ function renderAutoOrder(order: Order | undefined, hadSection: boolean): string 
 }
 
 /**
+ * Блоки участников СКАЛЯРНОГО объединения (без проекций ТЧ) — прежний путь через
+ * deriveUnionColumns: ровно по `model.fields`, позиционно.
+ */
+function buildUnionBlocksScalar(members: UnionMember[]): string[] {
+  const columns = deriveUnionColumns(members);
+  // Внутри подзапроса-условия (`В (ВЫБРАТЬ … ОБЪЕДИНИТЬ …)`) конструктор НЕ
+  // добавляет авто-псевдоним полю участника 0 (как и в не-union В-подзапросе,
+  // suppressAutoAlias); ЯВНЫЙ псевдоним при этом сохраняется (MCP validate_query).
+  const head0 = members[0]?.model.fields ?? [];
+  return members.map((m, i) => {
+    const fieldLines = columns.map((col, ci) => {
+      const expr = col.cells[i] ?? 'NULL';
+      if (i !== 0) return `\t${expr}`;
+      const a0 = head0[ci]?.alias;
+      const explicitAlias = a0 !== undefined && !/^Поле\d+$/u.test(a0);
+      const emitAlias = !suppressAutoAlias || explicitAlias;
+      return emitAlias ? `\t${expr} КАК ${col.alias}` : `\t${expr}`;
+    });
+    const aliases = resolveAliases(m.model.tables);
+    return buildQueryBlock(m.model, fieldLines, aliases);
+  });
+}
+
+/**
+ * Блоки участников объединения С ПРОЕКЦИЕЙ ТЧ. Столбцы выравниваются позиционно по
+ * `orderedSelectElements` (скалярные поля + проекции ТЧ + хвостовые поля в порядке
+ * selectOrder). Скалярный столбец рендерится как раньше (`fieldExpr` + псевдоним у
+ * участника 0); проекция ТЧ — многострочной (renderTabProjection): у участника 0 с
+ * псевдонимами (внешним и колонок), у остальных — голой (suppress). Отсутствующий
+ * у участника столбец → `NULL` (фаза 6.16).
+ */
+function buildUnionBlocksWithTabSection(members: UnionMember[]): string[] {
+  const memberEls = members.map(m => orderedSelectElements(m.model));
+  const width = memberEls.reduce((w, els) => Math.max(w, els.length), 0);
+  const head = memberEls[0] ?? [];
+  return members.map((m, i) => {
+    const aliases = resolveAliases(m.model.tables);
+    const fieldLines: string[] = [];
+    for (let ci = 0; ci < width; ci++) {
+      const el = memberEls[i][ci];
+      if (el === undefined) { fieldLines.push('\tNULL'); continue; }
+      if (el.kind === 'ts') {
+        fieldLines.push(renderTabProjection(m.model, el.tsf, aliases, { suppress: i !== 0 }));
+        continue;
+      }
+      const expr = fieldExpr(m.model, el.field);
+      if (i !== 0) { fieldLines.push(`\t${expr}`); continue; }
+      // Псевдоним столбца берём с поля участника-головы (его псевдоним выборки).
+      const alias = elementAlias(el, m.model);
+      const explicitAlias = !/^Поле\d+$/u.test(alias);
+      const emitAlias = !suppressAutoAlias || explicitAlias;
+      fieldLines.push(emitAlias ? `\t${expr} КАК ${alias}` : `\t${expr}`);
+    }
+    return buildQueryBlock(m.model, fieldLines, aliases);
+  });
+}
+
+/**
  * Текст объединённого запроса по документу конструктора.
  * - 0 участников → ''.
  * - 1 участник → ровно `generate(members[0].model)` (объединение игнорируется).
@@ -1297,26 +1365,13 @@ export function generateDocument(doc: QueryDocument): string {
   if (members.length === 0) return '';
   if (members.length === 1) return generate(members[0].model);
 
-  const columns = deriveUnionColumns(members);
-
-  // Внутри подзапроса-условия (`В (ВЫБРАТЬ … ОБЪЕДИНИТЬ …)`) конструктор НЕ
-  // добавляет авто-псевдоним полю участника 0 (как и в не-union В-подзапросе,
-  // suppressAutoAlias); ЯВНЫЙ псевдоним при этом сохраняется (MCP validate_query).
-  const head0 = members[0]?.model.fields ?? [];
-  const blocks = members.map((m, i) => {
-    const fieldLines = columns.map((col, ci) => {
-      const expr = col.cells[i] ?? 'NULL';
-      if (i !== 0) return `\t${expr}`;
-      // Авто-`Поле{n}` (assignExpressionFieldAliases) явным НЕ считается: в
-      // suppressAutoAlias его не печатаем (`1`/`ИСТИНА` остаются голыми, фаза 6.15.27).
-      const a0 = head0[ci]?.alias;
-      const explicitAlias = a0 !== undefined && !/^Поле\d+$/u.test(a0);
-      const emitAlias = !suppressAutoAlias || explicitAlias;
-      return emitAlias ? `\t${expr} КАК ${col.alias}` : `\t${expr}`;
-    });
-    const aliases = resolveAliases(m.model.tables);
-    return buildQueryBlock(m.model, fieldLines, aliases);
-  });
+  // Объединение с проекцией ТЧ выравнивается по ПОЛНОМУ списку элементов выборки
+  // (скалярные поля + проекции ТЧ + хвостовые поля, в порядке selectOrder) — иначе
+  // проекция ТЧ и всё после неё терялись (только `model.fields` шли в столбцы,
+  // фаза 6.16). Скалярные объединения — прежним путём (deriveUnionColumns).
+  const blocks = unionHasTabSection(members)
+    ? buildUnionBlocksWithTabSection(members)
+    : buildUnionBlocksScalar(members);
 
   let out = blocks[0];
   for (let i = 1; i < blocks.length; i++) {
