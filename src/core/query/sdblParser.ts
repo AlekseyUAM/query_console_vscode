@@ -651,6 +651,33 @@ function parseSingleQuery(
       groupSets: groupingFromClause?.groupSets ?? [],
       aggregates,
     };
+    // Авторасширение СГРУППИРОВАТЬ ПО (сверено с живым оракулом, фаза 6.16):
+    // конструктор 1С дописывает в группировку каждое НЕагрегатное поле выборки —
+    // простую ссылку `Псевдоним.Путь` (без func/expression), которая является
+    // строгим дот-расширением уже сгруппированного поля: при группировке по
+    // `Т.Ссылка` дописываются `Т.Ссылка.Код`, `Т.Ссылка.Наименование` (это
+    // разыменования сгруппированной ссылки, функционально зависимые от неё),
+    // в порядке следования в ВЫБРАТЬ. Поле, НЕ являющееся расширением (`Т.Код`
+    // при группировке только по `Т.Ссылка`), оракул считает ошибкой группы —
+    // не дописываем. Литералы, параметры (`&Имя`), вызовы функций, ВЫРАЗИТЬ/ВЫБОР
+    // тоже не дописываются. Только одиночная группировка с явной секцией
+    // СГРУППИРОВАТЬ ПО (не агрегатные запросы без секции и не наборы).
+    if (!grouping.multiple && groupingFromClause && !groupingFromClause.multiple) {
+      const baseRefs = grouping.groupFields.filter(g => g.expression === undefined);
+      const present = new Set(baseRefs.map(g => `${g.tableId} ${g.path}`));
+      for (const f of fields) {
+        if (f.func !== undefined || f.expression !== undefined) continue;
+        if (f.tableId === '' || f.path === '') continue;
+        const key = `${f.tableId} ${f.path}`;
+        if (present.has(key)) continue;
+        const isExtension = baseRefs.some(
+          g => g.tableId === f.tableId && f.path.startsWith(`${g.path}.`)
+        );
+        if (!isExtension) continue;
+        present.add(key);
+        grouping.groupFields.push({ tableId: f.tableId, path: f.path });
+      }
+    }
     model.grouping = grouping;
   }
 
