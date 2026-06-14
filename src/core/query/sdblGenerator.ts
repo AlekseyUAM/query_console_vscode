@@ -1358,12 +1358,25 @@ export function generateDocument(doc: QueryDocument): string {
  */
 export function generateBatch(batch: BatchDocument): string {
   const SEP = '\n;\n\n' + '/'.repeat(80) + '\n';
+  // Хвостовой разделитель без завершающего перевода строки: пакет, чей ПОСЛЕДНИЙ
+  // оператор дал пустое тело (`ВЫБРАТЬ * ПОМЕСТИТЬ … ИЗ &Параметр` — звезда по
+  // параметру разворачивается в ноль колонок), конструктор всё равно завершает
+  // разделителем-«хвостом» (`\n;\n\n////…` без `\n` в конце; golden-корпус, MCP).
+  const TAIL_SEP = '\n;\n\n' + '/'.repeat(80);
   const members = batch.members;
   if (members.length === 0) return '';
   if (members.length === 1) return generateDocument(members[0]);
 
-  const blocks = members.map(generateDocument).filter(b => b !== '');
-  return blocks.join(SEP);
+  // Тело каждого оператора. Пустые тела (нерезолвимая звезда и т. п.) НЕ участвуют
+  // как блоки, но отслеживаются: пустой ПОСЛЕДНИЙ оператор оставляет хвостовой
+  // разделитель (асимметрия конструктора — пустой оператор В СЕРЕДИНЕ отбрасывается
+  // полностью, MCP-проба).
+  const rendered = members.map(generateDocument);
+  const blocks = rendered.filter(b => b !== '');
+  const out = blocks.join(SEP);
+  const lastEmpty = rendered[rendered.length - 1] === '';
+  // Хвост ставим только если есть хоть один непустой блок (иначе пакет пуст).
+  return lastEmpty && blocks.length > 0 ? out + TAIL_SEP : out;
 }
 
 /** Рендер поля группировки `Псевдоним.Поле` по той же карте псевдонимов. */

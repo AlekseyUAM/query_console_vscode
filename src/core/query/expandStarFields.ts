@@ -69,32 +69,45 @@ export function expandStarFields(model: QueryModel, resolver?: MetadataResolver)
     else newFields.push(f);
   };
 
+  // Развёртка звезды по ОДНОМУ источнику (`<alias>.*` или один из источников голой
+  // `*`): добавляет колонки/ТЧ/завершающие в накопители. Возвращает true, если
+  // источник разрешён и хоть что-то развёрнуто (нужно для пометки sawExpandedStar).
+  const expandOne = (fullName: string | undefined, tableId: string | undefined): boolean => {
+    const meta = fullName ? resolver.tableByFullName(fullName) : undefined;
+    if (!meta || tableId === undefined) return false;
+    const expanded = buildSelectAllModel(meta);
+    for (const ef of expanded.fields) newFields.push(makeField(ef, tableId, reserved));
+    for (const ts of expanded.tabSectionFields ?? []) tabSections.push({ ...ts, tableId });
+    for (const ef of expanded.trailingFields ?? []) trailing.push(makeField(ef, tableId, reserved));
+    return true;
+  };
+
   for (const f of model.fields) {
     const star = parseStar(f);
     if (!star) { pushAfter(f); continue; }
 
-    const fullName = star.alias
-      ? aliasToFull.get(star.alias.toUpperCase())
-      : soleFull;
-    const meta = fullName ? resolver.tableByFullName(fullName) : undefined;
-    // Неразрешимый источник (параметр/временная/нет метаданных) либо звезда по
-    // реквизиту (`alias.field.*`) — удаляем звезду (правило 1).
-    if (!meta || star.viaAttribute) continue;
+    // Звезда по реквизиту-ссылке (`alias.field.*`) неразрешима — удаляем (правило 1).
+    if (star.viaAttribute) continue;
 
-    const expanded = buildSelectAllModel(meta);
-    const tableId = star.alias ? findTableId(model, star.alias) : model.tables[0]?.id;
-    if (tableId === undefined) continue;
+    if (star.alias) {
+      // `<alias>.*` — разворачиваем единственный источник этого псевдонима.
+      const fullName = aliasToFull.get(star.alias.toUpperCase());
+      if (expandOne(fullName, findTableId(model, star.alias))) sawExpandedStar = true;
+      continue;
+    }
 
-    for (const ef of expanded.fields) {
-      newFields.push(makeField(ef, tableId, reserved));
+    // Голая `*` — конструктор разворачивает ВСЕ источники секции ИЗ по порядку
+    // (MCP-проба: `* ИЗ ВТ КАК А ЛЕВОЕ СОЕДИНЕНИЕ ВТ КАК Б` → колонки А, затем Б
+    // с дедуп-суффиксом). Единственный источник — частный случай. Если ни один
+    // источник не разрешился (все параметры/нет метаданных) — звезда удаляется.
+    if (soleFull !== undefined) {
+      if (expandOne(soleFull, model.tables[0]?.id)) sawExpandedStar = true;
+      continue;
     }
-    for (const ts of expanded.tabSectionFields ?? []) {
-      tabSections.push({ ...ts, tableId });
+    for (const t of model.tables) {
+      if (t.subquery) continue;
+      if (expandOne(t.fullName, t.id)) sawExpandedStar = true;
     }
-    for (const ef of expanded.trailingFields ?? []) {
-      trailing.push(makeField(ef, tableId, reserved));
-    }
-    sawExpandedStar = true;
   }
 
   model.fields = newFields;

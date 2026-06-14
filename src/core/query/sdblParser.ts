@@ -56,6 +56,7 @@ import { fieldAlias } from './unionModel';
 import type { QueryDocument, UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
 import type { MetadataResolver } from './metadataResolver';
+import type { MetaTable, MetaField } from '../metadata/types';
 import { expandStarFields } from './expandStarFields';
 import { expandTabSectionFields } from './expandTabSectionFields';
 import { wrapTabSectionAggregates } from './wrapTabSectionAggregates';
@@ -3679,10 +3680,14 @@ function rewriteMemberAliases(model: QueryModel, columnAliases: string[]): void 
  * случай; в реальных исходниках встречаются `;\n////…` без пустой строки,
  * `;\n\n\n////…`, `;////…` (слэши на одной строке с `;`) и голый `;` между
  * запросами — конструктор все их нормализует к каноническому разделителю
- * (подтверждено MCP-пробами и каноном golden-корпуса).
+ * (подтверждено MCP-пробами и каноном golden-корпуса). Перевод строки после
+ * `;` НЕОБЯЗАТЕЛЕН: исходник вида `…Поле\n\n;Выбрать …` (следующий оператор на
+ * той же строке, что и `;`) конструктор тоже делит на два запроса (MCP-проба
+ * `… ПОМЕСТИТЬ ВТ … ;ВЫБРАТЬ … ИЗ ВТ`). `;` вне строкового литерала/комментария
+ * не имеет иного смысла в SDBL, поэтому всегда является разделителем.
  */
 const BATCH_SEPARATOR_RE =
-  /[ \t]*;[ \t]*(?:\/{4,}[ \t]*)?\n(?:[ \t]*\n)*(?:\/{4,}[ \t]*(?:\n(?:[ \t]*\n)*|$))?/gu;
+  /[ \t]*;[ \t]*(?:\/{4,}[ \t]*)?(?:\n(?:[ \t]*\n)*(?:\/{4,}[ \t]*(?:\n(?:[ \t]*\n)*|$))?)?/gu;
 
 /**
  * Защищённые диапазоны сырого текста `[начало, конец)`, внутри которых `;` НЕ
@@ -3765,6 +3770,71 @@ export function parseBatch(text: string, resolver?: MetadataResolver): BatchDocu
   // следующего запроса) конструктор отбрасывает — канон заканчивается последним
   // запросом без хвостового разделителя.
   const chunks = splitBatchText(normalized).filter((c) => c.trim() !== '');
-  const members = chunks.map((c) => parseDocument(c, resolver));
+
+  // Межоператорная резолвинг временных таблиц (фаза 6.17): временная таблица,
+  // созданная ранним `ПОМЕСТИТЬ <ВТ>`, должна быть видна последующим операторам,
+  // чтобы `ВЫБРАТЬ * ИЗ <ВТ>` / `<ВТ>.*` развернулись в её колонки. Колонки ВТ =
+  // псевдонимы списка выборки оператора-создателя (участник 0 объединения). Парсим
+  // операторы ПО ПОРЯДКУ, накапливая реестр ВТ, и передаём расширенный резолвер в
+  // `parseDocument` каждого следующего оператора — там `expandStarFields` разворачивает
+  // звезду по синтетической таблице ВТ ровно так же, как по реальной (MCP-проба:
+  // `* ИЗ ВТ` → `ВТ.Колонка КАК Колонка`).
+  const tempTables = new Map<string, MetaTable>();
+  const members = chunks.map((c) => {
+    const doc = parseDocument(c, augmentResolverWithTempTables(resolver, tempTables));
+    registerTempTables(doc, tempTables);
+    return doc;
+  });
   return { members };
+}
+
+/**
+ * Регистрирует временные таблицы, созданные документом-оператором (`ПОМЕСТИТЬ <ВТ>`),
+ * в реестре `tempTables` (ключ — имя ВТ в верхнем регистре, ВТ нечувствительны к
+ * регистру). Колонки ВТ = эффективные псевдонимы списка выборки участника 0
+ * (объединение задаёт колонки первым участником). Реестр служит синтетическими
+ * метаданными для развёртки звезды в последующих операторах.
+ */
+function registerTempTables(doc: QueryDocument, tempTables: Map<string, MetaTable>): void {
+  const m0 = doc.members[0]?.model;
+  if (!m0 || m0.queryType !== 'createTemp' || !m0.tempTableName) return;
+  const aliases: string[] = [];
+  const seen = new Set<string>();
+  for (const f of m0.fields) {
+    const a = fieldAlias(f, m0);
+    // Звезда, которую не удалось развернуть (нерезолвимый источник самой ВТ),
+    // остаётся как поле-выражение `*` — её в реестр колонок не добавляем.
+    if (!a || a === '*') continue;
+    let alias = a;
+    let n = 0;
+    while (seen.has(alias.toUpperCase())) alias = `${a}${++n}`;
+    seen.add(alias.toUpperCase());
+    aliases.push(alias);
+  }
+  if (aliases.length === 0) return;
+  const fields: MetaField[] = aliases.map((name) => ({ name, kind: 'attribute', types: [] }));
+  tempTables.set(m0.tempTableName.toUpperCase(), {
+    kind: 'Справочник', // вид не используется развёрткой ВТ (нет ТЧ/виртуальных полей)
+    name: m0.tempTableName,
+    fullName: m0.tempTableName,
+    fields,
+  });
+}
+
+/**
+ * Возвращает резолвер, который поверх базового (реальные метаданные) знает о
+ * временных таблицах из реестра `tempTables`. Если реестр пуст — отдаёт базовый
+ * резолвер без обёртки (поведение байт-в-байт прежнее для пакетов без ВТ).
+ * Имя источника ВТ во вводе квалифицируется как обычный односегментный `fullName`
+ * (`ИЗ ВТ КАК ВТ` → fullName `ВТ`); ВТ нечувствительны к регистру.
+ */
+function augmentResolverWithTempTables(
+  base: MetadataResolver | undefined,
+  tempTables: Map<string, MetaTable>,
+): MetadataResolver | undefined {
+  if (tempTables.size === 0) return base;
+  return {
+    tableByFullName: (fullName: string): MetaTable | undefined =>
+      tempTables.get(fullName.toUpperCase()) ?? base?.tableByFullName(fullName),
+  };
 }
