@@ -1299,7 +1299,18 @@ function parseFrom(cur: Cursor): FromResult {
     tables.push(seed);
     parseJoinChainFrom(seed.alias!, 0);
     parseBuilderJoins(seed.alias!);
-    if (cur.matchPunct(',')) continue;
+    if (cur.matchPunct(',')) {
+      // Лишняя запятая ПЕРЕД соединением (`A, ЛЕВОЕ СОЕДИНЕНИЕ B`): оракул её
+      // отбрасывает и трактует как соединение того же источника, а не отдельный
+      // источник через запятую. Дочитываем цепочку соединений того же seed.
+      if (isJoinKeyword(cur) || cur.isBuilderJoinStart()) {
+        parseJoinChainFrom(seed.alias!, 0);
+        parseBuilderJoins(seed.alias!);
+        if (cur.matchPunct(',')) continue;
+        break;
+      }
+      continue;
+    }
     break;
   }
   return { tables, joins };
