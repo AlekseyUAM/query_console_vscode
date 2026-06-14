@@ -60,6 +60,7 @@ import { expandStarFields } from './expandStarFields';
 import { expandTabSectionFields } from './expandTabSectionFields';
 import { wrapTabSectionAggregates } from './wrapTabSectionAggregates';
 import { dropUserIBConditions } from './dropUserIBConditions';
+import { resolveBuilderStar } from './resolveBuilderStar';
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
 const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
@@ -3341,9 +3342,21 @@ function parseBuilderCondition(cur: Cursor): BuilderField {
     tokens.push(cur.next());
   }
   if (tokens.length === 0) throw cur.error('пустое условие построителя');
+  // Скобочная форма «использовать дочерние»: `(выражение).*` (корпус:
+  // ЕСТЬNULL(...).* КАК КассаККМ, ЗНАЧЕНИЕ(...).* КАК Группа). Снимаем хвостовые
+  // токены `.` `*`, помечаем child — генератор допишет `.*` после скобок.
+  let child = false;
+  if (
+    tokens.length >= 2 &&
+    tokens[tokens.length - 1].type === 'punct' && tokens[tokens.length - 1].value === '*' &&
+    tokens[tokens.length - 2].type === 'punct' && tokens[tokens.length - 2].value === '.'
+  ) {
+    child = true;
+    tokens.length -= 2;
+  }
   const field: BuilderField = {
     ref: stripOuterParens(sliceSource(cur.source, tokens)),
-    child: false,
+    child,
     condition: true,
   };
   if (cur.matchKeyword('КАК')) {
@@ -3511,6 +3524,9 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     // Тихий дроп конъюнкта ГДЕ, навигирующего к идентификационным реквизитам ИБ
     // через ссылку на пользователя (фаза 6.15.23, по типам метаданных).
     dropUserIBConditions(model, resolver);
+    // Суффикс `.*` поля построителя сохраняется только для ссылочного поля
+    // (по типам метаданных); у нессылочного/нерезолвимого — снимается.
+    resolveBuilderStar(model, resolver);
     // Пометка иерархических источников (для суффикса ИЕРАРХИЯ в УПОРЯДОЧИТЬ ПО,
     // фаза 6.16.6). По метаданным; без резолвера флаг не ставится.
     if (resolver) {

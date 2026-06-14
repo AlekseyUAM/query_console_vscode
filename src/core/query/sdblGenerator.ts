@@ -704,14 +704,16 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
  */
 function builderBlock(keyword: string, fields: BuilderField[]): string[] {
   if (fields.length === 0) return [];
-  const isWhere = keyword === 'ГДЕ';
-  // Элемент-условие `{ГДЕ}` печатается в скобках (фаза 6.15.7); `.*` при наличии
-  // псевдонима конструктор отбрасывает (корпус: КонвертацияОбъектов bsl_5 дроп,
-  // СервисКриптографии bsl_3 без псевдонима — сохраняется).
+  // Элемент-условие `{ГДЕ}` печатается в скобках (фаза 6.15.7). Суффикс `.*`
+  // («использовать дочерние») сохраняется всегда — и в `{ВЫБРАТЬ}`, и в `{ГДЕ}`,
+  // с псевдонимом и без (живой оракул: `Поле.* КАК Алиас` сохраняет `.*`).
+  // Скобочная форма `(выражение).*` приходит как условие с `child: true`: `.*`
+  // дописывается ПОСЛЕ скобок, а не оборачивается ещё одной парой (корпус:
+  // ЕСТЬNULL(...).* КАК КассаККМ, ЗНАЧЕНИЕ(...).* КАК Группа).
   const render = (f: BuilderField): string =>
     f.condition
-      ? `(${f.ref})` + (f.alias ? ' КАК ' + f.alias : '')
-      : f.ref + (f.child && !(isWhere && f.alias) ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
+      ? `(${f.ref})` + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '')
+      : f.ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
   const lines = ['{' + keyword];
   fields.forEach((f, i) => {
     const last = i === fields.length - 1;
