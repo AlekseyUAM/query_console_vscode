@@ -26,9 +26,14 @@ export function parseAccumulationRegister(objectEl: any): ParsedObject | null {
     std('ВидДвижения', [{ kind: 'unknown' }]);
   }
 
-  const { dimensions, resources } = parseChildObjects(objectEl);
+  const { dimensions, resources, attributes } = parseChildObjects(objectEl);
   fields.push(...dimensions);
   fields.push(...resources);
+  // Реквизиты (Attribute) регистра накопления — после ресурсов, как в `*`-развёртке
+  // конструктора 1С (порядок: стандартные → измерения → ресурсы → реквизиты).
+  // Раньше терялись (в отличие от РС/РБ/регистра расчёта) — `*`/`Источник.*` по
+  // регистру накопления недосчитывал поля.
+  fields.push(...attributes);
 
   return {
     version: 1,
