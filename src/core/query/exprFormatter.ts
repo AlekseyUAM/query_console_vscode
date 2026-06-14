@@ -439,17 +439,52 @@ export function reindentLeafSubquery(text: string, base: number): string {
   const target = base + neCount;
   // Хвостовые пробелы строки перед подзапросом (`… В ` → `… В`).
   lines[start - 1] = lines[start - 1].replace(/[ \t]+$/u, '');
-  const cur = (lines[start].match(/^\t*/u) ?? [''])[0].length;
-  const delta = target - cur;
-  if (delta !== 0) {
+  // Геометрия отступа тела подзапроса в исходнике разработчика может быть набрана
+  // ПРОБЕЛАМИ (или смесью таб+пробел) — тогда счёт ведущих ТАБОВ её не видит, и
+  // простое до-набивание `delta` табов оставляет исходные пробелы как мусор
+  // (`\t\t\t\t\t            (ВЫБРАТЬ`). Если в ведущем отступе тела есть пробелы —
+  // нормализуем тело юнит-независимо: уровень строки вычисляем по ВИЗУАЛЬНОЙ ширине
+  // её отступа относительно строки `(ВЫБРАТЬ` (таб=8, пробел=1), шаг — минимальный
+  // положительный прирост в блоке, и переотрисовываем как `(target + level)` табов.
+  // Для чисто-табного тела (current behaviour) ветка не срабатывает — байт-в-байт.
+  const visWidth = (ws: string): number => {
+    let w = 0;
+    for (const ch of ws) w += ch === '\t' ? 8 : 1;
+    return w;
+  };
+  const bodyHasSpaceIndent = lines
+    .slice(start)
+    .some((l) => l.trim() !== '' && / /u.test((l.match(/^[\t ]*/u) ?? [''])[0]));
+  if (bodyHasSpaceIndent) {
+    const headW = visWidth((lines[start].match(/^[\t ]*/u) ?? [''])[0]);
+    // Минимальный положительный прирост ширины относительно головы — единица уровня.
+    let step = Infinity;
     for (let i = start; i < lines.length; i++) {
-      if (lines[i].trim() === '') continue; // пустые/разделительные строки не трогаем
-      if (delta > 0) {
-        lines[i] = TAB.repeat(delta) + lines[i];
-      } else {
-        const have = (lines[i].match(/^\t*/u) ?? [''])[0].length;
-        if (have < -delta) return text; // нечего срезать — геометрия нестандартная, не трогаем
-        lines[i] = lines[i].slice(-delta);
+      if (lines[i].trim() === '') continue;
+      const d = visWidth((lines[i].match(/^[\t ]*/u) ?? [''])[0]) - headW;
+      if (d > 0 && d < step) step = d;
+    }
+    if (!Number.isFinite(step)) step = 1;
+    for (let i = start; i < lines.length; i++) {
+      if (lines[i].trim() === '') continue;
+      const ws = (lines[i].match(/^[\t ]*/u) ?? [''])[0];
+      const extra = visWidth(ws) - headW;
+      const level = extra > 0 ? Math.round(extra / step) : 0;
+      lines[i] = TAB.repeat(target + level) + lines[i].slice(ws.length);
+    }
+  } else {
+    const cur = (lines[start].match(/^\t*/u) ?? [''])[0].length;
+    const delta = target - cur;
+    if (delta !== 0) {
+      for (let i = start; i < lines.length; i++) {
+        if (lines[i].trim() === '') continue; // пустые/разделительные строки не трогаем
+        if (delta > 0) {
+          lines[i] = TAB.repeat(delta) + lines[i];
+        } else {
+          const have = (lines[i].match(/^\t*/u) ?? [''])[0].length;
+          if (have < -delta) return text; // нечего срезать — геометрия нестандартная, не трогаем
+          lines[i] = lines[i].slice(-delta);
+        }
       }
     }
   }
