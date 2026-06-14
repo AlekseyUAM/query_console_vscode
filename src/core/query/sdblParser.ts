@@ -70,6 +70,21 @@ const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
   СРЕДНЕЕ: 'Среднее',
 };
 
+/**
+ * Виды метаданных, образующие полное имя таблицы (`Тип.Объект`). Голова такого
+ * вида в полном пути поля (`Справочник.Валюты.Код`) при ОТСУТСТВИИ секции `ИЗ`
+ * сигнализирует конструктору 1С синтезировать источник `ИЗ Тип.Объект КАК Объект`
+ * и переписать префикс поля на псевдоним (фаза 6.16.17, см. synthesizeImplicitFrom).
+ * Список синхронизирован с SUPPORTED_KINDS из metadata/yamlLoader.
+ */
+const METADATA_KINDS: ReadonlySet<string> = new Set([
+  'СПРАВОЧНИК', 'ДОКУМЕНТ', 'КОНСТАНТА', 'ПЕРЕЧИСЛЕНИЕ',
+  'ПЛАНОБМЕНА', 'ПЛАНВИДОВХАРАКТЕРИСТИК', 'ПЛАНСЧЕТОВ', 'ПЛАНВИДОВРАСЧЕТА',
+  'БИЗНЕСПРОЦЕСС', 'ЗАДАЧА',
+  'РЕГИСТРСВЕДЕНИЙ', 'РЕГИСТРНАКОПЛЕНИЯ', 'РЕГИСТРБУХГАЛТЕРИИ', 'РЕГИСТРРАСЧЕТА',
+  'ПОСЛЕДОВАТЕЛЬНОСТЬ', 'ЖУРНАЛДОКУМЕНТОВ', 'КРИТЕРИЙОТБОРА',
+]);
+
 /** Курсор по токенам с доступом к исходному тексту (для сырых срезов). */
 class Cursor {
   private idx = 0;
@@ -245,11 +260,201 @@ export function parseQuery(text: string): QueryModel {
  * секции стоят после ПОСЛЕДНЕГО участника. `ctxOut.ctx` — собственный контекст
  * разобранного участника (для передачи последующим участникам объединения).
  */
+/**
+ * Токен `tokens[i]` — голова полного пути поля `Тип.Объект.<поле|*>` (вид метаданных
+ * + имя объекта + минимум один сегмент поля или звезда). Используется обоими
+ * проходами synthesizeImplicitFrom (сбор имён таблиц и переписывание префиксов),
+ * чтобы критерий совпадал. НЕ учитывает зоны ЗНАЧЕНИЕ(…)/ТИП(…): их пропускает
+ * вызывающий цикл через skipUntilDepth.
+ */
+function isImplicitSourceHead(tokens: readonly Token[], i: number): boolean {
+  const t = tokens[i];
+  if (!isNameToken(t)) return false;
+  if (!METADATA_KINDS.has(t.text.toUpperCase())) return false;
+  // Голова цепочки: перед ней нет `.` (иначе — продолжение чужого пути).
+  const prev = tokens[i - 1];
+  if (prev && prev.type === 'punct' && prev.value === '.') return false;
+  // Тип-цепочка после КАК/ССЫЛКА (уточнение типа в ВЫРАЗИТЬ/ЕСТЬ) — не источник.
+  const prevUp = prev && (prev.type === 'ident' || prev.type === 'keyword')
+    ? prev.text.toUpperCase() : undefined;
+  if (prevUp === 'КАК' || prevUp === 'ССЫЛКА') return false;
+  // Форма `Тип.Объект.` + (имя поля | `*`).
+  if (!(tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '.' && isNameToken(tokens[i + 2]) &&
+        tokens[i + 3]?.type === 'punct' && tokens[i + 3].value === '.')) {
+    return false;
+  }
+  const after = tokens[i + 4];
+  return isNameToken(after) || (after?.type === 'punct' && after.value === '*');
+}
+
+/**
+ * Синтез секции `ИЗ` из полных путей полей при её отсутствии (фаза 6.16.17, MCP).
+ *
+ * Когда участник запроса НЕ содержит секции `ИЗ` верхнего уровня, а поля записаны
+ * полными путями `Тип.Объект.поле` (голова — вид метаданных, см. METADATA_KINDS),
+ * конструктор 1С синтезирует источники `ИЗ Тип.Объект КАК Объект` (по одному на
+ * каждое различное полное имя `Тип.Объект`, СОРТИРОВАННЫЕ по псевдониму) и
+ * переписывает каждый префикс `Тип.Объект.` в тексте участника на псевдоним
+ * `Объект.`. После этого штатный разбор видит обычный запрос с явным `ИЗ` —
+ * подхватываются автопсевдонимы (§6.16.13), квалификация голых полей единственного
+ * источника (soleSource) и сортировка списка `ИЗ` генератором уже отлажены.
+ *
+ * Реализовано как переписывание ТЕКСТА участника + ретокенизация: возвращает новый
+ * курсор поверх синтезированного текста либо исходный курсор без изменений (нет
+ * подходящих путей, либо `ИЗ` уже присутствует, либо это не `ВЫБРАТЬ`).
+ *
+ * Скип зон, где `Тип.Объект.*` НЕ является ссылкой на поле-источник: внутренности
+ * `ЗНАЧЕНИЕ(…)`/`ТИП(…)` (пути-литералы метаданных) и цепочка-тип после
+ * `КАК`/`ССЫЛКА` (уточнение типа в ВЫРАЗИТЬ/ЕСТЬ) — те же зоны, что пропускает
+ * qualifyBareFieldsInExpression.
+ */
+function synthesizeImplicitFrom(cur: Cursor): Cursor {
+  const tokens = cur.allTokens;
+  // Только запросы ВЫБРАТЬ (УНИЧТОЖИТЬ/прочее не трогаем).
+  if (!(tokens[0]?.type === 'keyword' && tokens[0].value === 'ВЫБРАТЬ')) return cur;
+
+  // Уже есть секция `ИЗ` верхнего уровня (вне скобок/блоков построителя) — выходим.
+  // Заодно находим позицию первого ключевого слова СЕКЦИИ после списка полей
+  // (ГДЕ/СГРУППИРОВАТЬ/УПОРЯДОЧИТЬ/…) для вставки синтезированного `ИЗ` перед ней.
+  let depth = 0;
+  let insertBeforePos: number | undefined;
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && (t.value === '(' || t.value === '{')) { depth++; continue; }
+    if (t.type === 'punct' && (t.value === ')' || t.value === '}')) { depth--; continue; }
+    if (depth !== 0) continue;
+    if (t.type === 'keyword' && t.value === 'ИЗ') return cur;
+    if (insertBeforePos === undefined && t.type === 'keyword' && SECTION_AFTER_FIELDS.has(t.value)) {
+      insertBeforePos = t.pos;
+    }
+  }
+
+  // Сбор различных полных имён `Тип.Объект` из путей полей `Тип.Объект.поле…`.
+  // tableNames: ключ ВЕРХНИЙ регистр fullName → исходное написание fullName.
+  const tableNames = new Map<string, string>();
+  let skipUntilDepth: number | undefined;
+  depth = 0;
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && (t.value === '(' || t.value === '{')) {
+      depth++;
+      continue;
+    }
+    if (t.type === 'punct' && (t.value === ')' || t.value === '}')) {
+      depth--;
+      if (skipUntilDepth !== undefined && depth < skipUntilDepth) skipUntilDepth = undefined;
+      continue;
+    }
+    if (skipUntilDepth !== undefined) continue;
+    if (!isNameToken(t)) continue;
+    const up = t.text.toUpperCase();
+    // ЗНАЧЕНИЕ(/ТИП( — путь-литерал метаданных, не источник.
+    if ((up === 'ЗНАЧЕНИЕ' || up === 'ТИП') &&
+        tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '(') {
+      skipUntilDepth = depth + 1;
+      continue;
+    }
+    if (!isImplicitSourceHead(tokens, i)) continue;
+    const fullName = `${t.text}.${tokens[i + 2].text}`;
+    tableNames.set(fullName.toUpperCase(), fullName);
+  }
+  if (tableNames.size === 0) return cur;
+
+  // Источники: псевдоним = последний сегмент (Объект). Если два разных fullName дают
+  // одинаковый псевдоним — синтез неоднозначен, не трогаем (редкость, безопасный откат).
+  const sources = [...tableNames.values()].map(fullName => ({
+    fullName,
+    alias: fullName.slice(fullName.indexOf('.') + 1),
+  }));
+  const aliasSeen = new Set<string>();
+  for (const s of sources) {
+    const a = s.alias.toUpperCase();
+    if (aliasSeen.has(a)) return cur;
+    aliasSeen.add(a);
+  }
+  // Список `ИЗ` сортируется по псевдониму (канон конструктора при синтезе).
+  sources.sort((a, b) => a.alias.localeCompare(b.alias, 'ru'));
+
+  // Переписать префиксы `Тип.Объект.` → `Объект.` по всему тексту участника, КРОМЕ
+  // зон ЗНАЧЕНИЕ(…)/ТИП(…) и цепочек-типов после КАК/ССЫЛКА (как при сборе).
+  const start = tokens[0].pos;
+  const lastReal = tokens[tokens.length - 1].type === 'eof'
+    ? tokens[tokens.length - 2] : tokens[tokens.length - 1];
+  const end = lastReal.pos + lastReal.value.length;
+  const edits: { pos: number; len: number }[] = [];
+  depth = 0;
+  skipUntilDepth = undefined;
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && (t.value === '(' || t.value === '{')) { depth++; continue; }
+    if (t.type === 'punct' && (t.value === ')' || t.value === '}')) {
+      depth--;
+      if (skipUntilDepth !== undefined && depth < skipUntilDepth) skipUntilDepth = undefined;
+      continue;
+    }
+    if (skipUntilDepth !== undefined) continue;
+    if (!isNameToken(t)) continue;
+    const up = t.text.toUpperCase();
+    if ((up === 'ЗНАЧЕНИЕ' || up === 'ТИП') &&
+        tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '(') {
+      skipUntilDepth = depth + 1;
+      continue;
+    }
+    if (!isImplicitSourceHead(tokens, i)) continue;
+    if (!tableNames.has(`${t.text}.${tokens[i + 2].text}`.toUpperCase())) continue;
+    // Снять `Тип.` (от головы до точки перед Объектом включительно): диапазон
+    // [t.pos, начало токена Объекта).
+    edits.push({ pos: t.pos, len: tokens[i + 2].pos - t.pos });
+  }
+
+  // Текст синтезированной секции `ИЗ`.
+  const fromText = '\nИЗ\n' +
+    sources.map(s => `\t${s.fullName} КАК ${s.alias}`).join(',\n') + '\n';
+
+  // Сборка нового текста участника: применяем edits (удаление `Тип.`), затем
+  // вставляем секцию `ИЗ` перед первой секцией после списка полей (или в конце).
+  // edits отсортированы по позиции (порядок обхода токенов).
+  const insertAt = insertBeforePos ?? end;
+  let out = '';
+  let p = start;
+  let inserted = false;
+  const maybeInsert = (upto: number): void => {
+    if (!inserted && insertAt <= upto) {
+      out += cur.source.slice(p, insertAt) + fromText;
+      p = insertAt;
+      inserted = true;
+    }
+  };
+  for (const e of edits) {
+    maybeInsert(e.pos);
+    out += cur.source.slice(p, e.pos);
+    p = e.pos + e.len;
+  }
+  maybeInsert(end);
+  out += cur.source.slice(p, end);
+  if (!inserted) out += fromText;
+
+  return new Cursor(tokenize(out), out);
+}
+
+/**
+ * Ключевые слова секций, идущих ПОСЛЕ списка полей (и после `ИЗ`). Точка вставки
+ * синтезированной секции `ИЗ` — перед первым из них (synthesizeImplicitFrom).
+ */
+const SECTION_AFTER_FIELDS: ReadonlySet<string> = new Set([
+  'ГДЕ', 'СГРУППИРОВАТЬ', 'ИМЕЮЩИЕ', 'УПОРЯДОЧИТЬ', 'АВТОУПОРЯДОЧИВАНИЕ',
+  'ИТОГИ', 'ИНДЕКСИРОВАТЬ', 'ДЛЯ', 'ПОМЕСТИТЬ', 'ДОБАВИТЬ',
+]);
+
 function parseSingleQuery(
   cur: Cursor,
   inheritedSectionCtx?: SectionResolveContext,
   ctxOut?: { ctx?: SectionResolveContext }
 ): QueryModel {
+  // Синтез источника `ИЗ` из полных путей полей `Тип.Объект.поле` при отсутствии
+  // секции `ИЗ` (фаза 6.16.17): возвращает переписанный курсор либо исходный.
+  cur = synthesizeImplicitFrom(cur);
+
   // УНИЧТОЖИТЬ <name> — самостоятельный запрос (без ВЫБРАТЬ).
   if (cur.isKeyword('УНИЧТОЖИТЬ')) {
     cur.next();
