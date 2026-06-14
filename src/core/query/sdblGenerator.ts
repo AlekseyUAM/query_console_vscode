@@ -219,6 +219,14 @@ function splitTopLevelBool(expr: string): string {
  * условие остаётся инлайн: `Имя(П1, условие)`.
  */
 function renderVirtualParams(fullName: string, positions: string[], condition: string, bodyTabs: number): string {
+  // Регистровая нормализация параметров виртуальной таблицы (период, условие):
+  // конструктор приводит зарезервированные слова/функции/литералы к ВЕРХНЕМУ
+  // регистру и здесь (`Значение(` → `ЗНАЧЕНИЕ(`, `Есть NULL` → `ЕСТЬ NULL`).
+  // normalizeLeafCase не трогает сегменты `.`-пути и тело строковых литералов и
+  // безопасен для многострочных условий-подзапросов (правит лишь промежутки без
+  // переводов строк).
+  positions = positions.map(p => (p ? normalizeLeafCase(p) : p));
+  condition = condition ? normalizeLeafCase(condition) : condition;
   const hasBool = !!condition && hasTopLevelBooleanOp(condition);
   // Условие-подзапрос (`(поля) В (ВЫБРАТЬ …)`) тоже разносит параметры по строкам,
   // даже без верхнеуровневого И/ИЛИ: конструктор 1С печатает каждый параметр на своей
@@ -732,10 +740,16 @@ function builderBlock(keyword: string, fields: BuilderField[]): string[] {
   // Скобочная форма `(выражение).*` приходит как условие с `child: true`: `.*`
   // дописывается ПОСЛЕ скобок, а не оборачивается ещё одной парой (корпус:
   // ЕСТЬNULL(...).* КАК КассаККМ, ЗНАЧЕНИЕ(...).* КАК Группа).
-  const render = (f: BuilderField): string =>
-    f.condition
-      ? `(${f.ref})` + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '')
-      : f.ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
+  const render = (f: BuilderField): string => {
+    // Регистровая нормализация выражения поля/условия (КАК, ЕСТЬ, НЕ, литералы,
+    // имена функций): конструктор приводит зарезервированные слова к ВЕРХНЕМУ
+    // регистру и в элементах построителя (`{ГДЕ (Не … ЕСТЬ NULL)}`). Путь поля
+    // (`Таблица.Поле`) не затрагивается — normalizeLeafCase не трогает сегменты `.`.
+    const ref = normalizeLeafCase(f.ref);
+    return f.condition
+      ? `(${ref})` + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '')
+      : ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
+  };
   const lines = ['{' + keyword];
   fields.forEach((f, i) => {
     const last = i === fields.length - 1;
@@ -903,8 +917,10 @@ export function renderTabProjection(
       const comma = i < tsf.columns!.length - 1 ? ',' : '';
       if (c.kind === 'field') {
         // Голая колонка: первый участник — `<поле> КАК <псевдоним>`; прочие — `<поле>`.
+        // Нормализация регистра головы: литерал-колонка `Неопределено`/`ЛОЖЬ` → ВЕРХ;
+        // имя поля (`ДокументОснование`) не распознаётся как литерал и не трогается.
         const tail = opts.suppress ? '' : ` КАК ${c.alias ?? c.field}`;
-        return [`\t\t${c.field}${tail}${comma}`];
+        return [`\t\t${normalizeLeafCase(c.field)}${tail}${comma}`];
       }
       return tsExprLines(c.expression, c.alias, comma);
     });
@@ -920,7 +936,8 @@ export function renderTabProjection(
   } else {
     subLines = tsf.fields.map((f, i) => {
       const tail = opts.suppress ? '' : ` КАК ${tsf.fieldAliases?.[i] ?? f}`;
-      return `\t\t${f}${tail}${i < tsf.fields.length - 1 ? ',' : ''}`;
+      // Литерал-колонка ТЧ (`Неопределено`/`ЛОЖЬ`/`NULL`) → ВЕРХ; имя поля не трогается.
+      return `\t\t${normalizeLeafCase(f)}${tail}${i < tsf.fields.length - 1 ? ',' : ''}`;
     });
   }
   const body = `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t)`;
