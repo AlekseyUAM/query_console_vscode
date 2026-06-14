@@ -82,6 +82,16 @@ function tokUpper(t: Token): string {
 /** Операторы сравнения (пунктуация), вокруг которых конструктор ставит ровно один пробел. */
 const COMPARISON_PUNCT = new Set(['=', '<>', '<', '>', '<=', '>=']);
 
+// Слова, после которых `-` — УНАРНЫЙ (начинает выражение-операнд), а не бинарное
+// вычитание. Конструктор 1С печатает унарный минус БЕЗ пробела после него
+// (`ИНАЧЕ -Поле`, `ТОГДА -1`), тогда как бинарный минус сохраняет пробелы (`a - b`).
+// Это зарезервированные ключевые слова/операторы 1С — именами полей быть не могут,
+// поэтому слово в этом множестве однозначно означает позицию начала операнда.
+const UNARY_MINUS_PREV_WORDS = new Set([
+  'ИНАЧЕ', 'ТОГДА', 'КОГДА', 'ВЫБОР', 'И', 'ИЛИ', 'НЕ', 'МЕЖДУ', 'В',
+  'ПОДОБНО', 'ЕСТЬ', 'КАК', 'ГДЕ', 'ИМЕЮЩИЕ', 'СПЕЦСИМВОЛ', 'ИЕРАРХИИ',
+]);
+
 /**
  * Сплющивает лист в ОДНУ строку: конструктор 1С печатает листовое подвыражение
  * (значение после ТОГДА/ИНАЧЕ, операнд условия КОГДА, сравнение/вызов) на одной
@@ -1074,6 +1084,49 @@ function stripLeadingZeros(value: string): string {
   return trimmed + frac;
 }
 
+/**
+ * Унарен ли минус `sig[idx]` (значение `-`). Минус БИНАРЕН (вычитание), если перед
+ * ним стоит ОПЕРАНД: число/строка/параметр/дата, закрывающая `)`, либо
+ * идентификатор/ключевое слово, НЕ являющееся зарезервированным разделителем
+ * (т. е. имя поля). Иначе (начало листа, `(`, `,`, оператор сравнения/арифметики,
+ * зарезервированное слово) минус УНАРЕН.
+ */
+function isUnaryMinusAt(sig: Token[], idx: number): boolean {
+  const prev = sig[idx - 1];
+  if (!prev) return true; // начало листа
+  if (prev.type === 'number' || prev.type === 'string' ||
+      prev.type === 'param' || prev.type === 'date') return false;
+  if (prev.type === 'punct') {
+    if (prev.value === ')') return false; // `…) - X` — вычитание
+    return true; // `(`, `,`, операторы сравнения/арифметики и пр.
+  }
+  // ident / keyword: сегмент пути после точки — заведомо имя поля (операнд) ⇒ бинарный.
+  const pp = sig[idx - 2];
+  if (pp && pp.type === 'punct' && pp.value === '.') return false;
+  // Прочее: зарезервированное слово-разделитель ⇒ унарный, имя поля ⇒ бинарный.
+  return UNARY_MINUS_PREV_WORDS.has((prev.text ?? prev.value).toUpperCase());
+}
+
+/**
+ * Является ли скобочная группа, открываемая `sig[openIdx]` (значение `(`), ТЮПЛОМ —
+ * списком элементов через запятую верхнего уровня (`(a, b, …)`), а НЕ булевой группой
+ * (`(X = Y …)`). Тюплом считаем, если внутри ВЕРХНЕГО уровня скобок встречается запятая
+ * РАНЬШЕ любого оператора сравнения (= <> < > <= >=). Конструктор у тюпла `НЕ (a, b) В …`
+ * пробел перед `(` сохраняет, у булевой группы `НЕ(…)` — убирает.
+ */
+function isTupleGroupAt(sig: Token[], openIdx: number): boolean {
+  let depth = 0;
+  for (let k = openIdx; k < sig.length; k++) {
+    const t = sig[k];
+    if (t.type === 'punct' && t.value === '(') { depth++; continue; }
+    if (t.type === 'punct' && t.value === ')') { depth--; if (depth === 0) return false; continue; }
+    if (depth !== 1) continue;
+    if (t.type === 'punct' && t.value === ',') return true;
+    if (t.type === 'punct' && COMPARISON_PUNCT.has(t.value)) return false;
+  }
+  return false;
+}
+
 export function normalizeLeafWhitespace(raw: string): string {
   if (!raw) return raw;
   let toks: Token[];
@@ -1134,6 +1187,15 @@ export function normalizeLeafWhitespace(raw: string): string {
       if (gap !== ' ') edits.push({ from: gapFrom, to: gapTo, text: ' ' });
       continue;
     }
+    // Пробел после УНАРНОГО минуса конструктор убирает (`ИНАЧЕ -Поле`, `(-1)`),
+    // тогда как бинарное вычитание сохраняет пробелы (`a - b`). Минус унарен, если
+    // перед ним нет операнда: начало листа, `(`, `,`, оператор сравнения/арифметики
+    // или зарезервированное слово-разделитель (UNARY_MINUS_PREV_WORDS). Табы в
+    // промежутке не трогаем (значимый отступ).
+    if (a.type === 'punct' && a.value === '-' && !gap.includes('\t') && isUnaryMinusAt(sig, i)) {
+      if (gap !== '') edits.push({ from: gapFrom, to: gapTo, text: '' });
+      continue;
+    }
     // Пробел сразу ПОСЛЕ открывающей `(` конструктор 1С убирает (`( X` → `(X`,
     // `В ( "112"` → `В ("112"`). Табы в промежутке не трогаем (форматирование).
     if (a.type === 'punct' && a.value === '(' && !gap.includes('\t')) {
@@ -1160,6 +1222,13 @@ export function normalizeLeafWhitespace(raw: string): string {
         (a.type === 'ident' || a.type === 'keyword') && !gap.includes('\t')) {
       const aUp = (a.text ?? a.value).toUpperCase();
       if (AGGREGATE_WORDS.has(aUp) && gap !== '') {
+        edits.push({ from: gapFrom, to: gapTo, text: '' });
+        continue;
+      }
+      // `НЕ (` перед БУЛЕВОЙ группой конструктор печатает БЕЗ пробела (`НЕ(X = …)`,
+      // `НЕ(X В (…) ИЛИ …)`), тогда как ТЮПЛ `НЕ (a, b) В …` (запятая верхнего уровня
+      // прежде оператора сравнения) пробел СОХРАНЯЕТ. Различаем по содержимому группы.
+      if (aUp === 'НЕ' && gap !== '' && !isTupleGroupAt(sig, i + 1)) {
         edits.push({ from: gapFrom, to: gapTo, text: '' });
         continue;
       }

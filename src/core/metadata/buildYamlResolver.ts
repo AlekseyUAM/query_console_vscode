@@ -20,9 +20,17 @@ export function buildYamlResolver(cfDir: string): MetadataResolver | undefined {
   // нести произвольный регистр. Индекс покрывает и табличные части (3-сегментное
   // имя), чьё каноническое имя живёт в `tabularSections[].fullName`.
   const canonByUpper = new Map<string, string>();
+  // Виртуальные таблицы (срезы РС / Остатки-Обороты) индексируются ОТДЕЛЬНО и
+  // служат запасным слоем: развёртка `ВЫБРАТЬ *` по источнику-срезу
+  // (`РегистрСведений.X.СрезПоследних`) берёт состав колонок из виртуальной
+  // MetaTable. Реальная таблица всегда приоритетна в `byFull`/`canonByUpper`.
+  const byFullVirtual = new Map<string, MetaTable>();
   for (const t of model.tables) {
-    // Развёртка `*` идёт по РЕАЛЬНОЙ таблице (не по виртуальным срезам).
-    if (t.virtual) continue;
+    // Развёртка `*` по РЕАЛЬНОЙ таблице приоритетна; виртуальные — отдельным слоем.
+    if (t.virtual) {
+      if (!byFullVirtual.has(t.fullName)) byFullVirtual.set(t.fullName, t);
+      continue;
+    }
     if (!byFull.has(t.fullName)) byFull.set(t.fullName, t);
     const up = t.fullName.toUpperCase();
     if (!canonByUpper.has(up)) canonByUpper.set(up, t.fullName);
@@ -33,6 +41,7 @@ export function buildYamlResolver(cfDir: string): MetadataResolver | undefined {
   }
   return {
     tableByFullName: (fullName) => byFull.get(fullName),
+    virtualTableByFullName: (fullName) => byFullVirtual.get(fullName),
     canonicalFullName: (fullName) => canonByUpper.get(fullName.toUpperCase()),
   };
 }

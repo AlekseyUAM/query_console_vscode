@@ -73,7 +73,12 @@ export function expandStarFields(model: QueryModel, resolver?: MetadataResolver)
   // `*`): добавляет колонки/ТЧ/завершающие в накопители. Возвращает true, если
   // источник разрешён и хоть что-то развёрнуто (нужно для пометки sawExpandedStar).
   const expandOne = (fullName: string | undefined, tableId: string | undefined): boolean => {
-    const meta = fullName ? resolver.tableByFullName(fullName) : undefined;
+    // Реальная таблица приоритетна; источник-срез (`X.СрезПоследних`,
+    // `X.Остатки`, …) разрешается через виртуальный слой резолвера. Состав колонок
+    // среза берёт `buildSelectAllModel` из самой виртуальной MetaTable.
+    const meta = fullName
+      ? (resolver.tableByFullName(fullName) ?? resolver.virtualTableByFullName?.(fullName))
+      : undefined;
     if (!meta || tableId === undefined) return false;
     const expanded = buildSelectAllModel(meta);
     for (const ef of expanded.fields) newFields.push(makeField(ef, tableId, reserved));

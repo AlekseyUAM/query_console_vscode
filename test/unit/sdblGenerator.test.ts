@@ -1089,7 +1089,9 @@ describe('generate — порядок (УПОРЯДОЧИТЬ ПО, фаза 5.6
       ...base(),
       order: { fields: [], auto: true },
     };
-    expect(generate(model)).toBe(head + '\n\nАВТОУПОРЯДОЧИВАНИЕ');
+    // Бесхозное АВТОУПОРЯДОЧИВАНИЕ (без секции порядок/ИТОГИ/индекс) отбивается ОДНИМ
+    // `\n` от тела — сверено живым оракулом 1С на корпусе (фаза 6.16.46), без пустой строки.
+    expect(generate(model)).toBe(head + '\nАВТОУПОРЯДОЧИВАНИЕ');
     await assertValidSdbl(generate(model));
   });
 

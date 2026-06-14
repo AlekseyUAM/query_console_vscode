@@ -650,7 +650,12 @@ function parseSingleQuery(
   if (resolvedJoins.length > 0) model.joins = resolvedJoins;
   if (conditions && conditions.length > 0) model.conditions = conditions;
   if (having && having.length > 0) model.having = having;
+  // `ДЛЯ ИЗМЕНЕНИЯ` сохраняется даже без перечня таблиц (`ДЛЯ ИЗМЕНЕНИЯ` без имён —
+  // блокировка всех источников запроса; оракул печатает голую секцию). `undefined`
+  // → секции не было; перечень → `lockForUpdate`; пустой перечень при наличии секции
+  // → флаг `lockForUpdateBare` (пустой массив сам по себе значит «секции нет»).
   if (lockForUpdate && lockForUpdate.length > 0) model.lockForUpdate = lockForUpdate;
+  else if (lockForUpdate !== undefined) model.lockForUpdateBare = true;
 
   // Группировка: объединяем агрегаты (из полей выборки) с группировочными полями
   // и наборами из секции СГРУППИРОВАТЬ ПО. Не затираем агрегаты группировкой.
@@ -1409,18 +1414,27 @@ function parseFrom(cur: Cursor): FromResult {
     }
   };
 
+  // Обычные и построительные (`{…}`) соединения могут ЧЕРЕДОВАТЬСЯ за одним
+  // источником: `A {ВНУТР СОЕД #X ПО …} ЛЕВОЕ СОЕД #Y ПО …` (корпус БЗК). Поэтому
+  // дочитываем оба вида до стабилизации — пока хоть один потребляет токены, —
+  // а не один раз каждый. Затравка обоих — КОРЕНЬ цепочки `ИЗ`.
+  const parseAllJoinsFrom = (rootSeed: string): void => {
+    while (isJoinKeyword(cur) || cur.isBuilderJoinStart()) {
+      parseJoinChainFrom(rootSeed, 0);
+      parseBuilderJoins(rootSeed);
+    }
+  };
+
   for (;;) {
     const seed = readSource();
     tables.push(seed);
-    parseJoinChainFrom(seed.alias!, 0);
-    parseBuilderJoins(seed.alias!);
+    parseAllJoinsFrom(seed.alias!);
     if (cur.matchPunct(',')) {
       // Лишняя запятая ПЕРЕД соединением (`A, ЛЕВОЕ СОЕДИНЕНИЕ B`): оракул её
       // отбрасывает и трактует как соединение того же источника, а не отдельный
       // источник через запятую. Дочитываем цепочку соединений того же seed.
       if (isJoinKeyword(cur) || cur.isBuilderJoinStart()) {
-        parseJoinChainFrom(seed.alias!, 0);
-        parseBuilderJoins(seed.alias!);
+        parseAllJoinsFrom(seed.alias!);
         if (cur.matchPunct(',')) continue;
         break;
       }
@@ -4025,5 +4039,8 @@ function augmentResolverWithTempTables(
   return {
     tableByFullName: (fullName: string): MetaTable | undefined =>
       tempTables.get(fullName.toUpperCase()) ?? base?.tableByFullName(fullName),
+    // Виртуальный слой пробрасываем как есть — ВТ виртуальных таблиц не имеют.
+    virtualTableByFullName: (fullName: string): MetaTable | undefined =>
+      base?.virtualTableByFullName?.(fullName),
   };
 }

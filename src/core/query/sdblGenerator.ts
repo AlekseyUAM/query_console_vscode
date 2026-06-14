@@ -473,12 +473,27 @@ function isPlainFieldComparison(expr: string): boolean {
  * `(a = &П)`, `(joined.x = seed.y)`, `(функция(...))`. Сложные конъюнкты (ИЛИ/ВЫБОР/
  * подзапрос) сюда не попадают — для них `renderJoinCondition` выбирает legacy-путь.
  */
-function renderArbitraryConjunct(expr: string, depth = 0): string {
+function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number): string {
   // Многострочный лист (`В (\n a,\n b)` и т.п.) конструктор сплющивает в одну
   // строку (правило 6.15.3, для ПО — фаза 6.15.5); стоп-условия (ВЫБРАТЬ/ВЫБОР/
   // И/ИЛИ/`{`) оставляют текст как есть. Лист с подзапросом (`X В\n(ВЫБРАТЬ …)`)
   // перебазируется на base+2 = 4+depth (фаза 6.15.9, MCP).
-  return `(${normalizeLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr.trim()), 4 + depth))})`;
+  let body = reindentLeafSubquery(flattenMultilineLeaf(expr.trim()), 4 + depth);
+  // Сравнение с ОДИНОЧНЫМ многострочным CASE в правой части (`поле = ВЫБОР … КОНЕЦ`):
+  // конструктор раскладывает CASE на отступе КОНКРЕТНОГО конъюнкта (КОНЕЦ на
+  // отступе строки конъюнкта = caseEndBase, КОГДА на +1), а НЕ сохраняет табы
+  // ввода (фаза 6.16.53). Guard узкий: первая строка конъюнкта ОКАНЧИВАЕТСЯ словом
+  // ВЫБОР (CASE открыт сравнением `… = ВЫБОР`) и в теле РОВНО ОДИН КОНЕЦ — это
+  // исключает CASE-цепочки (`ВЫБОР…КОНЕЦ + ВЫБОР…КОНЕЦ`) и ВЫРАЗИТЬ-обёртки, чьё
+  // выравнивание КОНЕЦ задаётся иначе (прежний путь сохраняет табы ввода).
+  if (caseEndBase !== undefined && body.includes('\n')) {
+    const firstLine = body.slice(0, body.indexOf('\n'));
+    const oneCase = (body.match(/(^|[^\p{L}\p{N}_])КОНЕЦ(?=[^\p{L}\p{N}_]|$)/gu) ?? []).length === 1;
+    if (oneCase && /(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(firstLine)) {
+      body = reindentLeafCase(body, caseEndBase);
+    }
+  }
+  return `(${normalizeLeafCase(body)})`;
 }
 
 /**
@@ -514,7 +529,11 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
     } else if (conjunctNeedsComplexFormat(c)) {
       sub = formatJoinConjunct((c.expression ?? '').trim(), k === 0, 2 + depth).split('\n');
     } else {
-      sub = [renderArbitraryConjunct(c.expression ?? '', depth)];
+      // Для продолжающего конъюнкта (`И …`) известен отступ его строки (cont):
+      // многострочный CASE в правой части сравнения раскладываем на нём (КОНЕЦ=cont).
+      // Первый конъюнкт (k===0) стоит после `ПО ` / на 3+depth — там CASE-конъюнктов
+      // в корпусе нет, поведение не трогаем.
+      sub = [renderArbitraryConjunct(c.expression ?? '', depth, k > 0 ? cont : undefined)];
     }
     if (k > 0) sub[0] = `${'\t'.repeat(cont)}И ${sub[0]}`;
     else if (poOwnLine) sub[0] = `${'\t'.repeat(3 + depth)}${sub[0]}`;
@@ -861,8 +880,11 @@ function buildQueryBlock(
         : [];
 
   // ДЛЯ ИЗМЕНЕНИЯ <таблицы> — в самом конце, с пустой строкой-разделителем.
-  const lockLines: string[] = model.lockForUpdate?.length
-    ? ['', 'ДЛЯ ИЗМЕНЕНИЯ', ...model.lockForUpdate.map(name => '\t' + name)]
+  // Голая секция (`ДЛЯ ИЗМЕНЕНИЯ` без перечня таблиц — блокировка всех источников)
+  // помечается `lockForUpdateBare`; перечень таблиц — `lockForUpdate`. Пустой массив
+  // `lockForUpdate` без флага трактуется как «секции нет» (совместимость с webview).
+  const lockLines: string[] = (model.lockForUpdate?.length || model.lockForUpdateBare)
+    ? ['', 'ДЛЯ ИЗМЕНЕНИЯ', ...(model.lockForUpdate ?? []).map(name => '\t' + name)]
     : [];
 
   const builderSelect = builderBlock('ВЫБРАТЬ', model.builder?.fields ?? []);
@@ -1386,7 +1408,21 @@ export function generate(model: QueryModel): string {
   // секцию ИЗ. Пусто только когда нет ни таблиц, ни полей.
   const hasFields = model.fields.length > 0 || (model.tabSectionFields?.length ?? 0) > 0;
   if (model.tables.length === 0 && !hasFields) return '';
-  if (!hasFields) return '';
+  if (!hasFields) {
+    // `ВЫБРАТЬ *` по источнику без метаданных (временная `#`/`Вт`-таблица) сворачивает
+    // звезду в НОЛЬ колонок: оракул печатает пустые секции ВЫБРАТЬ/ИЗ (две пустые
+    // строки) и СОХРАНЯЕТ хвостовые секции (`УПОРЯДОЧИТЬ ПО`/`ИТОГИ`/`ИНДЕКСИРОВАТЬ`).
+    // Без хвоста запрос остаётся пустым (как раньше).
+    const oLines = renderOrder(model.order, model, false);
+    const tLines = renderTotals(model.totals, model);
+    const iLines = renderIndex(model.indexing, model);
+    let tail = '';
+    if (oLines.length > 0) tail += '\n\n' + oLines.join('\n');
+    if (tLines.length > 0) tail += '\n' + tLines.join('\n');
+    if (iLines.length > 0) tail += '\n\n' + iLines.join('\n');
+    tail += renderAutoOrder(model.order, oLines.length > 0 || tLines.length > 0 || iLines.length > 0);
+    return tail ? '\n\n' + tail.replace(/^\n+/, '') : '';
+  }
 
   const aliases = resolveAliases(model.tables);
   const fieldLines = buildFieldLines(model, aliases);
