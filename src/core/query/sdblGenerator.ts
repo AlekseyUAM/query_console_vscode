@@ -796,6 +796,17 @@ function isBareParamExpr(expression: string | undefined): boolean {
   return expression !== undefined && BARE_PARAM.test(expression.trim());
 }
 
+// Константное выражение группировки, которое конструктор 1С ОТБРАСЫВАЕТ из
+// `СГРУППИРОВАТЬ ПО` (нельзя группировать по константе): строковый/числовой литерал,
+// `ЗНАЧЕНИЕ(…)`/`ТИП(…)`/`ДАТАВРЕМЯ(…)` целиком, ИСТИНА/ЛОЖЬ/НЕОПРЕДЕЛЕНО, &параметр.
+// Выражения с полем (`ВЫРАЗИТЬ(Поле …)`, `Поле + 1`) НЕ константны и сохраняются.
+const CONST_GROUP_RE = /^("(?:[^"]|"")*"|\d+(?:\.\d+)?|ИСТИНА|ЛОЖЬ|НЕОПРЕДЕЛЕНО|(?:ЗНАЧЕНИЕ|ТИП|ДАТАВРЕМЯ)\s*\([^()]*\))$/iu;
+function isConstGroupExpr(expression: string | undefined): boolean {
+  if (expression === undefined) return false;
+  const e = expression.trim();
+  return isBareParamExpr(e) || CONST_GROUP_RE.test(e);
+}
+
 /**
  * Источник — табличная часть (ТЧ) объекта (`Справочник.X.ТЧ`, `Документ.X.ТЧ`,
  * …): полное имя из ≥3 сегментов и НЕ виртуальная таблица регистра (та тоже
@@ -1457,7 +1468,7 @@ function renderGrouping(
     // Голый параметр `&Имя` в списке группировки конструктор 1С отбрасывает
     // (нельзя группировать по параметру) — фаза 6.15.11a, MCP. Удаляем такие
     // элементы; прочие выражения с параметром внутри (`ВЫРАЗИТЬ(… &Имя …)`) остаются.
-    const fields = grouping.groupFields.filter(f => !isBareParamExpr(f.expression));
+    const fields = grouping.groupFields.filter(f => !isConstGroupExpr(f.expression));
     if (fields.length === 0) return [];
     const lines = fields.map((f, i) => {
       const comma = i < fields.length - 1 ? ',' : '';
