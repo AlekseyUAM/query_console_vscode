@@ -667,6 +667,14 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
   const stack: number[] = [E0];
   // Текущий whenInd (для продолжений условия И/ИЛИ) — обновляется на строке КОГДА.
   let curWhen = -1;
+  // Отступ ЗНАЧЕНИЯ ветки ТОГДА/ИНАЧЕ, после которой могут идти строки-продолжения
+  // `И`/`ИЛИ`, принадлежащие ВЫРАЖЕНИЮ значения (а не условию КОГДА). Конструктор
+  // отбивает такое продолжение значения на (отступ ТОГДА/ИНАЧЕ)+2 — глубже, чем
+  // продолжение условия КОГДА (whenInd+2), т.к. условие КОГДА уже закрыто строкой
+  // ТОГДА. -1 — продолжения значения сейчас нет (мы внутри условия КОГДА или после
+  // КОНЕЦ). Геометрия `ТОГДА … \n И …` в каноне корпуса не встречается среди
+  // ПРИНЯТЫХ — гейт узкий (фаза 6.16.43).
+  let valueAnchor = -1;
   // Баланс скобок внутри текущего условия КОГДА (сбрасывается на КОГДА): продолжение
   // (`И`/`ИЛИ`), стоящее внутри вложенной скобочной группы условия, конструктор
   // отступает на +1 за каждый незакрытый уровень скобок.
@@ -744,6 +752,7 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
     if (w === 'КОГДА') {
       const whenInd = E + 1;
       curWhen = whenInd;
+      valueAnchor = -1;
       condParen = 0;
       condOrLevels = orLevelsForCondition(i);
       // Снимаем избыточные охватывающие скобки ПЕРВОГО конъюнкта условия КОГДА
@@ -753,6 +762,15 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       lines[i] = stripClause(reTab(raw, whenInd), 'КОГДА');
       condParen += parenDelta(lines[i]);
     } else if (w === 'И' || w === 'ИЛИ') {
+      // Продолжение значения ветки ТОГДА/ИНАЧЕ (фаза 6.16.43): если строка `И`/`ИЛИ`
+      // стоит ПОСЛЕ ТОГДА/ИНАЧЕ (valueAnchor задан) — это продолжение ВЫРАЖЕНИЯ
+      // значения (`ТОГДА A В (…) И B = …`), а не условия КОГДА. Конструктор отбивает
+      // его на (отступ ТОГДА/ИНАЧЕ)+2. Условие КОГДА к этому моменту закрыто.
+      if (valueAnchor >= 0) {
+        lines[i] = reTab(raw, valueAnchor + 2 + condParen);
+        condParen += parenDelta(raw);
+        continue;
+      }
       // Продолжение условия КОГДА: базовый отступ whenInd+2, плюс по +1 за каждый
       // незакрытый уровень скобок условия (вложенная группа `И (… ИЛИ …)`). Если на
       // текущем уровне есть верхнеуровневый `ИЛИ`, конъюнкт `И` идёт ещё на +1 глубже
@@ -764,15 +782,18 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
     } else if (w === 'ТОГДА') {
       const tabbed = reTab(raw, E + 2);
       lines[i] = endsWithVybor(raw) ? tabbed : stripClause(tabbed, 'ТОГДА');
-      if (endsWithVybor(raw)) { stack.push(E + 2 + 1); curWhen = -1; }
+      if (endsWithVybor(raw)) { stack.push(E + 2 + 1); curWhen = -1; valueAnchor = -1; }
+      else { curWhen = -1; valueAnchor = E + 2; condParen = parenDelta(lines[i]); }
     } else if (w === 'ИНАЧЕ') {
       const tabbed = reTab(raw, E + 1);
       lines[i] = endsWithVybor(raw) ? tabbed : stripClause(tabbed, 'ИНАЧЕ');
-      if (endsWithVybor(raw)) { stack.push(E + 1 + 1); curWhen = -1; }
+      if (endsWithVybor(raw)) { stack.push(E + 1 + 1); curWhen = -1; valueAnchor = -1; }
+      else { curWhen = -1; valueAnchor = E + 1; condParen = parenDelta(lines[i]); }
     } else if (w === 'КОНЕЦ') {
       lines[i] = reTab(raw, E);
       stack.pop();
       curWhen = -1;
+      valueAnchor = -1;
       // Соседний ВЫБОР на той же строке КОНЕЦ (`КОНЕЦ + ВЫБОР`, `КОНЕЦ) + СУММА(ВЫБОР`):
       // арифметика из нескольких ВЫБОР внутри одного листа. Конструктор открывает
       // новый блок с E, сдвинутым на чистый баланс скобок строки ДО слова ВЫБОР
