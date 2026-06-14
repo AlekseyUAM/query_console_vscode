@@ -1165,12 +1165,83 @@ function requalifyTabSectionExpr(
   return out + rawBody.slice(p, last.pos + last.value.length);
 }
 
+/**
+ * Удаляет однострочные комментарии `//…` из сырого текста, учитывая строковые
+ * (`"…"` с экранированием `""`) и датовые (`'…'`) литералы — `//` внутри литерала
+ * комментарием НЕ считается. Геометрию повторяем за оракулом 1С (который
+ * вычищает ВСЕ комментарии из канонического текста):
+ *  - строка-комментарий целиком (необязательные пробелы + `//…`) удаляется ВМЕСТЕ
+ *    со своим переводом строки (соседние строки кода смыкаются);
+ *  - хвостовой комментарий после кода (`код // …`) вырезается от `//` до конца
+ *    строки, после чего обрезаются ставшие висячими пробелы перед ним.
+ * Комментарии в 1С только однострочные.
+ */
+function stripLineComments(text: string): string {
+  if (text.indexOf('//') === -1) return text;
+  let inString = false;
+  let inDate = false;
+  let out = '';
+  // Признак того, что в текущей (накапливаемой в `out`) строке был вырезан
+  // комментарий — нужен, чтобы НЕ трогать исходно-пустые/пробельные строки.
+  let strippedOnLine = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      out += ch;
+      if (ch === '"') {
+        if (text[i + 1] === '"') { out += '"'; i++; } else { inString = false; }
+      }
+      continue;
+    }
+    if (inDate) {
+      out += ch;
+      if (ch === "'") inDate = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; out += ch; continue; }
+    if (ch === "'") { inDate = true; out += ch; continue; }
+    if (ch === '/' && text[i + 1] === '/') {
+      // Пропускаем до конца строки (не включая перевод строки).
+      while (i < text.length && text[i] !== '\n') i++;
+      i--; // компенсируем i++ в цикле; на следующей итерации обработаем `\n`/конец.
+      strippedOnLine = true;
+      continue;
+    }
+    if (ch === '\n') {
+      if (strippedOnLine) {
+        // Откатываем хвостовые пробелы строки перед вырезанным комментарием.
+        const lineStart = out.lastIndexOf('\n') + 1;
+        const line = out.slice(lineStart);
+        if (line.trim() === '') {
+          // Строка-комментарий целиком: удаляем её вместе с переводом строки.
+          out = out.slice(0, lineStart);
+        } else {
+          // Хвостовой комментарий: обрезаем висячие пробелы перед `//`.
+          out = out.slice(0, lineStart) + line.replace(/[ \t\r]+$/u, '') + '\n';
+        }
+      } else {
+        out += ch;
+      }
+      strippedOnLine = false;
+      continue;
+    }
+    out += ch;
+  }
+  // Последняя строка без завершающего перевода строки.
+  if (strippedOnLine) {
+    const lineStart = out.lastIndexOf('\n') + 1;
+    const line = out.slice(lineStart);
+    out = out.slice(0, lineStart) + line.replace(/[ \t\r]+$/u, '');
+  }
+  return out;
+}
+
 /** Сырой срез исходника по диапазону токенов тела. */
 function sliceSource(source: string, bodyTokens: Token[]): string {
   const first = bodyTokens[0];
   const last = bodyTokens[bodyTokens.length - 1];
   const end = last.pos + last.value.length;
-  return source.slice(first.pos, end);
+  return stripLineComments(source.slice(first.pos, end));
 }
 
 /** Псевдоним соединения до резолвинга (хранит псевдонимы вместо tableId). */
