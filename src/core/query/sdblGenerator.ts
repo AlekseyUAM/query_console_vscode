@@ -1305,7 +1305,8 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
       ? `${tableAliases.get(g.tableId) ?? g.tableId}.${g.path}`
       : sectionFieldRefText(model, tableAliases, g.tableId, g.path);
     const as = g.alias ? ` КАК ${g.alias}` : '';
-    byList.push(`${alias}${totalKindSuffix(g.kind)}${as}`);
+    const period = g.periodBy ? ` ${g.periodBy}` : '';
+    byList.push(`${alias}${period}${totalKindSuffix(g.kind)}${as}`);
   }
 
   const aggList = totals.totalFields.map(f =>

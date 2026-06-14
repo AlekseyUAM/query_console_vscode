@@ -3283,6 +3283,42 @@ function resolveTotalsFieldRef(segs: string[], ctx: SectionResolveContext): Fiel
   return { tableId: '', path: name };
 }
 
+/**
+ * Модификатор `ПЕРИОДАМИ(<период>, <выражение>, …)` группировочного поля ИТОГИ ПО.
+ * `ПЕРИОДАМИ` лексер выдаёт как ident (нет в наборе ключевых слов). Если дальше
+ * стоит `ПЕРИОДАМИ(`, поглощает токены `ПЕРИОДАМИ` … `)` и возвращает канонический
+ * текст `ПЕРИОДАМИ(<арг>, <арг>, …)` (период — в верхнем регистре, разделитель `, `).
+ * Иначе курсор не двигается и возвращается undefined.
+ */
+function matchPeriodBy(cur: Cursor): string | undefined {
+  const head = cur.peek();
+  if (head.type !== 'ident' || head.text.toUpperCase() !== 'ПЕРИОДАМИ') return undefined;
+  if (!cur.isPunct('(', 1)) return undefined;
+  cur.next(); // ПЕРИОДАМИ
+  cur.expectPunct('(');
+  const args: string[] = [];
+  let curArg: Token[] = [];
+  let depth = 0;
+  for (;;) {
+    const t = cur.peek();
+    if (t.type === 'eof') throw cur.error('ожидался символ «)» в ПЕРИОДАМИ(…)', t);
+    if (depth === 0 && t.type === 'punct' && t.value === ')') { cur.next(); break; }
+    if (depth === 0 && t.type === 'punct' && t.value === ',') {
+      cur.next();
+      args.push(sliceSource(cur.source, curArg));
+      curArg = [];
+      continue;
+    }
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') depth--;
+    curArg.push(cur.next());
+  }
+  if (curArg.length) args.push(sliceSource(cur.source, curArg));
+  // Первый аргумент — период (ГОД/КВАРТАЛ/МЕСЯЦ/…): нормализуем в верхний регистр.
+  if (args.length) args[0] = args[0].toUpperCase();
+  return `ПЕРИОДАМИ(${args.join(', ')})`;
+}
+
 /** Одно группировочное поле итогов: `<поле>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`. */
 function parseTotalGroupField(cur: Cursor, ctx: SectionResolveContext): TotalGroupField {
   const aliasTok = cur.peek();
@@ -3297,6 +3333,11 @@ function parseTotalGroupField(cur: Cursor, ctx: SectionResolveContext): TotalGro
   if (!segs) throw cur.error('ожидался псевдоним группировочного поля итогов', aliasTok);
   const ref = resolveTotalsFieldRef(segs, ctx);
 
+  // Модификатор `ПЕРИОДАМИ(<период>, <начало>, <конец>)` сразу после имени поля
+  // (фаза 6.16.48): период по интервалу из виртуальной таблицы ОстаткиИОбороты.
+  // `ПЕРИОДАМИ` лексер выдаёт как ident; аргументы — ident периода + параметры.
+  const periodBy = matchPeriodBy(cur);
+
   let kind: TotalKind = 'elements';
   if (cur.matchKeyword('ТОЛЬКО')) {
     cur.expectKeyword('ИЕРАРХИЯ');
@@ -3307,6 +3348,7 @@ function parseTotalGroupField(cur: Cursor, ctx: SectionResolveContext): TotalGro
 
   const field: TotalGroupField = { tableId: ref.tableId, path: ref.path, kind };
   if (ref.qualified) field.qualified = true;
+  if (periodBy) field.periodBy = periodBy;
   if (cur.matchKeyword('КАК')) {
     const a = cur.peek();
     if (a.type !== 'ident' && a.type !== 'keyword') throw cur.error('ожидался псевдоним после КАК', a);
@@ -3643,6 +3685,18 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
     const ctxOut: { ctx?: SectionResolveContext } = {};
     const model = parseSingleQuery(new Cursor(r.tokens, text), i > 0 ? firstCtx : undefined, ctxOut);
     if (i === 0) firstCtx = ctxOut.ctx;
+    // Канонизация регистра ИМЕНИ источника метаданных (фаза 6.16.49): конструктор
+    // 1С печатает `Тип.ОбъектИмя[.ТЧ]` в каноническом написании метаданных, тогда
+    // как источник может нести произвольный регистр. Псевдоним (правее `КАК`) —
+    // пользовательский, его НЕ трогаем. Подзапросы-источники канонизируются своим
+    // вызовом parseDocument, виртуальные срезы в индекс не входят — для них no-op.
+    if (resolver?.canonicalFullName) {
+      for (const t of model.tables) {
+        if (t.subquery || !t.fullName) continue;
+        const canon = resolver.canonicalFullName(t.fullName);
+        if (canon && canon !== t.fullName) t.fullName = canon;
+      }
+    }
     // Развёртка `*` по метаданным (фаза 6.15.15): до назначения автопсевдонимов
     // `ПолеN`, чтобы развёрнутые/удалённые звёзды не получали лишний `Поле1`.
     expandStarFields(model, resolver);
