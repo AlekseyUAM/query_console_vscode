@@ -1639,7 +1639,13 @@ function buildConditionStrings(
       // ВЫЗОВ-функции скобок) — то есть базовый отступ CASE здесь `subBase − 1`
       // (root ГДЕ: subBase=3 → base=2; внутри В-подзапроса/ИМЕЮЩИЕ: subBase=2 → base=1).
       // MCP-пробы оракула: `ГДЕ ЕСТЬNULL(ВЫБОР…)` даёт КОНЕЦ на 3 (поле — на 2).
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase), subBase - 1, true))))))));
+      // Ведущее `НЕ` листового условия (`НЕ СУММА(ВЫБОР…) ЕСТЬ NULL`) сдвигает CASE
+      // на +1: как и подзапрос (см. reindentLeafSubquery, «ведущие НЕ добавляют +1»),
+      // конструктор отступает ВЫБОР под `НЕ` на уровень глубже. База без `НЕ` —
+      // прежняя `subBase − 1` (ГДЕ: 2, ИМЕЮЩИЕ/В-подзапрос: 1), байт-в-байт.
+      const leadsWithNot = /^НЕ(?![\p{L}\p{N}_])/u.test(flattenMultilineLeaf(expr).trimStart());
+      const caseBaseLeaf = subBase - 1 + (leadsWithNot ? 1 : 0);
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase), caseBaseLeaf, true))))))));
       continue;
     }
     // Нессылочный левый операнд `В`-подзапроса (`1 В (ВЫБРАТЬ …)`, фаза 6.15.27):

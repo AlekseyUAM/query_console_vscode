@@ -123,15 +123,30 @@ export function leafHasCase(raw: string): boolean {
 }
 
 /**
- * Квирк конструктора 1С: листовое булево условие, оканчивающееся предикатом
- * `ЕСТЬ НЕ NULL`, печатается с ОДНИМ хвостовым пробелом (`… ЕСТЬ НЕ NULL `). Форма
- * без `НЕ` (`ЕСТЬ NULL`) хвостового пробела НЕ получает. Подтверждено по корпусу:
- * `ЕСТЬ НЕ NULL` — 5/5 строк с хвостовым пробелом, `ЕСТЬ NULL` — 0/219. Применяется
- * к финальной строке листа в булевом слоте (ГДЕ/ИМЕЮЩИЕ/КОГДА).
+ * Квирк конструктора 1С: предикат `ЕСТЬ НЕ NULL` ВСЕГДА печатается с ОДНИМ лишним
+ * пробелом после `NULL`. На конце строки это даёт хвостовой пробел (`… ЕСТЬ НЕ NULL `),
+ * а перед псевдонимом — двойной пробел (`… ЕСТЬ НЕ NULL  КАК Алиас`). Форма без `НЕ`
+ * (`ЕСТЬ NULL`) лишнего пробела НЕ получает. Подтверждено по ВСЕМУ golden-корпусу:
+ * `ЕСТЬ НЕ NULL` на конце строки — 562/562 с хвостовым пробелом (0 без); `ЕСТЬ НЕ NULL
+ * КАК` — 19/19 с двойным пробелом (0 с одинарным); `ЕСТЬ NULL` (без `НЕ`) — 2727/2727
+ * без хвостового пробела, 86/86 с одинарным пробелом перед `КАК`.
+ *
+ * Применяется построчно (квирк действует на каждую строку листа/ветки, а не только на
+ * финальную) и идемпотентно (если пробел уже стоит — строка не меняется). Работает в
+ * булевых слотах (ГДЕ/ИМЕЮЩИЕ/КОГДА/ИНАЧЕ) и в слоте выборки (`… ЕСТЬ НЕ NULL КАК …`).
  */
-const EST_NE_NULL_RE = /(^|[^\p{L}\p{N}_])ЕСТЬ\s+НЕ\s+NULL$/u;
+const EST_NE_NULL_EOL_RE = /(^|[^\p{L}\p{N}_])ЕСТЬ\s+НЕ\s+NULL$/u;
+const EST_NE_NULL_KAK_RE = /((?:^|[^\p{L}\p{N}_])ЕСТЬ\s+НЕ\s+NULL) (КАК[\s(])/gu;
+function appendIsNotNullToLine(line: string): string {
+  // `… ЕСТЬ НЕ NULL КАК Алиас` → один лишний пробел перед `КАК` (двойной пробел).
+  const out = line.replace(EST_NE_NULL_KAK_RE, '$1  $2');
+  // `… ЕСТЬ НЕ NULL` на конце строки → один хвостовой пробел.
+  return EST_NE_NULL_EOL_RE.test(out) ? out + ' ' : out;
+}
 export function appendIsNotNullTrailingSpace(text: string): string {
-  return EST_NE_NULL_RE.test(text) ? text + ' ' : text;
+  return text.includes('\n')
+    ? text.split('\n').map(appendIsNotNullToLine).join('\n')
+    : appendIsNotNullToLine(text);
 }
 
 /**
@@ -2423,7 +2438,17 @@ function renderBool(
         if (k === 0) {
           // operand0 печатается на отступе ind; CASE-операнд → E=ind.
           // Подзапрос листа-операнда — на childAnd (выравнен с операндами ИЛИ).
-          const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, ind, childAnd, leadParenBase);
+          // ИСКЛЮЧЕНИЕ (фаза 6.16.51): листовой операнд0 с ВЛОЖЕННЫМ ВЫБОР
+          // (`(СУММА(ВЫБОР…КОНЕЦ) <> 0 ИЛИ …)` в ИМЕЮЩИЕ/ГДЕ): охватывающая `(` ИЛИ-группы
+          // стоит на строке операнда0, и конструктор отбивает его ВЫБОР на том же
+          // уровне, что и ВЫБОР операндов `ИЛИ` (E=iliInd), а не на ind. Узкий гейт:
+          // булев слот, операнд0 — лист с многострочным ВЫБОР. Прочие операнды0
+          // (поле/подзапрос/вложенная группа) идут прежним путём (E=ind), байт-в-байт.
+          const op0CaseE =
+            ctx.caseBoolean && op.kind === 'leaf' && /(^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(op.text) && op.text.includes('\n')
+              ? iliInd
+              : ind;
+          const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, op0CaseE, childAnd, leadParenBase);
           sub[0] = '(' + sub[0];
           lines.push(...sub);
         } else {
@@ -2824,7 +2849,10 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
     body = renderJoin(tree, ctx);
   }
 
-  return body + tail;
+  // Квирк `ЕСТЬ НЕ NULL` (хвостовой/двойной пробел) действует на КАЖДУЮ строку любого
+  // структурного вывода (ВЫБОР-ветки, OR/AND-конъюнкты, КАК-псевдоним) — применяем
+  // построчно ко всему телу. Хвост (`tail`) — дословный, его не трогаем.
+  return appendIsNotNullTrailingSpace(body) + tail;
 }
 
 /**
@@ -3001,7 +3029,7 @@ export function formatJoinConjunct(raw: string, first: boolean, base = 2): strin
         reindentLeafSubquery(raw.trim(), base + 2),
         base + 1
       );
-      return '(' + leaf + ')';
+      return appendIsNotNullTrailingSpace('(' + leaf + ')');
     }
     // Восстановленная внешняя скобка `(ВЫБОР … КОНЕЦ)` фиксирует КОНЕЦ на base+1
     // (КОГДА=base+2) НЕЗАВИСИМО от позиции конъюнкта: первый конъюнкт стоит на
@@ -3010,9 +3038,9 @@ export function formatJoinConjunct(raw: string, first: boolean, base = 2): strin
     const sub = renderCaseE(tree, base + 1, ctx);
     sub[0] = '(' + sub[0];
     sub[sub.length - 1] += ')';
-    return sub.join('\n') + tail;
+    return appendIsNotNullTrailingSpace(sub.join('\n')) + tail;
   }
-  return renderJoinConjunct(tree, ind, ctx, orLvl).join('\n') + tail;
+  return appendIsNotNullTrailingSpace(renderJoinConjunct(tree, ind, ctx, orLvl).join('\n')) + tail;
 }
 
 /**
