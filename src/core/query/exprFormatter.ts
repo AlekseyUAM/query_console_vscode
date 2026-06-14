@@ -665,6 +665,18 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
     const m = /^[\t ]*([\p{L}]+)/u.exec(s);
     return m ? m[1].toUpperCase() : '';
   };
+  // Снять избыточные охватывающие скобки вокруг ЗНАЧЕНИЯ ветки КОГДА/ТОГДА/ИНАЧЕ,
+  // когда вся ветка умещается на одной строке (`КОГДА (X = &Y)` → `КОГДА X = &Y`,
+  // `ТОГДА (a - b)` → `ТОГДА a - b`; фаза 6.16.37). НЕ трогаем строки, открывающие
+  // вложенный ВЫБОР (kw … ВЫБОР), и строки с продолжением условия (обрабатываются
+  // отдельной веткой И/ИЛИ). Работает на уже отбитой строке: переразбираем по
+  // ключевому слову, чистим хвост скобок у содержимого.
+  const stripClause = (line: string, kw: string): string => {
+    const m = new RegExp(`^([\\t ]*${kw}[\\t ]+)([\\s\\S]+)$`, 'u').exec(line);
+    if (!m) return line;
+    const stripped = stripRedundantCaseClauseParens(m[2]);
+    return stripped === m[2] ? line : m[1] + stripped;
+  };
   // Предсканирование условия КОГДА (строка startIdx — сама КОГДА): какие скобочные
   // уровни несут верхнеуровневый `ИЛИ`. Уровень строки = баланс скобок к её НАЧАЛУ
   // (после строки КОГДА). На таких уровнях конъюнкты `И` идут глубже (приоритет И>ИЛИ).
@@ -696,8 +708,12 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       curWhen = whenInd;
       condParen = 0;
       condOrLevels = orLevelsForCondition(i);
-      lines[i] = reTab(raw, whenInd);
-      condParen += parenDelta(raw);
+      // Снимаем избыточные охватывающие скобки ПЕРВОГО конъюнкта условия КОГДА
+      // (`КОГДА (X = &Y)` → `КОГДА X = &Y`). Пара охватывает лишь содержимое ЭТОЙ
+      // строки; продолжения `И`/`ИЛИ` стоят отдельными строками — на их разбор это
+      // не влияет (stripRedundantCaseClauseParens требует охвата всего текста строки).
+      lines[i] = stripClause(reTab(raw, whenInd), 'КОГДА');
+      condParen += parenDelta(lines[i]);
     } else if (w === 'И' || w === 'ИЛИ') {
       // Продолжение условия КОГДА: базовый отступ whenInd+2, плюс по +1 за каждый
       // незакрытый уровень скобок условия (вложенная группа `И (… ИЛИ …)`). Если на
@@ -708,10 +724,12 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       lines[i] = reTab(raw, curWhen + 2 + condParen + orShift);
       condParen += parenDelta(raw);
     } else if (w === 'ТОГДА') {
-      lines[i] = reTab(raw, E + 2);
+      const tabbed = reTab(raw, E + 2);
+      lines[i] = endsWithVybor(raw) ? tabbed : stripClause(tabbed, 'ТОГДА');
       if (endsWithVybor(raw)) { stack.push(E + 2 + 1); curWhen = -1; }
     } else if (w === 'ИНАЧЕ') {
-      lines[i] = reTab(raw, E + 1);
+      const tabbed = reTab(raw, E + 1);
+      lines[i] = endsWithVybor(raw) ? tabbed : stripClause(tabbed, 'ИНАЧЕ');
       if (endsWithVybor(raw)) { stack.push(E + 1 + 1); curWhen = -1; }
     } else if (w === 'КОНЕЦ') {
       lines[i] = reTab(raw, E);
@@ -1534,6 +1552,47 @@ export function stripRedundantLeafParens(raw: string): string {
     .replace(/\s+\)/g, ')')
     .replace(/\s+,/g, ',')
     .trim();
+}
+
+/**
+ * Снимает ОДНУ полностью охватывающую избыточную пару скобок вокруг ЦЕЛОГО значения
+ * ветки CASE (`КОГДА (X = &Y)` → `КОГДА X = &Y`, `ТОГДА (a - b)` → `ТОГДА a - b`),
+ * как это делает конструктор 1С внутри листового ВЫБОР (фаза 6.16.37). `content` —
+ * текст ПОСЛЕ ключевого слова КОГДА/ТОГДА/ИНАЧЕ (одна строка).
+ *
+ * Снимаем строго консервативно — ТОЛЬКО когда:
+ *   - первая `(` парна ПОСЛЕДНЕМУ символу `)` (пара охватывает всё значение целиком;
+ *     `(a) - (b)` и `(ВЫРАЗИТЬ(…)) * X` сюда не попадают — там пара не охватывающая);
+ *   - внутри НЕТ верхнеуровневого булева И/ИЛИ (приоритет/раскладку не меняем);
+ *   - внутри НЕТ вызова `ВЫРАЗИТЬ` (конструктор оборачивает голый ВЫРАЗИТЬ-операнд
+ *     своими правилами — не трогаем эту зону);
+ *   - внутри НЕТ ВЫБОР/ВЫБРАТЬ (вложенный CASE/подзапрос раскладывается отдельно).
+ * Иначе `content` возвращается без изменений.
+ */
+function stripRedundantCaseClauseParens(content: string): string {
+  const t = content.trim();
+  if (t.length < 2 || t[0] !== '(' || !t.endsWith(')')) return content;
+  // Пара первой `(` должна закрываться ровно последним символом (охват всего значения).
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      if (depth === 0 && i !== t.length - 1) return content; // не охватывающая
+    }
+  }
+  if (depth !== 0) return content;
+  const inner = t.slice(1, -1).trim();
+  if (inner === '') return content;
+  // Зоны риска: ВЫРАЗИТЬ (особые правила оборачивания), ВЫБОР/ВЫБРАТЬ (вложенный
+  // CASE/подзапрос), верхнеуровневый булев И/ИЛИ (раскладка по оператору).
+  if (/(?:^|[^\p{L}\p{N}_])(ВЫРАЗИТЬ|ВЫБОР|ВЫБРАТЬ)(?:[^\p{L}\p{N}_]|$)/iu.test(inner)) return content;
+  if (leafHasTopBoolean(inner)) return content;
+  return inner;
 }
 
 /**
@@ -2528,7 +2587,12 @@ function renderBranchValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: str
     const parts = reflowed.split('\n');
     return [tabs(kwInd) + keyword + ' ' + parts[0], ...parts.slice(1)];
   }
-  return [tabs(kwInd) + keyword + ' ' + reindentLeafSubquery(flattenMultilineLeaf(value), kwInd + 2)];
+  // Избыточные охватывающие скобки вокруг ЦЕЛОГО значения ветки конструктор снимает
+  // (`ТОГДА (a - b)` → `ТОГДА a - b`; фаза 6.16.37). Строго консервативно: только
+  // полностью охватывающая пара без ВЫРАЗИТЬ/ВЫБОР/булева оператора внутри.
+  const flat = flattenMultilineLeaf(value);
+  const bare = stripRedundantCaseClauseParens(flat);
+  return [tabs(kwInd) + keyword + ' ' + reindentLeafSubquery(bare, kwInd + 2)];
 }
 
 function renderCaseE(node: Node & { kind: 'case' }, E: number, ctx: RenderCtx): string[] {
