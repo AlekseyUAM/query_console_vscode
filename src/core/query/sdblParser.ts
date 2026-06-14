@@ -947,11 +947,15 @@ function parseOneField(cur: Cursor): RawField {
       // констант/параметров) читалка поля иначе проглотила бы `ГДЕ`/группировку/
       // порядок в выражение последнего поля. Эти ключевые слова не могут стоять на
       // верхнем уровне выражения элемента выборки — поэтому они граница (фаза 6.15.23).
+      // Исключение: ключевое слово, используемое как ИМЯ ТАБЛИЦЫ/псевдонима в
+      // точечной ссылке поля (`Итоги.Поле`, где `Итоги` совпадает с keyword `ИТОГИ`
+      // регистронезависимо). Если за ним идёт `.`, это голова ссылки поля, а не
+      // секция — границей не считаем (фаза 6.16).
       if (t.type === 'keyword' && (
         t.value === 'ГДЕ' || t.value === 'СГРУППИРОВАТЬ' || t.value === 'ИМЕЮЩИЕ' ||
         t.value === 'УПОРЯДОЧИТЬ' || t.value === 'ИТОГИ' || t.value === 'ИНДЕКСИРОВАТЬ' ||
         t.value === 'ОБЪЕДИНИТЬ' || t.value === 'ДЛЯ'
-      )) break;
+      ) && !cur.isPunct('.', 1)) break;
       if (t.type === 'keyword' && t.value === 'КАК') {
         cur.next();
         const a = cur.peek();
@@ -1158,6 +1162,13 @@ interface RawJoin {
   depth: number;
   /** Опциональное соединение построителя: всё соединение обёрнуто в `{…}`. */
   optional?: boolean;
+  /**
+   * Последнее опциональное соединение в своём блоке `{…}`. Один блок построителя
+   * может содержать НЕСКОЛЬКО соединений (`{J1 ПО … J2 ПО …}`): `{` ставится перед
+   * первым, `}` — после условия ПОСЛЕДНЕГО (фаза 6.16). Флаг помечает соединение,
+   * на котором закрывается блок.
+   */
+  optionalLast?: boolean;
 }
 
 interface FromResult {
@@ -1212,8 +1223,7 @@ function parseFrom(cur: Cursor): FromResult {
   const parseJoinChainFrom = (seedAlias: string, depth: number): void => {
     let lastAlias = seedAlias;
     while (isJoinKeyword(cur)) {
-      const kind = cur.next().value as RawJoin['kind'];
-      cur.expectKeyword('СОЕДИНЕНИЕ');
+      const kind = consumeJoinKind(cur);
       const joinedSource = readSource();
       tables.push(joinedSource);
       const joinedHead = joinedSource.alias!;
@@ -1257,24 +1267,29 @@ function parseFrom(cur: Cursor): FromResult {
   const parseBuilderJoins = (rootSeedAlias: string): void => {
     while (cur.isBuilderJoinStart()) {
       cur.expectPunct('{');
-      const kind = cur.next().value as RawJoin['kind'];
-      cur.expectKeyword('СОЕДИНЕНИЕ');
-      const joinedSource = readSource();
-      tables.push(joinedSource);
-      const joinedHead = joinedSource.alias!;
-      cur.expectKeyword('ПО');
-      const { tokens, text } = readJoinCondition(cur, /* stopOnBrace */ true);
+      // Один блок построителя `{…}` может нести НЕСКОЛЬКО соединений подряд
+      // (`{<вид> СОЕД A ПО … <вид> СОЕД B ПО …}`): `{` уже снят, читаем соединения
+      // до закрывающей `}`. Последнее помечаем `optionalLast` (фаза 6.16).
+      do {
+        const kind = consumeJoinKind(cur);
+        const joinedSource = readSource();
+        tables.push(joinedSource);
+        const joinedHead = joinedSource.alias!;
+        cur.expectKeyword('ПО');
+        const { tokens, text } = readJoinCondition(cur, /* stopOnBrace */ true);
+        joins.push({
+          kind,
+          seedAlias: rootSeedAlias,
+          joinedAlias: joinedHead,
+          chainSeedAlias: rootSeedAlias,
+          condTokens: tokens,
+          condText: text,
+          depth: 0,
+          optional: true,
+        });
+      } while (isJoinKeyword(cur));
       cur.expectPunct('}');
-      joins.push({
-        kind,
-        seedAlias: rootSeedAlias,
-        joinedAlias: joinedHead,
-        chainSeedAlias: rootSeedAlias,
-        condTokens: tokens,
-        condText: text,
-        depth: 0,
-        optional: true,
-      });
+      joins[joins.length - 1].optionalLast = true;
     }
   };
 
@@ -1367,6 +1382,21 @@ const JOIN_KEYWORDS = new Set(['ВНУТРЕННЕЕ', 'ЛЕВОЕ', 'ПРАВО
 function isJoinKeyword(cur: Cursor): boolean {
   const t = cur.peek();
   return t.type === 'keyword' && JOIN_KEYWORDS.has(t.value);
+}
+
+/**
+ * Снимает вид соединения (`ВНУТРЕННЕЕ`/`ЛЕВОЕ`/`ПРАВОЕ`/`ПОЛНОЕ`), опциональное
+ * шумовое слово `ВНЕШНЕЕ` (1С допускает `ЛЕВОЕ ВНЕШНЕЕ СОЕДИНЕНИЕ`; конструктор его
+ * отбрасывает — фаза 6.16) и обязательное `СОЕДИНЕНИЕ`. Возвращает вид соединения.
+ */
+function consumeJoinKind(cur: Cursor): RawJoin['kind'] {
+  const kind = cur.next().value as RawJoin['kind'];
+  // `ВНЕШНЕЕ` лексится как идентификатор (не ключевое слово) — снимаем, если стоит
+  // перед `СОЕДИНЕНИЕ`.
+  const t = cur.peek();
+  if (t.type === 'ident' && t.value.toUpperCase() === 'ВНЕШНЕЕ') cur.next();
+  cur.expectKeyword('СОЕДИНЕНИЕ');
+  return kind;
 }
 
 /**
@@ -2612,6 +2642,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
       // depth добавляется только у вложенных — плоские модели не меняются.
       ...(raw.depth > 0 ? { depth: raw.depth } : {}),
       ...(raw.optional ? { optional: true } : {}),
+      ...(raw.optionalLast ? { optionalLast: true } : {}),
     };
   }
 
@@ -2629,6 +2660,7 @@ function resolveJoin(raw: RawJoin, aliasToId: Map<string, string>, source: strin
     conditions,
     ...(raw.depth > 0 ? { depth: raw.depth } : {}),
     ...(raw.optional ? { optional: true } : {}),
+    ...(raw.optionalLast ? { optionalLast: true } : {}),
   };
 }
 
@@ -2788,8 +2820,10 @@ function parseGroupFieldRef(
     const t = cur.peek();
     if (depth === 0) {
       // Стоп на секционных ключевых словах (ДЛЯ ИЗМЕНЕНИЯ / порядок / итоги /
-      // индекс) и на запятой/конце — границах элемента группировки.
-      if (t.type === 'keyword' && isSectionKeyword(t.value)) break;
+      // индекс) и на запятой/конце — границах элемента группировки. Исключение:
+      // ключевое слово как ГОЛОВА точечной ссылки поля (`Итоги.Поле`, keyword
+      // регистронезависим) — за ним `.`, значит это ссылка, а не секция (фаза 6.16).
+      if (t.type === 'keyword' && isSectionKeyword(t.value) && !cur.isPunct('.', 1)) break;
       if (t.type === 'punct' && (t.value === ',' || t.value === ';' || t.value === '{' || t.value === '}')) break;
       if (t.type === 'eof') break;
     }
@@ -3120,6 +3154,13 @@ function resolveTotalsFieldRef(segs: string[], ctx: SectionResolveContext): Fiel
 /** Одно группировочное поле итогов: `<поле>[ ИЕРАРХИЯ| ТОЛЬКО ИЕРАРХИЯ][ КАК <alias>]`. */
 function parseTotalGroupField(cur: Cursor, ctx: SectionResolveContext): TotalGroupField {
   const aliasTok = cur.peek();
+  // Параметр `&Имя` в позиции группировочного поля (`ИТОГИ ПО &ПоляИтогов`):
+  // непрозрачная форма, сохраняем дословно (фаза 6.16). Модификаторы ИЕРАРХИЯ/КАК
+  // после параметра в этой форме конструктор не печатает.
+  if (aliasTok.type === 'param') {
+    cur.next();
+    return { tableId: '', path: '', kind: 'elements', expression: aliasTok.text };
+  }
   const segs = readDottedPath(cur);
   if (!segs) throw cur.error('ожидался псевдоним группировочного поля итогов', aliasTok);
   const ref = resolveTotalsFieldRef(segs, ctx);
@@ -3320,13 +3361,18 @@ function parseBuilderField(cur: Cursor, allowCondition = false): BuilderField {
   // финальная `.*`.
   const first = cur.peek();
   // Голова не похожа на ссылку поля (параметр/строка/скобка) → элемент-условие
-  // блока `{ГДЕ}` (фаза 6.15.7).
-  if (allowCondition && first.type !== 'ident' && first.type !== 'keyword') {
+  // блока `{ГДЕ}` (фаза 6.15.7). Ключевое слово `НЕ` — логическое отрицание, тоже
+  // начало условия, а не ссылки поля (фаза 6.16).
+  if (allowCondition && ((first.type !== 'ident' && first.type !== 'keyword') || first.value === 'НЕ')) {
     return parseBuilderCondition(cur);
   }
   if (first.type !== 'ident' && first.type !== 'keyword') {
     throw cur.error('ожидалась ссылка поля построителя', first);
   }
+  // Спекулятивно разбираем как ссылку поля; если после неё (и опц. `.*`) идёт не
+  // `,`/`}`/`КАК`, то это условие (`Алиас.Поле <оператор> …`) — откатываемся и
+  // разбираем элемент-условие целиком (фаза 6.16).
+  const mark = cur.mark();
   let ref = cur.next().text;
   let child = false;
   while (cur.isPunct('.')) {
@@ -3341,6 +3387,16 @@ function parseBuilderField(cur: Cursor, allowCondition = false): BuilderField {
       throw cur.error('ожидался сегмент ссылки построителя после «.»', seg);
     }
     ref += '.' + cur.next().text;
+  }
+  if (allowCondition && !child) {
+    const after = cur.peek();
+    const refComplete =
+      (after.type === 'punct' && (after.value === ',' || after.value === '}')) ||
+      (after.type === 'keyword' && after.value === 'КАК');
+    if (!refComplete) {
+      cur.reset(mark);
+      return parseBuilderCondition(cur);
+    }
   }
 
   const field: BuilderField = { ref, child };
@@ -3602,11 +3658,11 @@ const BATCH_SEPARATOR_RE =
   /[ \t]*;[ \t]*(?:\/{4,}[ \t]*)?\n(?:[ \t]*\n)*(?:\/{4,}[ \t]*(?:\n(?:[ \t]*\n)*|$))?/gu;
 
 /**
- * Диапазоны строковых литералов `"…"` в сыром тексте: `[начало, конец)` с учётом
- * экранирования `""`. Комментарии `//…` пропускаются, чтобы кавычка в комментарии
- * не «открывала» строку. Нужны `parseBatch`: деление на разделителе выполняется
- * ДО токенизации, а строковый литерал 1С может содержать переводы строк — строка
- * из `;` ВНУТРИ литерала не является разделителем пакета.
+ * Защищённые диапазоны сырого текста `[начало, конец)`, внутри которых `;` НЕ
+ * является разделителем пакета: строковые литералы `"…"` (с учётом экранирования
+ * `""`, могут содержать переводы строк) И однострочные комментарии `//…` (`;` в
+ * комментарии — не разделитель). Нужны `parseBatch`: деление на разделителе
+ * выполняется ДО токенизации (фаза 6.16).
  */
 function stringLiteralRanges(text: string): Array<readonly [number, number]> {
   const ranges: Array<readonly [number, number]> = [];
@@ -3631,7 +3687,9 @@ function stringLiteralRanges(text: string): Array<readonly [number, number]> {
       continue;
     }
     if (ch === '/' && text[i + 1] === '/') {
+      const start = i;
       while (i < text.length && text[i] !== '\n') i += 1;
+      ranges.push([start, i]);
       continue;
     }
     i += 1;

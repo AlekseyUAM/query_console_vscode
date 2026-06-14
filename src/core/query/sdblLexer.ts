@@ -168,6 +168,8 @@ export function tokenize(text: string): Token[] {
     // выступает ИМЕНЕМ источника в `ИЗ` (текстовая подстановка перед выполнением;
     // в позиции источника принимается синтаксисом запроса 1С). Лексим как
     // идентификатор с префиксом `#`, чтобы парсер принял его в parseDottedName.
+    // Допускается обрамляющая форма `#Имя#` (имя между парой `#`); завершающий `#`
+    // включаем в текст токена, чтобы round-trip сохранил подстановку (фаза 6.16).
     if (ch === '#') {
       advance();
       const nameStart = i;
@@ -175,7 +177,9 @@ export function tokenize(text: string): Token[] {
       if (i === nameStart) {
         throw lexError('ожидалось имя после "#"', startLine, startCol);
       }
-      push('ident', '#' + text.slice(nameStart, i), startPos, startLine, startCol);
+      let name = '#' + text.slice(nameStart, i);
+      if (text[i] === '#') { advance(); name += '#'; }
+      push('ident', name, startPos, startLine, startCol);
       continue;
     }
 

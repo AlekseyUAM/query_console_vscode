@@ -615,8 +615,9 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
       const cond = renderJoinCondition(p.join, aliases, p.depth, poOwnLine);
       if (!cond) continue;
       // Опциональное соединение построителя (фаза 6.15.13) закрывается `}` после
-      // условия `ПО`.
-      const close = p.join.optional ? '}' : '';
+      // условия `ПО`. В блоке из НЕСКОЛЬКИХ соединений (`{J1 ПО … J2 ПО …}`) `}`
+      // ставится только после ПОСЛЕДНЕГО — он помечен в `optionalBlockEnd` (фаза 6.16).
+      const close = optionalBlockEnd.has(p.join) ? '}' : '';
       if (poOwnLine) {
         lines.push(`\t\t${'\t'.repeat(p.depth)}ПО`);
         lines.push(`${cond}${close}`);
@@ -625,6 +626,28 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
       }
     }
   };
+
+  // Границы блоков `{…}` опциональных соединений построителя (фаза 6.16). Идущие
+  // подряд опциональные соединения образуют ОДИН блок: `{` перед первым, `}` после
+  // последнего. Последним считаем соединение с флагом `optionalLast`, а при его
+  // отсутствии (модели до 6.16 / UI) — каждое опциональное соединение само по себе
+  // (один блок на соединение), что воспроизводит прежнее поведение.
+  const optionalBlockStart = new Set<Join>();
+  const optionalBlockEnd = new Set<Join>();
+  {
+    let prevWasOpenBlock = false;
+    joins.forEach((j, i) => {
+      if (!j.optional) { prevWasOpenBlock = false; return; }
+      if (!prevWasOpenBlock) optionalBlockStart.add(j);
+      // Конец блока: явный флаг `optionalLast`, либо (для моделей без флага) —
+      // следующее соединение не опциональное / соединений больше нет.
+      const next = joins[i + 1];
+      const isLast = j.optionalLast === true ||
+        (j.optionalLast === undefined && (!next || !next.optional));
+      if (isLast) { optionalBlockEnd.add(j); prevWasOpenBlock = false; }
+      else prevWasOpenBlock = true;
+    });
+  }
 
   joins.forEach((join, idx) => {
     // Источники соединения в порядке записи: затравка — левая таблица, присоединяемая —
@@ -648,8 +671,9 @@ function renderFrom(model: QueryModel, aliases: Map<string, string>): string[] {
     }
     inChain.add(seedId);
     // Опциональное соединение построителя (фаза 6.15.13) открывается `{` перед видом
-    // соединения; закрывается `}` после условия `ПО` (см. flushPo).
-    const open = join.optional ? '{' : '';
+    // соединения; закрывается `}` после условия `ПО` (см. flushPo). В блоке из
+    // нескольких соединений `{` ставится только перед первым (фаза 6.16).
+    const open = optionalBlockStart.has(join) ? '{' : '';
     // Присоединяемый источник стоит на отступе 2+depth — тело его подзапроса (если
     // источник — подзапрос) отбивается по этому же отступу (фаза 6.15.19).
     lines.push(`\t\t${'\t'.repeat(depth)}${open}${keyword} СОЕДИНЕНИЕ ${sourceLine(joined, 2 + depth)}`);
@@ -1122,7 +1146,9 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   const byList: string[] = [];
   if (totals.grand) byList.push('ОБЩИЕ');
   for (const g of totals.groupFields) {
-    const alias = g.qualified
+    const alias = g.expression
+      ? g.expression
+      : g.qualified
       ? `${tableAliases.get(g.tableId) ?? g.tableId}.${g.path}`
       : sectionFieldRefText(model, tableAliases, g.tableId, g.path);
     const as = g.alias ? ` КАК ${g.alias}` : '';
