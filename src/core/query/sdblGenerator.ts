@@ -148,14 +148,18 @@ function renderSource(t: SelectedTable, bodyTabs = 1): string {
   if (kind === 'РегистрБухгалтерии') {
     const positions = accountingPositions(slice, v);
     if (!positions.some(p => p !== '') && !v.hadParens) return t.fullName;
-    // Составное/подзапросное условие, стоящее ПОСЛЕДНЕЙ позицией, разносит параметры
-    // по строкам (как у РН, фаза 6.16.11). Где условие не последнее (Обороты-корр,
-    // ДвиженияССубконто) — инлайн.
-    const cond = v.condition ?? '';
-    if (cond && positions[positions.length - 1] === cond) {
-      return renderVirtualParams(t.fullName, positions, cond, bodyTabs);
+    // Конструктор 1С разносит вызов виртуальной таблицы регистра бухгалтерии по
+    // строкам, когда хотя бы одна позиция — СОСТАВНОЕ выражение (верхнеуровневый И/ИЛИ)
+    // или многострочный подзапрос: каждый позиционный параметр (включая пустые и
+    // хвостовые после условия) на отдельной строке (фаза 6.16.70). Условие может стоять
+    // НЕ последней позицией (Обороты-корр), поэтому реиндентируем КАЖДУЮ составную
+    // позицию, а не только последнюю. Простые параметры (период, ровные условия `=`/`В`)
+    // остаются инлайн.
+    const multiline = positions.some(p => p && (hasTopLevelBooleanOp(p) || (p.includes('\n') && /\(ВЫБРАТЬ/u.test(p))));
+    if (multiline) {
+      return renderAccountingParams(t.fullName, positions, v.condition ?? '', bodyTabs);
     }
-    return `${t.fullName}(${positions.join(', ')})`;
+    return `${t.fullName}(${positions.map(p => (p ? normalizeLeafCase(p) : p)).join(', ')})`;
   }
 
   // Обороты/ОстаткиИОбороты регистра накопления — фиксированная арность (как у
@@ -237,6 +241,24 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // переводов строк).
   positions = positions.map(p => (p ? normalizeLeafCase(p) : p));
   condition = condition ? normalizeLeafCase(condition) : condition;
+  // Сплющиваем «лишние» переносы разработчика внутри ПРОСТОГО условия-параметра
+  // (`Валюта В (&А,\n  &Б)` → одна строка): конструктор печатает такой параметр ВТ
+  // инлайн (фаза 6.16.72). flattenMultilineLeaf консервативен — НЕ трогает условие с
+  // подзапросом (`В (ВЫБРАТЬ …)`), верхнеуровневым И/ИЛИ или ВЫБОР: они остаются
+  // многострочными по своим правилам. То же для предшествующих позиций (период и др.).
+  positions = positions.map(p => (p ? flattenMultilineLeaf(p) : p));
+  condition = condition ? flattenMultilineLeaf(condition) : condition;
+  // Снятие ИЗБЫТОЧНЫХ обрамляющих скобок простого условия-параметра
+  // (`(СтруктурнаяЕдиница = &Организация)` → без скобок, фаза 6.16.72): конструктор
+  // печатает одиночное сравнение в параметре ВТ без скобок. stripRedundantLeafParens
+  // аккуратен с кортежами `(a, b) В (…)` (по контексту соседей) и однострочен.
+  condition = condition ? stripRedundantLeafParens(condition) : condition;
+  // То же снятие для позиции-условия в списке positions (инлайн-ветка печатает
+  // positions.join, а не condition): синхронизируем последнюю позицию с условием.
+  if (condition && positions.length > 0 && positions[positions.length - 1]) {
+    const li = positions.length - 1;
+    positions[li] = stripRedundantLeafParens(flattenMultilineLeaf(positions[li]));
+  }
   const hasBool = !!condition && hasTopLevelBooleanOp(condition);
   // Условие-подзапрос (`(поля) В (ВЫБРАТЬ …)`) тоже разносит параметры по строкам,
   // даже без верхнеуровневого И/ИЛИ: конструктор 1С печатает каждый параметр на своей
@@ -262,6 +284,34 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // Предшествующие параметры (период и др.) — каждый на своей строке с запятой.
   const head = positions.slice(0, -1).map(p => pad + p);
   return `${fullName}(\n${[...head, condLines.join('\n')].join(',\n')})`;
+}
+
+/**
+ * Печатает параметры виртуальной таблицы регистра бухгалтерии ВСЕГДА по строкам:
+ * каждый позиционный параметр на своей строке (включая пустые слоты и хвостовые
+ * позиции ПОСЛЕ условия — напр. `корСчетУсловие` у Обороты-корр), позиция условия
+ * реиндентируется как составное/подзапросное выражение. Используется только когда
+ * у вызова есть параметры (фаза 6.16.70). Отличие от `renderVirtualParams`: условие
+ * не обязано быть последней позицией.
+ */
+function renderAccountingParams(fullName: string, positions: string[], _condition: string, bodyTabs: number): string {
+  positions = positions.map(p => (p ? normalizeLeafCase(p) : p));
+  const base = bodyTabs + 2;
+  const pad = '\t'.repeat(base);
+  // Любая позиция-СОСТАВНОЕ выражение (условие счёта, условие, …) реиндентируется по
+  // конъюнктам как условие ВТ: верхнеуровневые И/ИЛИ — на отдельных строках, тело
+  // подзапроса — глубже. Простые позиции (период, периодичность) — инлайн на pad.
+  const renderPos = (p: string): string => {
+    if (!p) return pad;
+    const hasBool = hasTopLevelBooleanOp(p);
+    const text = hasBool
+      ? reindentVtCondition(p.trim(), base)
+      : (p.includes('\n') && /\(ВЫБРАТЬ/u.test(p) ? reindentLeafSubquery(p.trim(), base + 1) : p.trim());
+    const lines = text.split('\n');
+    lines[0] = pad + lines[0].replace(/^\t+/u, '');
+    return lines.join('\n');
+  };
+  return `${fullName}(\n${positions.map(renderPos).join(',\n')})`;
 }
 
 /**
@@ -320,6 +370,11 @@ function reindentVtCondition(condition: string, base: number): string {
   conjuncts.forEach((c, k) => {
     const ind = k === 0 ? base : base + 1;
     const prefix = k === 0 ? '' : `${c.op} `;
+    // Сплющиваем «лишние» переносы разработчика внутри ПРОСТОГО конъюнкта-списка
+    // значений (`Организация В\n(&Массив)` → одна строка, фаза 6.16.72):
+    // flattenMultilineLeaf не трогает конъюнкт с подзапросом (`В (ВЫБРАТЬ …)`) и ВЫБОР
+    // — они раскладываются по строкам ниже своими ветками.
+    if (c.text.includes('\n')) c = { ...c, text: flattenMultilineLeaf(c.text) };
     if (c.text.includes('\n') && /\(ВЫБРАТЬ/u.test(c.text)) {
       const r = reindentLeafSubquery(c.text, base + 2).split('\n');
       r[0] = '\t'.repeat(ind) + prefix + r[0].replace(/^\t+/u, '');

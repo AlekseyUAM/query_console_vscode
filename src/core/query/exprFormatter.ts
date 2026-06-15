@@ -3065,8 +3065,11 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
   if (slot === 'where' || slot === 'having') {
     const ctx: RenderCtx = { cont: 1, caseBoolean: true, stripNotParens: true, subDelta0: rootSubDelta };
     // ИМЕЮЩИЕ: верхний OR использует orDelta=1 (ИЛИ на отступе 2), в отличие от
-    // ГДЕ (orDelta=2, ИЛИ на 3) — эмулируем стартовым orLvl=1.
-    const startOrLvl = slot === 'having' ? 1 : 0;
+    // ГДЕ (orDelta=2, ИЛИ на 3) — эмулируем стартовым orLvl=1. ГДЕ ВНУТРИ подзапроса-
+    // операнда условия `В (ВЫБРАТЬ … ГДЕ …)` конструктор тоже отбивает группу OR на
+    // один уровень мельче (как блок подзапроса в целом, фаза 6.16.71): признак —
+    // переданная rootSubDelta (взводится только для condition-subquery).
+    const startOrLvl = slot === 'having' || rootSubDelta !== undefined ? 1 : 0;
     if (tree.kind === 'case') {
       // Отдельный ВЫБОР-конъюнкт ИМЕЮЩИЕ (парсер дробит `A <> X И ВЫБОР…КОНЕЦ` на два
       // условия; второе — голый ВЫБОР, конъюнкты склеивает renderHaving хвостовым ` И`)

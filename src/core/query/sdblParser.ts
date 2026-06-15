@@ -69,6 +69,14 @@ import { canonicalizeFieldCasing } from './canonicalizeFieldCasing';
 // встроенных в СЫРЫЕ выражения условий/полей), избегая циклического импорта.
 setSubqueryParser((text, r) => parseDocument(text, r));
 
+/**
+ * Резолвер метаданных активного разбора `parseDocument` — пробрасывается в
+ * подзапросы-источники (`ИЗ (ВЫБРАТЬ …) КАК Т`), чтобы метаданные применялись и к
+ * вложенным виртуальным таблицам (раскладка субконто/корр регистра бухгалтерии).
+ * Сохраняется/восстанавливается стеково на время `parseDocument` (фаза 6.16.70).
+ */
+let sourceResolver: MetadataResolver | undefined;
+
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
 const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
   СУММА: 'Сумма',
@@ -1482,7 +1490,12 @@ function parseTableSource(cur: Cursor, index: number): SelectedTable {
       else if (t.type === 'punct' && t.value === ')') { depth--; if (depth === 0) { close = t; break; } }
     }
     const innerText = cur.source.slice(open.pos + 1, close.pos);
-    const subquery = parseDocument(innerText);
+    // Резолвер пробрасываем внутрь подзапроса-источника, чтобы метаданные
+    // (субконто/корр регистра бухгалтерии и т. п.) применялись и к виртуальным
+    // таблицам, вложенным в `ИЗ (ВЫБРАТЬ … ИЗ РегистрБухгалтерии.X.Обороты(…))`.
+    // Без этого раскладка позиций РБ оставалась с захардкоженным субконто, и
+    // условие могло потеряться/сместиться (фаза 6.16.70).
+    const subquery = parseDocument(innerText, sourceResolver);
     if (!cur.matchKeyword('КАК')) {
       throw cur.error('ожидалось КАК <псевдоним> после подзапроса в источнике ИЗ', cur.peek());
     }
@@ -2447,7 +2460,12 @@ function trySimpleCondition(
       const inner = subqueryInnerText(subTokens, source);
       if (inner !== undefined && isCompactSubquerySource(inner)) {
         const sub = trySubqueryParam(subTokens, source);
-        if (sub && sub.members.length > 1) {
+        // Компактный подзапрос (`ВЫБРАТЬ … ИЗ` на одной строке) с нессылочным LHS
+        // конструктор разворачивает структурно по строкам. Одноветочный подзапрос
+        // тоже (фаза 6.16.71): прежний гейт `members > 1` оставлял одноветочные на
+        // текстовом пути (плоский `1 В (ВЫБРАТЬ …)`). Канонические `ИСТИНА В`/`ЛОЖЬ В`
+        // записаны НЕ компактно и сюда по-прежнему не попадают.
+        if (sub) {
           return { custom: true, leftExpr: sliceSource(source, lhs), subquery: sub };
         }
       }
@@ -3873,6 +3891,16 @@ function splitUnionMembers(tokens: Token[], source: string): RawUnionMember[] {
  * `NULL` отбрасываются — у такого участника нет поля в этой колонке.
  */
 export function parseDocument(text: string, resolver?: MetadataResolver): QueryDocument {
+  const prevSourceResolver = sourceResolver;
+  sourceResolver = resolver;
+  try {
+    return parseDocumentInner(text, resolver);
+  } finally {
+    sourceResolver = prevSourceResolver;
+  }
+}
+
+function parseDocumentInner(text: string, resolver?: MetadataResolver): QueryDocument {
   const tokens = tokenize(text);
   const raw = splitUnionMembers(tokens, text);
 
