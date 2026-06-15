@@ -1371,6 +1371,11 @@ function parseFrom(cur: Cursor): FromResult {
    * `RawJoin` накапливаются в порядке «затравка раньше использования»,
    * совместимом с плоским рендером генератора.
    */
+  // Предобъявление для взаимной рекурсии: соединение построителя `{…}` может
+  // нести вложенную ПЛОСКУЮ цепочку обычных соединений, а обычное соединение —
+  // блоки построителя ПЕРЕД своим `ПО` (корпус БЗК, фаза 6.16).
+  let parseBuilderJoins: (rootSeedAlias: string, depth?: number) => void;
+
   const parseJoinChainFrom = (seedAlias: string, depth: number): void => {
     let lastAlias = seedAlias;
     while (isJoinKeyword(cur)) {
@@ -1397,6 +1402,11 @@ function parseFrom(cur: Cursor): FromResult {
       joins.push(raw);
       // Вложенная цепочка присоединяемого источника (её `ПО` раньше нашего).
       if (isJoinKeyword(cur)) parseJoinChainFrom(joinedHead, depth + 1);
+      // Блоки построителя (`{<вид> СОЕД … ПО …}`), привязанные к присоединяемому
+      // источнику, идут ПЕРЕД его собственным `ПО` (динамические соединения
+      // отчёта). Дочитываем их, затравка — присоединённая таблица; вложены на
+      // уровень глубже текущего соединения, чтобы их `ПО` печатались до нашего.
+      if (cur.isBuilderJoinStart()) parseBuilderJoins(joinedHead, depth + 1);
       cur.expectKeyword('ПО');
       const { tokens, text } = readJoinCondition(cur);
       raw.condTokens = tokens;
@@ -1415,7 +1425,7 @@ function parseFrom(cur: Cursor): FromResult {
    * (`rootSeedAlias`), что соответствует стандартной форме `<корень>.поле cmp
    * <присоединяемая>.поле` без скобок (MCP-пробы).
    */
-  const parseBuilderJoins = (rootSeedAlias: string): void => {
+  parseBuilderJoins = (rootSeedAlias: string, depth = 0): void => {
     while (cur.isBuilderJoinStart()) {
       cur.expectPunct('{');
       // Один блок построителя `{…}` может нести НЕСКОЛЬКО соединений подряд
@@ -1426,18 +1436,25 @@ function parseFrom(cur: Cursor): FromResult {
         const joinedSource = readSource();
         tables.push(joinedSource);
         const joinedHead = joinedSource.alias!;
-        cur.expectKeyword('ПО');
-        const { tokens, text } = readJoinCondition(cur, /* stopOnBrace */ true);
-        joins.push({
+        const raw: RawJoin = {
           kind,
           seedAlias: rootSeedAlias,
           joinedAlias: joinedHead,
           chainSeedAlias: rootSeedAlias,
-          condTokens: tokens,
-          condText: text,
-          depth: 0,
+          condTokens: [],
+          condText: '',
+          depth,
           optional: true,
-        });
+        };
+        joins.push(raw);
+        // Присоединяемый источник блока построителя сам может нести вложенную
+        // ПЛОСКУЮ цепочку обычных соединений (`{… СОЕД A СОЕД B ПО c_AB ПО c_root}`):
+        // её `ПО` идут раньше нашего. Дочитываем рекурсивно до закрывающей `}`.
+        if (isJoinKeyword(cur)) parseJoinChainFrom(joinedHead, depth + 1);
+        cur.expectKeyword('ПО');
+        const { tokens, text } = readJoinCondition(cur, /* stopOnBrace */ true);
+        raw.condTokens = tokens;
+        raw.condText = text;
       } while (isJoinKeyword(cur));
       cur.expectPunct('}');
       joins[joins.length - 1].optionalLast = true;
