@@ -822,16 +822,27 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
     const w = firstWord(raw);
     if (w === 'КОГДА') {
       const whenInd = E + 1;
-      curWhen = whenInd;
-      valueAnchor = -1;
-      condParen = 0;
-      condOrLevels = orLevelsForCondition(i);
       // Снимаем избыточные охватывающие скобки ПЕРВОГО конъюнкта условия КОГДА
       // (`КОГДА (X = &Y)` → `КОГДА X = &Y`). Пара охватывает лишь содержимое ЭТОЙ
       // строки; продолжения `И`/`ИЛИ` стоят отдельными строками — на их разбор это
       // не влияет (stripRedundantCaseClauseParens требует охвата всего текста строки).
       lines[i] = stripClause(reTab(raw, whenInd), 'КОГДА');
-      condParen += parenDelta(lines[i]);
+      if (endsWithVybor(lines[i])) {
+        // Вложенный СЕЛЕКТОРНЫЙ ВЫБОР как операнд условия КОГДА: открывается прямо на
+        // строке КОГДА (`КОГДА ВЫБОР … КОНЕЦ = &П ТОГДА …`). Его E (КОНЕЦ) = whenInd+1
+        // (опорная строка-открыватель — сама КОГДА); хвост после внутреннего КОНЕЦ
+        // (`КОНЕЦ = &П`) завершает условие КОГДА и остаётся на строке КОНЕЦ. Без этой
+        // ветки внутренний ВЫБОР не отслеживался и стек опустошался раньше времени
+        // → весь лист откатывался к исходному форматированию (фаза 6.16.65).
+        stack.push(whenInd + 1);
+        curWhen = -1; valueAnchor = -1; condParen = 0; condOrLevels = new Set();
+      } else {
+        curWhen = whenInd;
+        valueAnchor = -1;
+        condParen = 0;
+        condOrLevels = orLevelsForCondition(i);
+        condParen += parenDelta(lines[i]);
+      }
     } else if (w === 'И' || w === 'ИЛИ') {
       // Продолжение значения ветки ТОГДА/ИНАЧЕ (фаза 6.16.43): если строка `И`/`ИЛИ`
       // стоит ПОСЛЕ ТОГДА/ИНАЧЕ (valueAnchor задан) — это продолжение ВЫРАЖЕНИЯ
@@ -2173,7 +2184,22 @@ class Parser {
     const t = this.peek();
     // ВЫБОР … КОНЕЦ
     if (isCase(t)) {
-      return this.parseCase();
+      const caseNode = this.parseCase();
+      // Хвост сравнения после КОНЕЦ в БУЛЕВОМ/условном слоте (`ВЫБОР…КОНЕЦ = &П` как
+      // операнд условия КОГДА / ГДЕ): конструктор держит CASE структурным и приклеивает
+      // `= &П` к строке КОНЕЦ. Узкая форма (ровно один верхнеур. оператор сравнения,
+      // листовой операнд, без вложенного ВЫБОР и И/ИЛИ) — как parseValue (фаза 6.16.65).
+      if (!this.atEof() && caseNode.kind === 'case') {
+        const t2 = this.peek();
+        const boundary =
+          isAnd(t2) || isOr(t2) || isThen(t2) || isElse(t2) || isEnd(t2) || isWhen(t2) ||
+          (t2.type === 'punct' && t2.value === ')');
+        if (!boundary) {
+          const trailing = this.tryParseSimpleCaseTrailing();
+          if (trailing !== undefined) caseNode.trailing = trailing;
+        }
+      }
+      return caseNode;
     }
     // скобочная группа верхнего уровня — раскрываем в под-дерево ТОЛЬКО если
     // содержит верхнеуровневый булев И/ИЛИ или ВЫБОР; иначе это листовая скобка
@@ -2316,8 +2342,10 @@ class Parser {
         depth--; to = t.pos + t.value.length; this.i++; continue;
       }
       if (depth === 0) {
-        // Границы value-слота / структурные ключевые слова — стоп.
-        if (isWhen(t) || isElse(t) || isEnd(t)) break;
+        // Границы value-слота / структурные ключевые слова — стоп. ТОГДА завершает
+        // хвост, когда CASE — операнд УСЛОВИЯ КОГДА (`КОГДА ВЫБОР…КОНЕЦ = &П ТОГДА …`);
+        // в value-слоте ТОГДА на глубине 0 не встречается, так что стоп безопасен.
+        if (isWhen(t) || isThen(t) || isElse(t) || isEnd(t)) break;
         // Вложенный ВЫБОР или верхнеуровневый булев оператор → форма не простая.
         if (isCase(t) || isOr(t) || isAnd(t)) { this.i = save; return undefined; }
         if (t.type === 'punct' && COMPARE_OPS.has(t.value)) cmpCount++;
