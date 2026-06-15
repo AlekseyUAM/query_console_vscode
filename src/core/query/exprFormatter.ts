@@ -776,8 +776,13 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
   // Переустановка ведущих табов + нормализация хвостовых пробелов: конструктор
   // срезает хвостовой пробел структурных строк, КРОМЕ предиката `ЕСТЬ НЕ NULL `,
   // который сохраняет ровно один хвостовой пробел (см. appendIsNotNullTrailingSpace).
+  // Содержимое строки (после ведущих табов) прогоняем через normalizeLeafWhitespace —
+  // тот же токенный нормализатор межтокенных промежутков, что и у однострочных листьев
+  // (`НЕ (` → `НЕ(`, `( X` → `(X`, `,1` → `, 1`, схлопывание пробелов), который иначе
+  // многострочные листья НЕ получают (его \n-skip подавляет построчные правки). Строковые
+  // литералы и квирк `ЕСТЬ НЕ NULL ` он сохраняет (фаза 6.16.67).
   const reTab = (s: string, n: number): string =>
-    '\t'.repeat(n) + appendIsNotNullTrailingSpace(s.replace(/^[\t ]+/u, '').replace(/\s+$/u, ''));
+    '\t'.repeat(n) + appendIsNotNullTrailingSpace(normalizeLeafWhitespace(s.replace(/^[\t ]+/u, '').replace(/\s+$/u, '')));
   const firstWord = (s: string): string => {
     const m = /^[\t ]*([\p{L}]+)/u.exec(s);
     return m ? m[1].toUpperCase() : '';
@@ -1236,12 +1241,27 @@ export function normalizeLeafWhitespace(raw: string): string {
     }
     const gap = raw.slice(gapFrom, gapTo);
     if (gap.includes('\n')) continue; // многострочный промежуток — не трогаем
+    // Промежуток ПЕРЕД оператором включения `В`/`В ИЕРАРХИИ` конструктор печатает
+    // ровно одним пробелом, даже если разработчик отбил его табом (`Поле\tВ (…)` →
+    // `Поле В (…)`). Внутренний таб перед `В` (не ведущий отступ строки — `a` не пуст)
+    // схлопываем к одному пробелу (фаза 6.16.67). Прочие правила табы НЕ трогают.
+    if (isInOpWord(b) && b.value.toUpperCase() === 'В' && gap !== ' ') {
+      edits.push({ from: gapFrom, to: gapTo, text: ' ' });
+      continue;
+    }
     if (isCmp(a) || isCmp(b)) {
       if (gap !== ' ') edits.push({ from: gapFrom, to: gapTo, text: ' ' });
       continue;
     }
     if (a.type === 'punct' && a.value === ',') {
       if (gap !== ' ') edits.push({ from: gapFrom, to: gapTo, text: ' ' });
+      continue;
+    }
+    // Пробел ПЕРЕД запятой конструктор убирает (`Количество , 0` → `Количество, 0`).
+    // Таб не трогаем (значимый отступ; запятая в начале строки в листе не встречается,
+    // но из осторожности). Фаза 6.16.67.
+    if (b.type === 'punct' && b.value === ',' && !gap.includes('\t')) {
+      if (gap !== '') edits.push({ from: gapFrom, to: gapTo, text: '' });
       continue;
     }
     // Пробел после УНАРНОГО минуса конструктор убирает (`ИНАЧЕ -Поле`, `(-1)`),
@@ -1281,6 +1301,17 @@ export function normalizeLeafWhitespace(raw: string): string {
       if (AGGREGATE_WORDS.has(aUp) && gap !== '') {
         edits.push({ from: gapFrom, to: gapTo, text: '' });
         continue;
+      }
+      // Параметризованный примитивный тип в приведении (`КАК СТРОКА (10)` →
+      // `КАК СТРОКА(10)`, `КАК ЧИСЛО (11, 0)`): пробел перед `(` конструктор убирает.
+      // Гейтим по предыдущему слову `КАК` (контекст приведения), чтобы не задеть поле
+      // с именем СТРОКА/ЧИСЛО/… перед группирующей скобкой. Фаза 6.16.67.
+      if (PRIMITIVE_TYPE_WORDS.has(aUp) && gap !== '') {
+        const prevW = sig[i - 1];
+        if (prevW && (prevW.text ?? prevW.value).toUpperCase() === 'КАК') {
+          edits.push({ from: gapFrom, to: gapTo, text: '' });
+          continue;
+        }
       }
       // `НЕ (` перед БУЛЕВОЙ группой конструктор печатает БЕЗ пробела (`НЕ(X = …)`,
       // `НЕ(X В (…) ИЛИ …)`), тогда как ТЮПЛ `НЕ (a, b) В …` (запятая верхнего уровня
@@ -2623,10 +2654,12 @@ function renderBool(
       return lines;
     }
     case 'not': {
-      // ГДЕ/ИМЕЮЩИЕ (stripNotParens): НЕ-блок над скобочной группой печатается
-      // `НЕ(` слитно, продолжения на ind + orDelta + 1 (фаза 6.14, MCP). В других
-      // слотах (ПО/КОГДА) — прежняя раскладка `НЕ <группа>`.
-      if (ctx.stripNotParens && node.child.kind === 'group') {
+      // НЕ-блок над скобочной группой конструктор печатает `НЕ(` слитно, продолжения
+      // на ind + orDelta + 1 (фаза 6.14, MCP). Это верно и для ГДЕ/ИМЕЮЩИЕ
+      // (stripNotParens), и для условия КОГДА внутри ВЫБОР — оракул `И НЕ(… ИЛИ …)`
+      // выравнивает ИЛИ на cont+1 и убирает пробел после НЕ (фаза 6.16.67). ПО (ON)
+      // идёт другим путём (formatJoinConjunct), его это не затрагивает.
+      if (node.child.kind === 'group') {
         return renderNotGroup(node.child.child, ind, orLvl, ctx);
       }
       // Структурное НЕ сдвигает подзапрос листа на +1 (как ведущее НЕ в листе).
