@@ -801,10 +801,23 @@ export function stripRedundantCallWrapParens(text: string): string {
     // (`ЕСТЬNULL((ВЫРАЗИТЬ(…))`, `-(ВЫРАЗИТЬ(…))`, `(ВЫРАЗИТЬ(…)) - ВЫБОР` остаются).
     const a = sig[i + 1];
     const b = sig[i + 2];
-    if (!a || !AGGREGATE_WORDS.has(a.value.toUpperCase())) continue;
+    if (!a) continue;
     if (!isOpen(b)) continue;
     const callClose = match.get(i + 2);
     if (callClose === undefined || callClose !== close - 1) continue;
+    const isAgg = AGGREGATE_WORDS.has(a.value.toUpperCase());
+    // Агрегат — снимаем обёртку в любом не-сравнительном контексте (прежнее правило).
+    // Прочий вызов-функция (ЕСТЬNULL/ВЫРАЗИТЬ/…) — снимаем ТОЛЬКО когда пара охватывает
+    // ВСЁ выражение целиком (ни слева, ни справа соседей): `(ЕСТЬNULL(…)) КАК Алиас` →
+    // `ЕСТЬNULL(…)`. Внутри арифметики/аргумента (`(ВЫРАЗИТЬ(…)) - ВЫБОР`) обёртку
+    // оракул СОХРАНЯЕТ, поэтому там не трогаем (фаза 6.16.77, MCP).
+    const isCallWord =
+      (a.type === 'ident' || a.type === 'keyword') &&
+      !(PRED_NEIGHBOR_WORDS.has(a.value.toUpperCase()));
+    if (!isAgg) {
+      if (!isCallWord) continue;
+      if (prev !== undefined || nx !== undefined) continue;
+    }
     drop.add(i);
     drop.add(close);
   }
@@ -818,9 +831,13 @@ export function stripRedundantCallWrapParens(text: string): string {
     out = out.slice(0, p) + ' ' + out.slice(p + 1);
   }
   // Подчистка прилегающих к снятым скобкам пробелов — только горизонтальных (не \n).
+  // Снятая ВЕДУЩАЯ/ХВОСТОВАЯ скобка целиком-охватывающей пары оставляет пробел на
+  // краю выражения — убираем его (`(ЕСТЬNULL(…))` → `ЕСТЬNULL(…)`, без ведущего ` `).
   return out
     .replace(/\( +/g, '(')
-    .replace(/ +\)/g, ')');
+    .replace(/ +\)/g, ')')
+    .replace(/^ +/, '')
+    .replace(/ +$/, '');
 }
 
 export function reindentLeafCase(text: string, base: number, funcParenDepth = false): string {
@@ -2032,6 +2049,12 @@ export function stripRedundantLeafParens(raw: string): string {
   // Левый сосед пары допускает снятие скобок (предикатный/сравнительный контекст).
   const leftOk = (prev: Token | undefined): boolean =>
     !prev || isCmpPunct(prev) || isPredWord(prev) || isOpenParen(prev);
+  // Оператор членства `В` / `В ИЕРАРХИИ` как ПРАВЫЙ сосед: его ЛЕВЫЙ операнд (значение)
+  // конструктор печатает без обёртки (`(ВЫРАЗИТЬ(…)) В (&М)` → `ВЫРАЗИТЬ(…) В (&М)`),
+  // тогда как у сравнения обёртку сохраняет. `В` не входит в PRED_NEIGHBOR_WORDS
+  // (там `(` справа — список значений), поэтому обрабатываем его отдельно (фаза 6.16.77).
+  const isMembershipWord = (t: Token | undefined): boolean =>
+    !!t && (t.type === 'keyword' || t.type === 'ident') && t.value.toUpperCase() === 'В';
   // Правый сосед пары допускает снятие скобок.
   const rightOk = (nx: Token | undefined): boolean => {
     if (!nx) return true;
@@ -2039,6 +2062,7 @@ export function stripRedundantLeafParens(raw: string): string {
     if (nx.type === 'keyword' && nx.value.toUpperCase() === 'КАК') return true;
     if (isCmpPunct(nx)) return true;
     if (isPredWord(nx)) return true;
+    if (isMembershipWord(nx)) return true;
     return false;
   };
 
@@ -2100,6 +2124,20 @@ export function stripRedundantLeafParens(raw: string): string {
         else if (d === 0 && neighborIsCompare(c)) { innerCompare = true; break; }
       }
       if (innerCompare) continue;
+    }
+    // Для оператора членства `В` снимаем обёртку ТОЛЬКО когда левый операнд — ЦЕЛЬНОЕ
+    // значение (без верхнеур. сравнения/предиката/булева И/ИЛИ внутри): `(ВЫРАЗИТЬ(…)) В`
+    // → `ВЫРАЗИТЬ(…) В`. Это исключает теоретические `(a = b) В` (смысл изменился бы).
+    if (isMembershipWord(nx)) {
+      let innerBoolCmp = false;
+      let d2 = 0;
+      for (let k = i + 1; k < close; k++) {
+        const c = sig[k];
+        if (c.type === 'punct' && c.value === '(') d2++;
+        else if (c.type === 'punct' && c.value === ')') d2--;
+        else if (d2 === 0 && (isCmpPunct(c) || isAnd(c) || isOr(c) || neighborIsCompare(c))) { innerBoolCmp = true; break; }
+      }
+      if (innerBoolCmp) continue;
     }
     drop.add(i);
     drop.add(close);
@@ -2522,6 +2560,39 @@ class Parser {
     return false;
   }
 
+  /**
+   * Скобка на индексе `open` обёртывает РОВНО один ВЫБОР…КОНЕЦ (первый значимый
+   * токен внутри — ВЫБОР), а ПОСЛЕ её закрывающей `)` сразу идёт оператор сравнения
+   * (`= <> < > <= >=`), арифметики (`+ - * / %`) или МЕЖДУ/ПОДОБНО. Используется для
+   * снятия избыточной обёртки CASE-операнда (`(ВЫБОР…КОНЕЦ) <> X` → `ВЫБОР…КОНЕЦ <> X`).
+   */
+  private parenWrapsCaseThenCompare(open: number): boolean {
+    // Первый значимый токен внутри скобки — ВЫБОР.
+    const inner = this.toks[open + 1];
+    if (!isCase(inner)) return false;
+    // Находим закрывающую `)` этой скобки.
+    let depth = 0;
+    let closeIdx = -1;
+    for (let k = open; k < this.toks.length; k++) {
+      const tk = this.toks[k];
+      if (tk.type === 'eof') break;
+      if (tk.type === 'punct' && tk.value === '(') { depth++; continue; }
+      if (tk.type === 'punct' && tk.value === ')') {
+        depth--;
+        if (depth === 0) { closeIdx = k; break; }
+      }
+    }
+    if (closeIdx < 0) return false;
+    const after = this.toks[closeIdx + 1];
+    if (!after || after.type === 'eof') return false;
+    if (after.type === 'punct' &&
+        (COMPARE_OPS.has(after.value) || ARITH_ADD.has(after.value) || ARITH_MUL.has(after.value))) {
+      return true;
+    }
+    if (isWord(after, 'МЕЖДУ') || isWord(after, 'ПОДОБНО')) return true;
+    return false;
+  }
+
   private parsePrimary(): Node {
     const t = this.peek();
     // ВЫБОР … КОНЕЦ
@@ -2537,7 +2608,7 @@ class Parser {
           isAnd(t2) || isOr(t2) || isThen(t2) || isElse(t2) || isEnd(t2) || isWhen(t2) ||
           (t2.type === 'punct' && t2.value === ')');
         if (!boundary) {
-          const trailing = this.tryParseSimpleCaseTrailing(true);
+          const trailing = this.tryParseSimpleCaseTrailing(true, true);
           if (trailing !== undefined) caseNode.trailing = trailing;
         }
       }
@@ -2547,6 +2618,27 @@ class Parser {
     // содержит верхнеуровневый булев И/ИЛИ или ВЫБОР; иначе это листовая скобка
     // (вызов/группировка арифметики) — поглощается листом дословно.
     if (t.type === 'punct' && t.value === '(' && this.parenIsStructuralGroup(this.i)) {
+      // Скобка обёртывает РОВНО один ВЫБОР…КОНЕЦ (без верхнеур. И/ИЛИ внутри), а сразу
+      // за закрывающей `)` следует оператор сравнения / арифметики / МЕЖДУ / ПОДОБНО:
+      // `(ВЫБОР…КОНЕЦ) <> X`. Скобки вокруг CASE-операнда сравнения избыточны —
+      // конструктор 1С их снимает и печатает оператор на строке КОНЕЦ (фаза 6.16.77,
+      // подтверждено живым оракулом). Снимаем обёртку: разбираем CASE напрямую и
+      // приклеиваем хвост через tryParseSimpleCaseTrailing (как у голого CASE).
+      if (
+        !this.parenHasTopBoolean(this.i) &&
+        this.parenWrapsCaseThenCompare(this.i)
+      ) {
+        this.i++; // съесть (
+        const caseNode = this.parseCase();
+        if (!this.atEof() && this.peek().type === 'punct' && this.peek().value === ')') {
+          this.i++; // съесть )
+        }
+        if (caseNode.kind === 'case' && !this.atEof()) {
+          const trailing = this.tryParseSimpleCaseTrailing(true, true);
+          if (trailing !== undefined) caseNode.trailing = trailing;
+        }
+        return caseNode;
+      }
       this.i++; // съесть (
       const inner = this.parseOr();
       // закрывающая )
@@ -2667,7 +2759,7 @@ class Parser {
    * ВЫБОР и без верхнеуровневых И/ИЛИ. Иначе undefined (позицию НЕ двигает).
    * Эта форма позволяет CASE идти структурным путём с приклеенным хвостом к КОНЕЦ.
    */
-  private tryParseSimpleCaseTrailing(allowLeadingArith = false): string | undefined {
+  private tryParseSimpleCaseTrailing(allowLeadingArith = false, boolBoundary = false): string | undefined {
     const save = this.i;
     const startTok = this.peek();
     // Хвост обязан начинаться с оператора сравнения; в булевом слоте (КОГДА/ГДЕ)
@@ -2710,11 +2802,13 @@ class Parser {
           if (betweenPending > 0) { betweenPending--; }
           // Для МЕЖДУ/ПОДОБНО-хвоста верхнеур. И/ИЛИ — ГРАНИЦА операнда (CASE —
           // левый операнд большего булева, хвост заканчивается тут); для сравнения
-          // оставляем прежнее поведение — форма не простая (фаза 6.16.75).
-          else if (leadBetween || leadLike) break;
+          // оставляем прежнее поведение — форма не простая (фаза 6.16.75), КРОМЕ случая
+          // boolBoundary: CASE — операнд булевой цепочки (`ВЫБОР…КОНЕЦ <> X ИЛИ …`),
+          // верхнеур. И/ИЛИ завершает хвост сравнения (фаза 6.16.77).
+          else if (leadBetween || leadLike || boolBoundary) break;
           else { this.i = save; return undefined; }
         } else if (isOr(t)) {
-          if (leadBetween || leadLike) break;
+          if (leadBetween || leadLike || boolBoundary) break;
           this.i = save; return undefined;
         }
         else if (isWord(t, 'МЕЖДУ')) betweenPending++;
@@ -3283,7 +3377,13 @@ function renderOrValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: string,
     // Снять охватывающие скобки операнда (избыточная группировка). Структурную
     // группу (`(a ИЛИ b)`) разворачиваем через child; листовой операнд, целиком
     // обёрнутый в скобки (`(НЕ ЕСТЬNULL(…))`, `(Поле)`) — снимаем строкой.
-    const bare = op.kind === 'group' ? op.child
+    // ИСКЛЮЧЕНИЕ: ИЛИ-группа как операнд И-цепочки (`A И (B ИЛИ C ИЛИ D)`) — скобки
+    // ОБЯЗАТЕЛЬНЫ (И связывает крепче ИЛИ), оракул их СОХРАНЯЕТ; не разворачиваем
+    // (фаза 6.16.77, корпус УчетНДФЛ). Для самой ИЛИ-цепочки и для И-операнда той же
+    // ассоциативности (`A И (B И C)`) обёртка остаётся избыточной — разворачиваем.
+    const keepOrGroup = tree.kind === 'and' && op.kind === 'group' && op.child.kind === 'or';
+    const bare = keepOrGroup ? op
+      : op.kind === 'group' ? op.child
       : op.kind === 'leaf' ? ({ kind: 'leaf', text: stripEnclosingParens(op.text) } as Node)
       : op;
     const sub = renderSelectBool(bare, k === 0 ? kwInd : contInd, contInd + 1, 1, ctx, contInd + 1);
