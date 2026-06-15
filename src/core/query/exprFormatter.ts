@@ -845,8 +845,18 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
         curWhen = whenInd;
         valueAnchor = -1;
         condParen = 0;
+        // Ведущая скобка-ГРУППА ПЕРВОГО конъюнкта (`КОГДА (X = … \n ИЛИ Y)`), не
+        // снятая stripClause (она охватывает НЕСКОЛЬКО строк, поэтому не считается
+        // охватывающей одну строку), уровня отступа продолжениям НЕ добавляет: оракул
+        // ставит первое `ИЛИ` на whenInd+2, а не whenInd+3. Уменьшаем стартовый
+        // уровень скобок условия на этот ведущий `(` (только если условие НАЧИНАЕТСЯ
+        // с него — внутренние группы `A И (B ИЛИ C)` уровень добавляют как прежде).
+        // Тот же сдвиг отражаем в orLevelsForCondition, чтобы `И`-сдвиг считался от
+        // согласованного уровня (фаза 6.16.65).
+        const condBody = stripClause(reTab(raw, whenInd), 'КОГДА').replace(/^\t*КОГДА\s*/u, '');
+        const condLeadParen = /^\(/u.test(condBody) ? 1 : 0;
         condOrLevels = orLevelsForCondition(i);
-        condParen += parenDelta(lines[i]);
+        condParen += parenDelta(lines[i]) - condLeadParen;
       }
     } else if (w === 'И' || w === 'ИЛИ') {
       // Продолжение значения ветки ТОГДА/ИНАЧЕ (фаза 6.16.43): если строка `И`/`ИЛИ`
@@ -865,7 +875,10 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       if (curWhen < 0) return text;
       const orShift = w === 'И' && condOrLevels.has(condParen) ? 1 : 0;
       lines[i] = reTab(raw, curWhen + 2 + condParen + orShift);
-      condParen += parenDelta(raw);
+      // Закрывающая скобка ВЕДУЩЕЙ группы первого конъюнкта (вычтенной из стартового
+      // condParen) приходит на этой же строке-продолжении — клампим уровень снизу
+      // нулём, чтобы её `)` не утянул последующие конъюнкты на −1 (фаза 6.16.65).
+      condParen = Math.max(0, condParen + parenDelta(raw));
     } else if (w === 'ТОГДА') {
       const tabbed = reTab(raw, E + 2);
       lines[i] = endsWithVybor(raw) ? tabbed : stripClause(tabbed, 'ТОГДА');
@@ -1052,8 +1065,12 @@ export function reindentLeafBool(text: string, base: number): string {
     const raw = lines[i];
     if (raw.trim() === '') { depth += parenDelta(raw); continue; }
     const w = firstWord(raw);
-    if (depth !== 0 || (w !== 'И' && w !== 'ИЛИ')) return text; // не плоская цепочка
-    lines[i] = '\t'.repeat(base + 1) + raw.replace(/^\t+/u, '').replace(/\s+$/u, '');
+    if (w !== 'И' && w !== 'ИЛИ') return text; // продолжение не И/ИЛИ — не наша цепочка
+    // Продолжение `И`/`ИЛИ` внутри незакрытой скобочной группы конструктор отбивает
+    // на `base+1` ПЛЮС по +1 за каждый открытый уровень скобок в начале строки
+    // (`(A\n\tИЛИ B)` при base=1 → ИЛИ на base+1+1). Плоская цепочка (depth=0) — как
+    // прежде на base+1 (фаза 6.16.66).
+    lines[i] = '\t'.repeat(base + 1 + depth) + raw.replace(/^\t+/u, '').replace(/\s+$/u, '');
     depth += parenDelta(lines[i]);
   }
   return lines.join('\n');
