@@ -466,6 +466,29 @@ export function reindentLeafSubquery(text: string, base: number): string {
     if (lines[i].replace(/^[\t ]+/u, '').startsWith('(ВЫБРАТЬ')) { start = i; break; }
   }
   if (start <= 0) return text;
+  // ГОЛОВА перед строкой `(ВЫБРАТЬ` (`(поле1, поле2, …) В`) набрана разработчиком на
+  // НЕСКОЛЬКИХ строках — конструктор 1С печатает весь список-кортеж операнда `В` на
+  // ОДНОЙ строке (`(поле1, поле2, поле3) В`). Схлопываем строки 0..start-1 в одну,
+  // сохраняя отступ строки 0 (корпус СборкаЗапасов/РасходнаяНакладная/ЗаказПоставщику).
+  if (start > 1) {
+    const lead = (lines[0].match(/^[\t ]*/u) ?? [''])[0];
+    const body = lines.slice(0, start)
+      .map((l) => l.replace(/^[\t ]+/u, '').replace(/[ \t]+$/u, ''))
+      .filter((l) => l !== '')
+      .join(' ')
+      .replace(/[ \t]+/gu, ' ')
+      .replace(/\(\s+/gu, '(')
+      .replace(/\s+\)/gu, ')')
+      .replace(/\s+,/gu, ',');
+    // Схлопываем ТОЛЬКО чистый КОРТЕЖ-операнд `В`: сбалансированная пара скобок-списка,
+    // за которой идёт ровно `В` (без булевых операторов/сравнений внутри). Иначе это
+    // составное условие `(A = &X ИЛИ B В (…))`, чьи И/ИЛИ переносы трогать нельзя.
+    if (/^\([^()=<>]*\)\s+В$/u.test(body) &&
+      !/(?:^|[^\p{L}\p{N}_])(?:И|ИЛИ|НЕ|МЕЖДУ|ПОДОБНО|ССЫЛКА|ЕСТЬ)(?:[^\p{L}\p{N}_])/u.test(body)) {
+      lines.splice(0, start, lead + body);
+      start = 1;
+    }
+  }
   // Баланс скобок блока (вне строковых литералов) должен закрыться в конце листа.
   let depth = 0;
   let inStr = false;
@@ -748,6 +771,9 @@ export function splitInlineLeafCase(text: string): string {
   // Внутри условия КОГДА текущего (верхнего) CASE? Тогда И/ИЛИ на той же глубине —
   // продолжение условия и подлежит сплиту.
   let inCondition = false;
+  // Сколько `И` принадлежат открытым `МЕЖДУ a И b` — их НЕ переносим (диапазонное И,
+  // не булев конъюнкт). Без этого `КОГДА X МЕЖДУ &A И &B` ошибочно рвался на `И &B`.
+  let betweenPending = 0;
   const breakBefore = new Set<number>();
   for (let k = 0; k < sig.length; k++) {
     const t = sig[k];
@@ -760,6 +786,7 @@ export function splitInlineLeafCase(text: string): string {
     const top = caseStack[caseStack.length - 1];
     if (top === undefined) continue;
     if (dep !== top) continue; // не на уровне текущего CASE — внутренняя группа/вложение
+    if (inCondition && isW(t, 'МЕЖДУ')) { betweenPending++; continue; }
     // Перенос ставим ТОЛЬКО когда токен СКЛЕЕН с предыдущим в одну физическую строку
     // (в зазоре нет `\n`): инлайн-CASE мы разбиваем, а уже разложенные построчно
     // структурные строки НЕ трогаем — иначе сорвём их ведущий отступ (фаза 6.16.71).
@@ -783,6 +810,8 @@ export function splitInlineLeafCase(text: string): string {
       caseStack.pop();
       inCondition = false;
     } else if (inCondition && (isW(t, 'И') || isW(t, 'ИЛИ'))) {
+      // `И` диапазона `МЕЖДУ a И b` — не булев разделитель условия, не переносим.
+      if (isW(t, 'И') && betweenPending > 0) { betweenPending--; continue; }
       if (k > 0 && gluedToPrev()) breakBefore.add(k);
     }
   }
