@@ -286,7 +286,12 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   const isCaseValueParam =
     !hasBool &&
     !/\bВЫБРАТЬ\b/iu.test(condition) &&
-    /(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(condFirstLine0);
+    // Параметр-CASE: первая строка либо ОКАНЧИВАЕТСЯ словом ВЫБОР (`Имя = ВЫБОР`,
+    // корпус СдельныйНаряд), либо НАЧИНАЕТСЯ им (селекторный `ВЫБОР &Парам …` или
+    // условный `ВЫБОР КОГДА …`, корпус ПланФактныйАнализПродаж). В обоих случаях это
+    // лист-CASE на отступе строки параметра (КОНЕЦ на base), не подзапрос.
+    (/(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(condFirstLine0) ||
+      /^ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(condition.trim()));
   const condText = hasBool
     ? reindentVtCondition(condition.trim(), base)
     : isCaseValueParam
@@ -379,15 +384,15 @@ function splitTopLevelBoolConjuncts(expr: string): { op: string; text: string }[
  */
 function reindentVtCondition(condition: string, base: number): string {
   const conjuncts = splitTopLevelBoolConjuncts(condition);
-  // Приоритет И>ИЛИ: в `A ИЛИ B И C` конъюнкт `И C` принадлежит ВЛОЖЕННОЙ И-цепочке
-  // под `ИЛИ B`, поэтому конструктор отбивает его на base+2 (а не base+1). Конъюнкт
-  // `ИЛИ` всегда на base+1; конъюнкт `И` — на base+2, если выше по цепочке уже был
-  // `ИЛИ` (иначе чистая И-цепочка остаётся на base+1). Корпус Баланс/ПрогнозныйБаланс.
-  let seenOr = false;
+  // Приоритет И>ИЛИ: когда в условии есть хоть один верхнеуровневый `ИЛИ`, ВСЯ цепочка —
+  // это ИЛИ-цепочка из И-групп (`A И B ИЛИ C И D`), и КАЖДЫЙ конъюнкт `И` принадлежит
+  // вложенной И-группе под своим `ИЛИ` → отбивается на base+2 (даже `И B` ПЕРЕД первым
+  // `ИЛИ` — он операнд первой И-группы). Конъюнкт `ИЛИ` всегда на base+1. Чистая
+  // И-цепочка без `ИЛИ` остаётся на base+1 (корпус Баланс/АнализСчетов/НалогиИВзносы).
+  const hasAnyOr = conjuncts.some((c) => c.op === 'ИЛИ');
   const out: string[] = [];
   conjuncts.forEach((c, k) => {
-    const andUnderOr = c.op === 'И' && seenOr;
-    if (c.op === 'ИЛИ') seenOr = true;
+    const andUnderOr = c.op === 'И' && hasAnyOr;
     const ind = k === 0 ? base : andUnderOr ? base + 2 : base + 1;
     const prefix = k === 0 ? '' : `${c.op} `;
     // Сплющиваем «лишние» переносы разработчика внутри ПРОСТОГО конъюнкта-списка
@@ -988,7 +993,15 @@ function builderBlock(keyword: string, fields: BuilderField[]): string[] {
     // имена функций): конструктор приводит зарезервированные слова к ВЕРХНЕМУ
     // регистру и в элементах построителя (`{ГДЕ (Не … ЕСТЬ NULL)}`). Путь поля
     // (`Таблица.Поле`) не затрагивается — normalizeLeafCase не трогает сегменты `.`.
-    const ref = normalizeLeafCase(f.ref);
+    // Многострочный ВЫБОР в скобочном условии построителя (`(ВЫБОР…КОНЕЦ) КАК …`)
+    // конструктор раскладывает по КАНОНУ относительно позиции поля в блоке (поле на
+    // относительном табе 1, охватывающая `(` даёт +1 → КОНЕЦ на 2), а НЕ сохраняет
+    // абсолютный отступ исходника (фаза 6.16.fmt, корпус СтатистикаЧековПоЧасам).
+    const isMultilineCase = f.condition && f.ref.includes('\n') &&
+      /(^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(f.ref);
+    const ref = isMultilineCase
+      ? reindentLeafCase(normalizeLeafCase(f.ref), 2)
+      : normalizeLeafCase(f.ref);
     return f.condition
       ? `(${ref})` + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '')
       : ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');

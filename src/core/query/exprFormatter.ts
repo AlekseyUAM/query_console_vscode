@@ -920,6 +920,15 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
   for (let i = 0; i < lines.length; i++) {
     if (endsWithVybor(lines[i])) { openIdx = i; break; }
   }
+  // СЕЛЕКТОРНЫЙ CASE (`ВЫБОР <селектор>\n КОГДА … = … ТОГДА …`): открывающая строка
+  // НАЧИНАЕТСЯ словом ВЫБОР, но НЕ оканчивается им (после ВЫБОР стоит селектор).
+  // Трактуем её как открыватель (openIdx=0) — иначе reindentLeafCase пасовал и
+  // сохранял исходный отступ (корпус ПланФактныйАнализПродаж, параметр-условие ВТ).
+  // Гейт узкий: первая непустая строка начинается с ВЫБОР и в листе есть КОНЕЦ.
+  if (openIdx < 0 && /^[\t ]*ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(lines[0]) &&
+      lines.some(l => /^[\t ]*КОНЕЦ(?:[^\p{L}\p{N}_]|$)/u.test(l))) {
+    openIdx = 0;
+  }
   if (openIdx < 0) return text;
 
   // Рефлоу к каноническому построчному виду (фаза 6.16.36, сверено живым оракулом).
@@ -1185,7 +1194,25 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
         // Тот же сдвиг отражаем в orLevelsForCondition, чтобы `И`-сдвиг считался от
         // согласованного уровня (фаза 6.16.65).
         const condBody = stripClause(reTab(raw, whenInd), 'КОГДА').replace(/^\t*КОГДА\s*/u, '');
-        const condLeadParen = /^\(/u.test(condBody) ? 1 : 0;
+        // Ведущую `(` вычитаем ТОЛЬКО если её группа ОХВАТЫВАЕТ продолжения (остаётся
+        // ОТКРЫТОЙ к концу строки КОГДА — `КОГДА (X = … \n ИЛИ Y)`). Самодостаточная
+        // ведущая группа, ЗАКРЫВАЮЩАЯСЯ на той же строке (`(ВЫРАЗИТЬ(…)) = Z ИЛИ …`),
+        // продолжениям уровня не задаёт — её вычитать нельзя (иначе ИЛИ уезжал на −1,
+        // корпус СтатистикаЧеков). Признак охвата: глубина после ведущей `(` не
+        // возвращается к 0 до конца condBody.
+        const leadParenEncloses = (): boolean => {
+          if (!/^\(/u.test(condBody)) return false;
+          let d = 0, inS = false;
+          for (let c = 0; c < condBody.length; c++) {
+            const ch = condBody[c];
+            if (ch === '"') { inS = !inS; continue; }
+            if (inS) continue;
+            if (ch === '(') d++;
+            else if (ch === ')') { d--; if (d === 0 && c < condBody.length - 1) return false; }
+          }
+          return d >= 1;
+        };
+        const condLeadParen = leadParenEncloses() ? 1 : 0;
         condOrLevels = orLevelsForCondition(i);
         condParen += parenDelta(lines[i]) - condLeadParen;
       }
@@ -1264,8 +1291,42 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       // (закрытие `)` сразу скомпенсировано открытием `(` следующего вызова → E тот
       // же). Переоткрываем стек и продолжаем (фаза 6.15.19).
       if (endsWithVybor(lines[i])) {
+        // Соседний ВЫБОР той же арифметической цепочки (`КОНЕЦ) * ВЫБОР`,
+        // `КОНЕЦ * ЕСТЬNULL(ВЫБОР`, `КОНЕЦ) * Y * ВЫБОР`). Его отступ = E, сдвинутый на
+        // баланс ВЫЗОВ-функции скобок головы (до слова ВЫБОР): скобка-ГРУППИРОВКА уровня
+        // не даёт и не отнимает (`КОНЕЦ) * Y * ВЫБОР` после `(100 + ВЫБОР` остаётся на E,
+        // `КОНЕЦ * (ВЫБОР` тоже на E), а вот закрытие ВЫЗОВ-скобки (`СУММА(ВЫБОР…КОНЕЦ) *
+        // ВЫБОР`) опускает сиблинг на −1, открытие (`ЕСТЬNULL(ВЫБОР`) поднимает на +1.
+        // Тип закрываемой `)` определяем по типовому стеку скобок от начала листа
+        // (корпус СдельныйНаряд, КорректировкаПоступления, РасчетыПроведениеДокументов).
         const head = lines[i].replace(/(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u, '$1');
-        stack.push(E + parenDelta(head));
+        // Типовой стек скобок ДО головы текущей строки: true — вызов-функция.
+        const typeStack: boolean[] = [];
+        {
+          let inS = false; let prev = '';
+          const scan = (s: string): void => {
+            for (let c = 0; c < s.length; c++) {
+              const ch = s[c];
+              if (ch === '"') { inS = !inS; prev = ch; continue; }
+              if (inS) continue;
+              if (ch === '(') { typeStack.push(/[\p{L}\p{N}_]/u.test(prev)); prev = ch; }
+              else if (ch === ')') { typeStack.pop(); prev = ch; }
+              else if (ch !== ' ' && ch !== '\t') prev = ch;
+            }
+          };
+          for (let j = 0; j < i; j++) scan(lines[j]);
+          // Голову текущей строки сканируем со счётом call-delta.
+          let callDelta = 0;
+          for (let c = 0; c < head.length; c++) {
+            const ch = head[c];
+            if (ch === '"') { inS = !inS; prev = ch; continue; }
+            if (inS) continue;
+            if (ch === '(') { const isCall = /[\p{L}\p{N}_]/u.test(prev); typeStack.push(isCall); if (isCall) callDelta++; prev = ch; }
+            else if (ch === ')') { if (typeStack.pop()) callDelta--; prev = ch; }
+            else if (ch !== ' ' && ch !== '\t') prev = ch;
+          }
+          stack.push(E + callDelta);
+        }
         continue;
       }
       if (stack.length === 0) {
@@ -1422,6 +1483,10 @@ export function reindentLeafBool(text: string, base: number): string {
     const m = /^\t*([\p{L}]+)/u.exec(s);
     return m ? m[1].toUpperCase() : '';
   };
+  // Уровни скобок, на которых ВСТРЕТИЛСЯ верхнеуровневый `ИЛИ`: на таком уровне
+  // последующий конъюнкт `И` идёт на +1 глубже строк `ИЛИ` (приоритет И>ИЛИ; зеркало
+  // condOrLevels в reindentLeafCase) — корпус УчетНДФЛ `МАКСИМУМ(A ИЛИ B И C)`.
+  const orLevels = new Set<number>();
   // Баланс скобок к началу каждой следующей строки: продолжение `И`/`ИЛИ` считаем
   // верхнеуровневым, только если до него все скобки сбалансированы (depth 0).
   let depth = parenDelta(lines[0]);
@@ -1433,8 +1498,10 @@ export function reindentLeafBool(text: string, base: number): string {
     // Продолжение `И`/`ИЛИ` внутри незакрытой скобочной группы конструктор отбивает
     // на `base+1` ПЛЮС по +1 за каждый открытый уровень скобок в начале строки
     // (`(A\n\tИЛИ B)` при base=1 → ИЛИ на base+1+1). Плоская цепочка (depth=0) — как
-    // прежде на base+1 (фаза 6.16.66).
-    lines[i] = '\t'.repeat(base + 1 + depth) + raw.replace(/^\t+/u, '').replace(/\s+$/u, '');
+    // прежде на base+1 (фаза 6.16.66). Плюс +1 для `И` на уровне, несущем `ИЛИ`.
+    const orShift = w === 'И' && orLevels.has(depth) ? 1 : 0;
+    if (w === 'ИЛИ') orLevels.add(depth);
+    lines[i] = '\t'.repeat(base + 1 + depth + orShift) + raw.replace(/^\t+/u, '').replace(/\s+$/u, '');
     depth += parenDelta(lines[i]);
   }
   return lines.join('\n');
@@ -3505,7 +3572,14 @@ function renderOrValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: string,
       : op.kind === 'group' ? op.child
       : op.kind === 'leaf' ? ({ kind: 'leaf', text: stripEnclosingParens(op.text) } as Node)
       : op;
-    const sub = renderSelectBool(bare, k === 0 ? kwInd : contInd, contInd + 1, 1, ctx, contInd + 1);
+    // ВЛОЖЕННАЯ ИЛИ-группа как операнд И-цепочки значения (`ИНАЧЕ (A ИЛИ B) И C`)
+    // выравнивает свой `ИЛИ` с конъюнктами `И` цепочки (на contInd), поэтому ей
+    // передаём andCont=contInd (iliInd=max(ind+1, contInd)=contInd; корпус
+    // КарточкаУчетаПоСтраховымВзносам). Прочие операнды (плоская И-цепочка `A И B`,
+    // листья) — andCont=contInd+1, чтобы их собственные конъюнкты `И` шли на contInd+1
+    // (корпус РаботаСБонусами `ТОГДА A И B ИЛИ C`).
+    const opAndCont = keepOrGroup ? contInd : contInd + 1;
+    const sub = renderSelectBool(bare, k === 0 ? kwInd : contInd, opAndCont, 1, ctx, contInd + 1);
     sub[0] = k === 0 ? `${tabs(kwInd)}${keyword} ${sub[0]}` : `${tabs(contInd)}${op0Word} ${sub[0]}`;
     lines.push(...sub);
   });
@@ -3723,7 +3797,12 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
       // он переотбивает все КОНЕЦ/КОГДА на E=cont. Если он не справился (вернул
       // вход без изменений) — откатываемся на старую склейку первого ВЫБОР + tail.
       const flat = flattenMultilineLeaf(trimmed);
-      const reindented = reindentLeafCase(flat, ctx.cont);
+      // funcParenDepth=true: вложенный ВЫБОР внутри ВЫЗОВ-функции значения ветки
+      // (`ТОГДА ВЫРАЗИТЬ(A / (100 + ВЫБОР…КОНЕЦ) …)`) глубину CASE считает по числу
+      // открытых ВЫЗОВ-скобок, а скобка-ГРУППИРОВКА арифметики уровня не добавляет —
+      // иначе вложенный КОНЕЦ уезжал на −1 (корпус КорректировкаРеализации). Плоская
+      // цепочка `ВЫБОР…КОНЕЦ + ВЫБОР…КОНЕЦ` (без скобок) от флага не зависит.
+      const reindented = reindentLeafCase(flat, ctx.cont, true);
       body =
         reindented !== flat
           ? reindented
@@ -3780,7 +3859,11 @@ function renderNotGroup(child: Node, ind: number, orLvl: number, ctx: RenderCtx)
         // Подзапрос операнда НЕ(-блока — на cont+1 (выравнен по операндам, 6.15.9).
         lines.push(...renderBool(op, ind, op0And, orLvl + 1, ctx, ind + 1, cont + 1));
       } else {
-        const sub = renderBool(op, cont, cont + 1, orLvl + 1, ctx, cont + 1, cont + 1);
+        // CASE-операнд (`ИЛИ ВЫБОР…КОНЕЦ`) выравнивает свой КОНЕЦ со строкой `ИЛИ`
+        // (E=cont), как и в основной ветке OR (operandK → E=iliInd) — не на cont+1
+        // (корпус КнигаПокупок). Прочие операнды — прежним caseE=cont+1.
+        const opCaseE = op.kind === 'case' ? cont : cont + 1;
+        const sub = renderBool(op, cont, cont + 1, orLvl + 1, ctx, opCaseE, cont + 1);
         sub[0] = tabs(cont) + word + sub[0];
         lines.push(...sub);
       }
@@ -3830,8 +3913,11 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
+          // CASE-операнд0 ИЛИ-цепочки value-слота (`ВЫБОР…КОНЕЦ ИЛИ …`) — булев CASE
+          // (КОНЕЦ=ind+1, корпус Документооборот). Прочие операнды0 — прежним путём.
+          if (op.kind === 'case') { lines.push(...renderCase(op, ind, ctx, true)); }
           // Подзапрос операнда0 выравнен с операндами ИЛИ: childAnd (MCP, 6.15.9).
-          lines.push(...renderSelectBool(op, ind, childAnd, orLvl + 1, ctx, childAnd));
+          else lines.push(...renderSelectBool(op, ind, childAnd, orLvl + 1, ctx, childAnd));
         } else {
           const sub = renderSelectBool(op, iliInd, childAnd, orLvl + 1, ctx, childAnd);
           sub[0] = tabs(iliInd) + 'ИЛИ ' + sub[0];
@@ -3844,7 +3930,10 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       const lines: string[] = [];
       node.operands.forEach((op, k) => {
         if (k === 0) {
-          lines.push(...renderSelectBool(op, ind, andCont, orLvl, ctx, subInd));
+          // CASE-операнд0 И-цепочки value-слота (`ВЫБОР…КОНЕЦ И …`) оракул вкладывает
+          // на +1 (КОНЕЦ=ind+1), как булев CASE (корпус НастройкиУчетаСтраховыхВзносов).
+          if (op.kind === 'case') { lines.push(...renderCase(op, ind, ctx, true)); }
+          else lines.push(...renderSelectBool(op, ind, andCont, orLvl, ctx, subInd));
         } else {
           const sub = renderSelectBool(op, andCont, andCont + 1, orLvl, ctx);
           sub[0] = tabs(andCont) + 'И ' + sub[0];
@@ -3865,6 +3954,10 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       return sub;
     }
     case 'case':
+      // Достигается для НЕ-ПЕРВОГО операнда булевой цепочки (`И ВЫБОР`/`ИЛИ ВЫБОР`):
+      // слово И/ИЛИ печатается ИНЛАЙН перед ВЫБОР, и КОНЕЦ выровнен с этой строкой
+      // (E=ind, boolean=false; корпус ЗагрузкаВыписки). CASE-операнд0 (где `(`/слово
+      // на той же строке) обрабатывается в ветках or/and явно (boolean=true).
       return renderCase(node, ind, ctx, false);
     case 'leaf':
       // Подзапрос поля выборки — на ind+1 (MCP, 6.15.9).
