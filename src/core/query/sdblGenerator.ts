@@ -276,9 +276,22 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // переотбивает отступы. Сперва принудительно ставим переносы перед верхнеуровневыми
   // И/ИЛИ, затем нормализуем отступ. Чистое условие-подзапрос (без И/ИЛИ) — через
   // reindentLeafSubquery: `(ВЫБРАТЬ` встаёт на base+1, тело — на base+2.
+  // Условие-параметр = ОДИНОЧНЫЙ многострочный CASE (`Имя = ВЫБОР … КОНЕЦ`) без
+  // верхнеуровневого И/ИЛИ и без подзапроса (`ВЫБРАТЬ`): конструктор раскладывает его
+  // как лист-CASE на отступе строки параметра — КОНЕЦ на base, КОГДА на base+1 — а не
+  // как подзапрос (reindentLeafSubquery дал бы лишний +1 на всё тело). Узкий гейт:
+  // первая строка условия ОКАНЧИВАЕТСЯ словом ВЫБОР и нет `ВЫБРАТЬ` (корпус
+  // СдельныйНаряд: `ДокументПроизводства = ВЫБОР … КОНЕЦ`).
+  const condFirstLine0 = condition.includes('\n') ? condition.slice(0, condition.indexOf('\n')) : condition;
+  const isCaseValueParam =
+    !hasBool &&
+    !/\bВЫБРАТЬ\b/iu.test(condition) &&
+    /(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(condFirstLine0);
   const condText = hasBool
     ? reindentVtCondition(condition.trim(), base)
-    : reindentLeafSubquery(condition.trim(), base + 1);
+    : isCaseValueParam
+      ? reindentLeafCase(condition.trim(), base)
+      : reindentLeafSubquery(condition.trim(), base + 1);
   const condLines = condText.split('\n');
   condLines[0] = pad + condLines[0].replace(/^\t+/u, '');
   // Предшествующие параметры (период и др.) — каждый на своей строке с запятой.
@@ -366,9 +379,16 @@ function splitTopLevelBoolConjuncts(expr: string): { op: string; text: string }[
  */
 function reindentVtCondition(condition: string, base: number): string {
   const conjuncts = splitTopLevelBoolConjuncts(condition);
+  // Приоритет И>ИЛИ: в `A ИЛИ B И C` конъюнкт `И C` принадлежит ВЛОЖЕННОЙ И-цепочке
+  // под `ИЛИ B`, поэтому конструктор отбивает его на base+2 (а не base+1). Конъюнкт
+  // `ИЛИ` всегда на base+1; конъюнкт `И` — на base+2, если выше по цепочке уже был
+  // `ИЛИ` (иначе чистая И-цепочка остаётся на base+1). Корпус Баланс/ПрогнозныйБаланс.
+  let seenOr = false;
   const out: string[] = [];
   conjuncts.forEach((c, k) => {
-    const ind = k === 0 ? base : base + 1;
+    const andUnderOr = c.op === 'И' && seenOr;
+    if (c.op === 'ИЛИ') seenOr = true;
+    const ind = k === 0 ? base : andUnderOr ? base + 2 : base + 1;
     const prefix = k === 0 ? '' : `${c.op} `;
     // Сплющиваем «лишние» переносы разработчика внутри ПРОСТОГО конъюнкта-списка
     // значений (`Организация В\n(&Массив)` → одна строка, фаза 6.16.72):
