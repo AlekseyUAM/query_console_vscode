@@ -171,6 +171,11 @@ export function appendIsNotNullTrailingSpace(text: string): string {
  * верхнеуровневым булевым оператором сюда не приходит (это уже не лист-сравнение).
  */
 const COMPARE_OPS = new Set(['=', '<>', '<', '>', '<=', '>=']);
+// 6.16.69: бинарные операторы, к которым применимо правило обёртки голого ВЫРАЗИТЬ-
+// операнда: сравнение И арифметика (`* / % + -`). Конструктор оборачивает голый
+// ВЫРАЗИТЬ(…), стоящий ОПЕРАНДОМ любого такого оператора, в любом контексте
+// (ТОГДА/ИНАЧЕ/КОГДА/И), а не только в верхнеуровневом сравнении.
+const CAST_OPERAND_OPS = new Set([...COMPARE_OPS, '+', '-', '*', '/', '%']);
 export function wrapBareCastOperand(text: string): string {
   if (text.includes('\n')) return text;
   let toks: Token[];
@@ -181,23 +186,23 @@ export function wrapBareCastOperand(text: string): string {
   }
   const sig = toks.filter((t) => t.type !== 'eof');
   if (sig.length === 0) return text;
-  // Найти ЕДИНСТВЕННЫЙ верхнеуровневый оператор сравнения (глубина скобок 0).
+  // Индексы верхнеуровневых (глубина скобок 0) бинарных операторов сравнения/арифметики.
+  // Они делят токены на ОПЕРАНДЫ; каждый операнд-«голый ВЫРАЗИТЬ» оборачивается.
+  const opIdx: number[] = [];
   let depth = 0;
-  let cmpIdx = -1;
   for (let i = 0; i < sig.length; i++) {
     const t = sig[i];
     const v = t.text ?? t.value;
     if (v === '(') { depth++; continue; }
     if (v === ')') { if (depth > 0) depth--; continue; }
     if (depth !== 0) continue;
-    if (t.type === 'punct' && COMPARE_OPS.has(v)) {
-      if (cmpIdx !== -1) return text; // более одного — не наш случай
-      cmpIdx = i;
+    if (t.type === 'punct' && CAST_OPERAND_OPS.has(v)) {
+      // Унарный `+`/`-` (в начале или сразу после другого оператора) — не делитель.
+      if ((v === '+' || v === '-') && (i === 0 || opIdx[opIdx.length - 1] === i - 1)) continue;
+      opIdx.push(i);
     }
   }
-  if (cmpIdx === -1) return text;
-  const left = sig.slice(0, cmpIdx);
-  const right = sig.slice(cmpIdx + 1);
+  if (opIdx.length === 0) return text;
   // Голый вызов-приведение ВЫРАЗИТЬ: токены `ВЫРАЗИТЬ` `(` … сбалансированно `)`,
   // покрывающие ВЕСЬ операнд (за `)` ничего нет — иначе это `.Поле` или арифметика).
   const isBareCast = (ops: Token[]): boolean => {
@@ -219,11 +224,21 @@ export function wrapBareCastOperand(text: string): string {
     const end = last.pos + (last.text ?? last.value).length;
     return text.slice(first.pos, end);
   };
-  const cmp = sig[cmpIdx].text ?? sig[cmpIdx].value;
-  const leftStr = isBareCast(left) ? `(${opStr(left)})` : opStr(left);
-  const rightStr = isBareCast(right) ? `(${opStr(right)})` : opStr(right);
-  if (leftStr === opStr(left) && rightStr === opStr(right)) return text;
-  return `${leftStr} ${cmp} ${rightStr}`;
+  // Границы операндов: [start, opIdx[0]), (opIdx[0], opIdx[1]), …, (last, end).
+  const bounds = [0, ...opIdx.map((x) => x + 1)];
+  const ends = [...opIdx, sig.length];
+  let changed = false;
+  const parts: string[] = [];
+  for (let k = 0; k < bounds.length; k++) {
+    const ops = sig.slice(bounds[k], ends[k]);
+    if (ops.length === 0) { parts.push(''); continue; }
+    if (isBareCast(ops)) { parts.push(`(${opStr(ops)})`); changed = true; }
+    else parts.push(opStr(ops));
+    // Оператор между операндами.
+    if (k < opIdx.length) parts.push(sig[opIdx[k]].text ?? sig[opIdx[k]].value);
+  }
+  if (!changed) return text;
+  return parts.join(' ');
 }
 
 /**
@@ -796,8 +811,20 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
   const stripClause = (line: string, kw: string): string => {
     const m = new RegExp(`^([\\t ]*${kw}[\\t ]+)([\\s\\S]+)$`, 'u').exec(line);
     if (!m) return line;
-    const stripped = stripRedundantCaseClauseParens(m[2]);
-    return stripped === m[2] ? line : m[1] + stripped;
+    // Сначала снимаем избыточную охватывающую пару, затем оборачиваем голый
+    // ВЫРАЗИТЬ-операнд сравнения/арифметики (фаза 6.16.69): правило применяется в
+    // КОГДА/ТОГДА/ИНАЧЕ-теле так же, как в верхнеуровневом сравнении ГДЕ/ИМЕЮЩИЕ.
+    const body = wrapBareCastOperand(stripRedundantCaseClauseParens(m[2]));
+    return body === m[2] ? line : m[1] + body;
+  };
+  // Голова значения ТОГДА/ИНАЧЕ, ОТКРЫВАЮЩАЯ вложенный ВЫБОР (`ТОГДА ВЫРАЗИТЬ(…) * ВЫБОР`):
+  // охватывающую пару НЕ снимаем (ВЫБОР продолжается ниже), но голый ВЫРАЗИТЬ-операнд
+  // арифметики/сравнения оборачиваем (`(ВЫРАЗИТЬ(…)) * ВЫБОР`; фаза 6.16.69).
+  const wrapClauseHeadCast = (line: string, kw: string): string => {
+    const m = new RegExp(`^([\\t ]*${kw}[\\t ]+)([\\s\\S]+)$`, 'u').exec(line);
+    if (!m) return line;
+    const body = wrapBareCastOperand(m[2]);
+    return body === m[2] ? line : m[1] + body;
   };
   // Предсканирование условия КОГДА (строка startIdx — сама КОГДА): какие скобочные
   // уровни несут верхнеуровневый `ИЛИ`. Уровень строки = баланс скобок к её НАЧАЛУ
@@ -881,16 +908,25 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       condParen = Math.max(0, condParen + parenDelta(raw));
     } else if (w === 'ТОГДА') {
       const tabbed = reTab(raw, E + 2);
-      lines[i] = endsWithVybor(raw) ? tabbed : stripClause(tabbed, 'ТОГДА');
+      lines[i] = endsWithVybor(raw) ? wrapClauseHeadCast(tabbed, 'ТОГДА') : stripClause(tabbed, 'ТОГДА');
       if (endsWithVybor(raw)) { stack.push(E + 2 + 1); curWhen = -1; valueAnchor = -1; }
       else { curWhen = -1; valueAnchor = E + 2; condParen = parenDelta(lines[i]); }
     } else if (w === 'ИНАЧЕ') {
       const tabbed = reTab(raw, E + 1);
-      lines[i] = endsWithVybor(raw) ? tabbed : stripClause(tabbed, 'ИНАЧЕ');
+      lines[i] = endsWithVybor(raw) ? wrapClauseHeadCast(tabbed, 'ИНАЧЕ') : stripClause(tabbed, 'ИНАЧЕ');
       if (endsWithVybor(raw)) { stack.push(E + 1 + 1); curWhen = -1; valueAnchor = -1; }
       else { curWhen = -1; valueAnchor = E + 1; condParen = parenDelta(lines[i]); }
     } else if (w === 'КОНЕЦ') {
-      lines[i] = reTab(raw, E);
+      // Хвост-арифметика после КОНЕЦ (`КОНЕЦ / ВЫРАЗИТЬ(…)`): голый ВЫРАЗИТЬ-операнд
+      // оборачиваем (`КОНЕЦ / (ВЫРАЗИТЬ(…))`; фаза 6.16.69). wrapBareCastOperand —
+      // идемпотентна и срабатывает лишь при наличии бинарного оператора и голого cast.
+      // wrapBareCastOperand отбрасывает ведущие табы (работает по позициям токенов),
+      // поэтому отделяем отступ и возвращаем его на место.
+      {
+        const tabbed = reTab(raw, E);
+        const lead = /^\t*/u.exec(tabbed)![0];
+        lines[i] = lead + wrapBareCastOperand(tabbed.slice(lead.length));
+      }
       stack.pop();
       curWhen = -1;
       valueAnchor = -1;
@@ -1567,7 +1603,9 @@ class ArithReprinter {
 
   /** Операнд унарного оператора в скобках, если это бинарная арифметика. */
   private atomText(n: ArithNode): string {
-    return n.prec < 3 ? `(${n.text})` : n.text;
+    // 6.16.69: голый ВЫРАЗИТЬ(…) под унарным минусом всегда в скобках:
+    // `-(ВЫРАЗИТЬ(…))`, как и в wrap(); `-Поле`/`- -1` остаются без скобок.
+    return (n.bareCast || n.prec < 3) ? `(${n.text})` : n.text;
   }
 
   private parsePrimary(): ArithNode {
@@ -2950,14 +2988,19 @@ function renderBranchValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: str
     const reCase = reindentLeafCase(value, kwInd + 1);
     if (reCase !== value) {
       const parts = reCase.split('\n');
-      return [tabs(kwInd) + keyword + ' ' + parts[0], ...parts.slice(1)];
+      // Голый ВЫРАЗИТЬ-операнд в голове значения (`ТОГДА (ВЫРАЗИТЬ(…)) * ВЫБОР …`) —
+      // в скобках (фаза 6.16.69); строка-голова не открывает свой ВЫБОР до оператора.
+      return [tabs(kwInd) + keyword + ' ' + wrapBareCastOperand(parts[0]), ...parts.slice(1)];
     }
   }
   // Избыточные охватывающие скобки вокруг ЦЕЛОГО значения ветки конструктор снимает
   // (`ТОГДА (a - b)` → `ТОГДА a - b`; фаза 6.16.37). Строго консервативно: только
   // полностью охватывающая пара без ВЫРАЗИТЬ/ВЫБОР/булева оператора внутри.
   const flat = flattenMultilineLeaf(value);
-  const bare = stripRedundantCaseClauseParens(flat);
+  // Голый ВЫРАЗИТЬ-операнд сравнения/арифметики в значении ТОГДА/ИНАЧЕ — в скобках
+  // (`ТОГДА (ВЫРАЗИТЬ(…)) - X`; фаза 6.16.69), как и в верхнеуровневом сравнении.
+  // reprintLeafArithmetic дополнительно ловит унарный `-ВЫРАЗИТЬ(…)` → `-(ВЫРАЗИТЬ(…))`.
+  const bare = reprintLeafArithmetic(wrapBareCastOperand(stripRedundantCaseClauseParens(flat)));
   return [tabs(kwInd) + keyword + ' ' + reindentLeafSubquery(bare, kwInd + 2)];
 }
 
