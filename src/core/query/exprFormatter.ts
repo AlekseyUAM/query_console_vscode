@@ -2393,7 +2393,7 @@ class Parser {
           isAnd(t2) || isOr(t2) || isThen(t2) || isElse(t2) || isEnd(t2) || isWhen(t2) ||
           (t2.type === 'punct' && t2.value === ')');
         if (!boundary) {
-          const trailing = this.tryParseSimpleCaseTrailing();
+          const trailing = this.tryParseSimpleCaseTrailing(true);
           if (trailing !== undefined) caseNode.trailing = trailing;
         }
       }
@@ -2523,11 +2523,17 @@ class Parser {
    * ВЫБОР и без верхнеуровневых И/ИЛИ. Иначе undefined (позицию НЕ двигает).
    * Эта форма позволяет CASE идти структурным путём с приклеенным хвостом к КОНЕЦ.
    */
-  private tryParseSimpleCaseTrailing(): string | undefined {
+  private tryParseSimpleCaseTrailing(allowLeadingArith = false): string | undefined {
     const save = this.i;
     const startTok = this.peek();
-    // Хвост обязан начинаться с оператора сравнения.
-    if (!(startTok.type === 'punct' && COMPARE_OPS.has(startTok.value))) return undefined;
+    // Хвост обязан начинаться с оператора сравнения; в булевом слоте (КОГДА/ГДЕ)
+    // допускается и ведущий АРИФМЕТИЧЕСКИЙ оператор (`КОНЕЦ * НДФЛ.Сумма > 0` —
+    // CASE-операнд арифметики, замыкаемой одним сравнением; фаза 6.16.74).
+    const leadOk =
+      startTok.type === 'punct' &&
+      (COMPARE_OPS.has(startTok.value) ||
+        (allowLeadingArith && (ARITH_ADD.has(startTok.value) || ARITH_MUL.has(startTok.value))));
+    if (!leadOk) return undefined;
     const from = startTok.pos;
     let to = from;
     let depth = 0;
