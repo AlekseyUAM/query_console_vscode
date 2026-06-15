@@ -3,7 +3,14 @@ import { defaultTableAlias, accountingPositionKeys } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns, unionHasTabSection, orderedSelectElements, elementAlias, type UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic, canonicalizeComparisonOperands } from './exprFormatter';
+import { parseDocument } from './sdblParser';
+import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic, canonicalizeComparisonOperands, setInlineSubqueryReflow } from './exprFormatter';
+
+// Регистрируем в exprFormatter канонический ре-рендер инлайн-подзапроса членства
+// (`Поле В (ВЫБРАТЬ …)` в листе ГДЕ/ПО/ИМЕЮЩИЕ): exprFormatter не может импортировать
+// генератор (цикл), поэтому передаём реализацию через хук. Лист печатается без отступа
+// строки 0 (его добавит булев принтер), `(ВЫБРАТЬ` — на subBase. Фаза 6.16.
+setInlineSubqueryReflow((text, subBase) => reflowInlineMembershipSubquery(text, 0, subBase, ''));
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -292,6 +299,19 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
     // лист-CASE на отступе строки параметра (КОНЕЦ на base), не подзапрос.
     (/(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(condFirstLine0) ||
       /^ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(condition.trim()));
+  // Чистое условие-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранное ИНЛАЙН: перепарсиваем
+  // внутренний запрос и рендерим канонически (`(ВЫБРАТЬ` на base+1, тело глубже), как
+  // оракул. reindentLeafSubquery инлайн-подзапрос не раскладывает (фаза 6.16).
+  const inlineCond =
+    !hasBool && !isCaseValueParam &&
+    /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(condition)
+      ? reflowInlineMembershipSubquery(condition.trim(), base, base + 1, '')
+      : null;
+  if (inlineCond) {
+    inlineCond[0] = pad + inlineCond[0].replace(/^\t+/u, '');
+    const head0 = positions.slice(0, -1).map(p => pad + p);
+    return `${fullName}(\n${[...head0, inlineCond.join('\n')].join(',\n')})`;
+  }
   const condText = hasBool
     ? reindentVtCondition(condition.trim(), base)
     : isCaseValueParam
@@ -373,6 +393,100 @@ function splitTopLevelBoolConjuncts(expr: string): { op: string; text: string }[
 }
 
 /**
+ * Конъюнкт-подзапрос членства `LHS [НЕ] В [ИЕРАРХИИ] (ВЫБРАТЬ …)`, записанный
+ * разработчиком ИНЛАЙН (`Поле В (ВЫБРАТЬ … ИЗ …)` на одной строке) либо с
+ * нестандартными переносами, конструктор 1С перекладывает КАНОНИЧЕСКИ: `LHS … В`
+ * на строке конъюнкта, затем `(ВЫБРАТЬ` на отдельной строке (base+2), тело —
+ * глубже. reindentLeafSubquery умеет лишь равномерно сдвигать УЖЕ многострочное
+ * тело и не раскладывает инлайн-подзапрос. Здесь вычленяем текст внутреннего
+ * запроса, парсим его и рендерим тем же путём, что подзапрос условия ГДЕ
+ * (renderConditionSubquery — подавление автопсевдонима, квалификация по имени
+ * источника), получая байт-в-байт каноническую раскладку.
+ *
+ * Возвращает готовый блок строк или null, если конъюнкт не распознан как
+ * инлайн-членство (тогда вызывающий идёт прежним путём). `prefix` — префикс
+ * оператора конъюнкта (`И `/`ИЛИ `/``), `ind` — отступ строки конъюнкта,
+ * `subBase` — отступ строки `(ВЫБРАТЬ` (обычно base+2).
+ */
+function reflowInlineMembershipSubquery(
+  text: string,
+  ind: number,
+  subBase: number,
+  prefix: string
+): string[] | null {
+  // Ведущие `НЕ` листа: каждое сдвигает блок подзапроса на +1 (геометрия 1С, как в
+  // reindentLeafSubquery). Считаем их и НЕ ищем в них оператор `В`.
+  const neMatch = /^((?:НЕ\s+)+)/iu.exec(text);
+  const neCount = neMatch ? (neMatch[1].match(/НЕ/giu) ?? []).length : 0;
+  subBase += neCount;
+  // Находим верхнеуровневый оператор `В`/`В ИЕРАРХИИ` (вне скобок/строк), за которым
+  // сразу открывается подзапрос `(ВЫБРАТЬ …)`.
+  const n = text.length;
+  let depth = 0, inStr = false;
+  const isWord = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  for (let i = 0; i < n; i++) {
+    const ch = text[i];
+    if (inStr) { if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '(') { depth++; continue; }
+    if (ch === ')') { depth--; continue; }
+    if (depth !== 0) continue;
+    // Слово `В` на верхнем уровне.
+    if ((ch === 'В' || ch === 'в') && !isWord(text[i - 1]) && !isWord(text[i + 1])) {
+      let j = i + 1;
+      // Опциональный модификатор ` ИЕРАРХИИ`.
+      const restUp = text.slice(j).replace(/^\s+/u, '').toUpperCase();
+      let hier = '';
+      if (restUp.startsWith('ИЕРАРХИИ') && !isWord(restUp[8])) {
+        hier = ' ИЕРАРХИИ';
+        const m = /^\s+ИЕРАРХИИ/iu.exec(text.slice(j));
+        if (m) j += m[0].length;
+      }
+      // Пропускаем пробелы до открывающей скобки.
+      while (j < n && /\s/u.test(text[j])) j++;
+      if (text[j] !== '(') return null;
+      // Содержимое скобки начинается с ВЫБРАТЬ?
+      const afterParen = text.slice(j + 1).replace(/^\s+/u, '');
+      if (!/^ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(afterParen)) return null;
+      // Парная закрывающая скобка.
+      let d2 = 0, inS2 = false, close = -1;
+      for (let k = j; k < n; k++) {
+        const c2 = text[k];
+        if (inS2) { if (c2 === '"') inS2 = false; continue; }
+        if (c2 === '"') { inS2 = true; continue; }
+        if (c2 === '(') d2++;
+        else if (c2 === ')') { d2--; if (d2 === 0) { close = k; break; } }
+      }
+      if (close < 0) return null;
+      // Хвост после закрытия подзапроса (напр. ` И …`) — не наш случай (составное
+      // условие; пусть его раскладывает прежний путь поконъюнктно).
+      if (text.slice(close + 1).trim() !== '') return null;
+      const lhs = text.slice(0, i).trim();
+      const innerText = text.slice(j + 1, close);
+      // Узкий гейт: ре-рендерим только НЕКАНОНИЧНО набранные подзапросы, которые
+      // reindentLeafSubquery (равномерный сдвиг авторских строк) НЕ способен разложить:
+      //   • тело целиком на одной строке (инлайн), либо
+      //   • секция `ИЗ` склеена с источником на одной строке (`ИЗ Имя …`).
+      // Канонично набранное тело (каждая секция/поле — на своей строке, `ИЗ` отдельной
+      // строкой) reindentLeafSubquery сдвигает байт-в-байт (сохраняя геометрию пустых
+      // строк-разделителей и скобок ПО, где канонический ре-рендер расходится с
+      // оракулом) — такие подзапросы НЕ трогаем.
+      const isCanonical =
+        innerText.includes('\n') &&
+        !/(?:^|[^\p{L}\p{N}_])ИЗ[ \t]+\S/u.test(innerText);
+      if (isCanonical) return null;
+      let doc: QueryDocument;
+      try { doc = parseDocument(innerText); }
+      catch { return null; }
+      const block = renderConditionSubquery(doc, subBase).split('\n');
+      const head = '\t'.repeat(ind) + prefix + lhs + ' В' + hier;
+      return [head, ...block];
+    }
+  }
+  return null;
+}
+
+/**
  * СОСТАВНОЕ условие виртуальной таблицы (И/ИЛИ) — фаза 6.16.4. Разбираем
  * поконъюнктно: конъюнкт 0 на base, каждый следующий `И`/`ИЛИ` на base+1. Случаи,
  * на которых пасуют reindentLeafBool (стоп по `ВЫБРАТЬ`) и reindentLeafSubquery
@@ -400,7 +514,19 @@ function reindentVtCondition(condition: string, base: number): string {
     // flattenMultilineLeaf не трогает конъюнкт с подзапросом (`В (ВЫБРАТЬ …)`) и ВЫБОР
     // — они раскладываются по строкам ниже своими ветками.
     if (c.text.includes('\n')) c = { ...c, text: flattenMultilineLeaf(c.text) };
-    if (c.text.includes('\n') && /\(ВЫБРАТЬ/u.test(c.text)) {
+    // Конъюнкт-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранный разработчиком ИНЛАЙН
+    // (подзапрос целиком на одной строке): reindentLeafSubquery умеет лишь сдвигать
+    // уже многострочное тело, инлайн он не раскладывает. Перепарсиваем внутренний
+    // запрос и рендерим канонически (`(ВЫБРАТЬ` на base+2, тело глубже). Гейтим узко:
+    // подзапрос ИНЛАЙН (`В (ВЫБРАТЬ` подряд) и закрывается в конце конъюнкта — иначе
+    // прежний путь (фаза 6.16).
+    const inlineReflow =
+      /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(c.text)
+        ? reflowInlineMembershipSubquery(c.text, ind, base + 2, prefix)
+        : null;
+    if (inlineReflow) {
+      out.push(...inlineReflow);
+    } else if (c.text.includes('\n') && /\(\s*\n\s*ВЫБРАТЬ(?![\p{L}\p{N}_])|\(ВЫБРАТЬ/u.test(c.text)) {
       const r = reindentLeafSubquery(c.text, base + 2).split('\n');
       r[0] = '\t'.repeat(ind) + prefix + r[0].replace(/^\t+/u, '');
       out.push(...r);
@@ -564,7 +690,18 @@ function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number, 
   // строку (правило 6.15.3, для ПО — фаза 6.15.5); стоп-условия (ВЫБРАТЬ/ВЫБОР/
   // И/ИЛИ/`{`) оставляют текст как есть. Лист с подзапросом (`X В\n(ВЫБРАТЬ …)`)
   // перебазируется на base+2 = 4+depth (фаза 6.15.9, MCP).
-  let body = reindentLeafSubquery(flattenMultilineLeaf(expr.trim()), 4 + depth);
+  const flatExpr = flattenMultilineLeaf(expr.trim());
+  // Лист-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранный ИНЛАЙН: канонический ре-рендер
+  // подзапроса (`(ВЫБРАТЬ` на 4+depth, тело глубже), как оракул. reindentLeafSubquery
+  // инлайн не раскладывает. Обёртка `(…)` конъюнкта добавляется ниже (фаза 6.16).
+  const inlineConj =
+    /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(flatExpr)
+      ? reflowInlineMembershipSubquery(flatExpr, 0, 4 + depth, '')
+      : null;
+  if (inlineConj) {
+    return appendIsNotNullTrailingSpace('(' + inlineConj.join('\n') + ')');
+  }
+  let body = reindentLeafSubquery(flatExpr, 4 + depth);
   // Сравнение с ОДИНОЧНЫМ многострочным CASE в правой части (`поле = ВЫБОР … КОНЕЦ`):
   // конструктор раскладывает CASE на отступе КОНКРЕТНОГО конъюнкта (КОНЕЦ на
   // отступе строки конъюнкта = caseEndBase, КОГДА на +1), а НЕ сохраняет табы

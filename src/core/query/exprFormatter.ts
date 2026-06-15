@@ -19,6 +19,18 @@ export type ExprSlot = 'where' | 'having' | 'join' | 'select';
 
 const TAB = '\t';
 
+/**
+ * Хук канонического ре-рендера ИНЛАЙН-подзапроса членства (`Поле В (ВЫБРАТЬ … ИЗ …)`).
+ * Реализация живёт в генераторе (parseDocument + renderConditionSubquery) — импортировать
+ * её сюда нельзя (циклическая зависимость), поэтому генератор регистрирует её через
+ * `setInlineSubqueryReflow`. Принимает текст листа и целевой отступ строки `(ВЫБРАТЬ`,
+ * возвращает массив строк или null (если лист не распознан как инлайн-членство).
+ */
+let inlineSubqueryReflow: ((text: string, subBase: number) => string[] | null) | null = null;
+export function setInlineSubqueryReflow(fn: (text: string, subBase: number) => string[] | null): void {
+  inlineSubqueryReflow = fn;
+}
+
 // --- Нормализация регистра ключевых слов в листьях (фаза 6.12) ---------------
 //
 // Конструктор 1С приводит к ВЕРХНЕМУ регистру РАСПОЗНАННЫЕ имена функций,
@@ -3536,6 +3548,18 @@ function renderBool(
       t = stripRedundantLeafParens(t);
       // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении — в скобках (фаза 6.15.12).
       t = wrapBareCastOperand(t);
+      // Лист-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранный ИНЛАЙН (подзапрос на одной
+      // строке): reindentLeafSubquery умеет лишь сдвигать УЖЕ многострочное тело, инлайн
+      // он не раскладывает. Через хук генератора перепарсиваем внутренний запрос и
+      // рендерим канонически (`(ВЫБРАТЬ` на subBase, тело глубже). Гейт узкий: `В (ВЫБРАТЬ`
+      // подряд (инлайн) и хук распознал лист (иначе — прежний путь). Фаза 6.16.
+      if (
+        inlineSubqueryReflow &&
+        /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(t)
+      ) {
+        const reflowed = inlineSubqueryReflow(t, subInd ?? ind + subDelta(orLvl, ctx));
+        if (reflowed) return reflowed;
+      }
       // Подзапрос внутри листа — перебазировка на контекстный отступ (фаза 6.15.9).
       const rebased = reindentLeafSubquery(t, subInd ?? ind + subDelta(orLvl, ctx));
       // Вложенный в лист ВЫБОР (`(ВЫБОР …)`, `СУММА(ВЫБОР …)`) — КОНЕЦ на E,
@@ -4230,6 +4254,16 @@ function renderJoinConjunct(node: Node, ind: number, ctx: RenderCtx, orLvl: numb
       // одну строку. flattenMultilineLeaf сам пропускает листья с подзапросом
       // (ВЫБРАТЬ), вложенным ВЫБОР и булевым оператором — их геометрию не трогаем.
       const flat = flattenMultilineLeaf(node.text);
+      // Лист-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранный ИНЛАЙН: канонический ре-рендер
+      // подзапроса через хук генератора (`(ВЫБРАТЬ` на том же отступе, что и обычный
+      // подзапрос конъюнкта ПО). reindentLeafSubquery инлайн не раскладывает (фаза 6.16).
+      if (
+        inlineSubqueryReflow &&
+        /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(flat)
+      ) {
+        const reflowed = inlineSubqueryReflow(flat, ind + subDelta(orLvl, ctx));
+        if (reflowed) return reflowed;
+      }
       // Подзапрос конъюнкта ПО — на base+2 для любого конъюнкта: первый (ind=base,
       // orLvl=0 → +2) и И-конъюнкт (ind=base+1, orLvl=1 → +1) дают один отступ (MCP).
       // Вложенный в лист ВЫБОР (`(ВЫБОР …)`) — КОНЕЦ на ind + число обрамляющих
