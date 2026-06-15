@@ -338,7 +338,17 @@ function qualifyExpression(raw: string, ctx: OwnerContext): string {
     // метаданным (X — реальное поле источника), иначе это может быть нераспознанный
     // префикс типа или коррелированный псевдоним из внешней области.
     const hasDotAfter = next && next.type === 'punct' && next.value === '.';
-    if (hasDotAfter && TYPE_PREFIXES.has(word)) continue; // Справочник.X — тип
+    // Голова — слово-омоним префикса типа метаданных (`Документ`, `Справочник`, …),
+    // НО при этом ПОДТВЕРЖДЁННОЕ по метаданным поле источника (`СтатусыДокументовЕГАИС`
+    // несёт реквизит `Документ`): это голое поле-путь (`Документ.Грузоотправитель`),
+    // а не префикс типа — квалифицируем. Реальные префиксы типа (`Справочник.X` в
+    // ЗНАЧЕНИЕ/ТИП/ССЫЛКА) уже отсечены выше (metaCallDepths / оператор ССЫЛКА), а
+    // совпадение `Документ`/… с полем источника проверяется по составу колонок.
+    // После оператора `ССЫЛКА` идёт ИМЯ ТИПА (`… ССЫЛКА Документ.ТТНИсходящаяЕГАИС`),
+    // даже если слово-омоним совпадает с полем источника — не квалифицируем.
+    const afterRefOp = prevV === 'ССЫЛКА';
+    const isSourceField = !afterRefOp && ctx.sources.filter(s => s.fields?.has(word)).length === 1;
+    if (hasDotAfter && TYPE_PREFIXES.has(word) && !isSourceField) continue; // Справочник.X — тип
 
     const alias = ownerAlias(ctx, t.text ?? t.value, !!hasDotAfter);
     if (alias === undefined) continue;

@@ -1946,6 +1946,9 @@ function isNameToken(t: Token | undefined): boolean {
 interface SoleSource {
   id: string;
   alias: string;
+  /** Полное имя источника-таблицы (`Документ.ДокументЭДОБЗК`) — для снятия его
+   * ведущего префикса из голого пути поля (`Документ.ДокументЭДОБЗК.Поле` → `Поле`). */
+  fullName?: string;
 }
 
 /**
@@ -2020,7 +2023,7 @@ function soleSourceOf(tables: SelectedTable[], joins: RawJoin[]): SoleSource | u
   if (tables.length !== 1) return undefined;
   const t = tables[0];
   if (!t.alias) return undefined;
-  return { id: t.id, alias: t.alias };
+  return { id: t.id, alias: t.alias, fullName: t.fullName };
 }
 
 /** Литералы-значения, которые НЕ являются голыми полями (одиночный токен). */
@@ -2085,7 +2088,11 @@ function bareLhsRef(
 ): { tableId: string; path: string } | undefined {
   const bare = tryBareField(lhs, aliasToId);
   if (!bare) return undefined;
-  return { tableId: soleSource.id, path: bare.path };
+  // Ведущие сегменты, дословно равные полному имени источника-таблицы
+  // (`Документ.ДокументЭДОБЗК.Поле`), — это ссылка НА таблицу, а не часть пути поля:
+  // снимаем их (генератор печатает `<псевдоним>.<остаток>`, иначе была бы двойная
+  // квалификация `Документ.ДокументЭДОБЗК.Документ.ДокументЭДОБЗК.Поле`).
+  return { tableId: soleSource.id, path: stripOwnerFullName(bare.path, soleSource.fullName) };
 }
 
 // ───────────────────────────── ГДЕ (WHERE) ─────────────────────────────
@@ -2517,6 +2524,15 @@ function trySimpleCondition(
   // единственного источника. RHS проходит ту же обработку, что произвольное
   // выражение: нормализация написания псевдонимов + квалификация голых полей
   // при единственном источнике (`Вал.Код > Наименование` → `… > Вал.Наименование`).
+  // Голый МНОГОСЕГМЕНТНЫЙ LHS (`X.Y …`, голова `X` не объявленный псевдоним) при
+  // НЕ-параметрическом RHS — это либо путь поля источника (`Ссылка.Владелец`), либо
+  // КОРРЕЛИРОВАННАЯ ссылка на объемлющий запрос (`ВнешнийПсевдоним.Поле`) во
+  // вложенном подзапросе. Различить можно только метаданными + областью видимости
+  // объемлющих запросов — это умеет пост-разбор-пасс `qualifyBareFields`. Поэтому НЕ
+  // навешиваем здесь жадно псевдоним единственного источника (иначе двойная
+  // квалификация `Алиас.ВнешнийПсевдоним.Поле`); отдаём сегмент как произвольное
+  // выражение, которое пост-пасс квалифицирует с полным контекстом (фаза 6.17.x).
+  if (!direct && ref.path.includes('.')) return undefined;
   const lhsAlias = direct
     ? (aliasSpelling?.get(lhs[0].text.toUpperCase()) ?? lhs[0].text)
     : soleSource!.alias;
