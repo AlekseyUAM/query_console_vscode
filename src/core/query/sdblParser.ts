@@ -4290,5 +4290,10 @@ function augmentResolverWithTempTables(
     // Виртуальный слой пробрасываем как есть — ВТ виртуальных таблиц не имеют.
     virtualTableByFullName: (fullName: string): MetaTable | undefined =>
       base?.virtualTableByFullName?.(fullName),
+    // Канонизация ИМЕНИ источника-ВТ к написанию её определения `ПОМЕСТИТЬ <имя>`
+    // (фаза 6.16.76): `ВтВзносыБезОкругления`→`ВТВзносыБезОкругления`. ВТ
+    // нечувствительны к регистру; реестр хранит каноническое имя из определения.
+    canonicalFullName: (fullName: string): string | undefined =>
+      tempTables.get(fullName.toUpperCase())?.name ?? base?.canonicalFullName?.(fullName),
   };
 }

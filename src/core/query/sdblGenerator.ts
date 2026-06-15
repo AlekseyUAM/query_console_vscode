@@ -3,7 +3,7 @@ import { defaultTableAlias, accountingPositionKeys } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns, unionHasTabSection, orderedSelectElements, elementAlias, type UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic } from './exprFormatter';
+import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic, canonicalizeComparisonOperands } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -554,7 +554,9 @@ function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number):
   // ВАЖНО: в `ПО` конструктор СОХРАНЯЕТ прочие избыточные скобки (`(ВЫРАЗИТЬ(…)) = X`),
   // поэтому общий stripRedundantLeafParens здесь неприменим — снимаем строго пару
   // вокруг операнда ведущего `НЕ` (фаза 6.16.59).
-  return `(${normalizeLeafCase(stripLeadingNotOperandParens(body))})`;
+  // Квирк `… ЕСТЬ НЕ NULL )` (один пробел перед закрывающей скобкой группы) — после
+  // обёртки конъюнкта в `(…)` (фаза 6.16.76, корпус ВедомостьНаВыплатуЗарплаты).
+  return appendIsNotNullTrailingSpace(`(${normalizeLeafCase(stripLeadingNotOperandParens(body))})`);
 }
 
 /**
@@ -1996,7 +1998,9 @@ function buildConditionStrings(
       // прежняя `subBase − 1` (ГДЕ: 2, ИМЕЮЩИЕ/В-подзапрос: 1), байт-в-байт.
       const leadsWithNot = /^НЕ(?![\p{L}\p{N}_])/u.test(flattenMultilineLeaf(expr).trimStart());
       const caseBaseLeaf = subBase - 1 + (leadsWithNot ? 1 : 0);
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(flattenMultilineLeaf(expr), subBase), caseBaseLeaf, true))))))));
+      // Канонизация операндов сравнения (`&П = Поле` → `Поле = &П`) в ГДЕ/ИМЕЮЩИЕ —
+      // только для простого листа-сравнения (не formatExpression, не ПО). Фаза 6.16.76.
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(canonicalizeComparisonOperands(flattenMultilineLeaf(expr)), subBase), caseBaseLeaf, true))))))));
       continue;
     }
     // Нессылочный левый операнд `В`-подзапроса (`1 В (ВЫБРАТЬ …)`, фаза 6.15.27):

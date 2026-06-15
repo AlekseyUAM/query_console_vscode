@@ -147,9 +147,14 @@ export function leafHasCase(raw: string): boolean {
  */
 const EST_NE_NULL_EOL_RE = /(^|[^\p{L}\p{N}_])ЕСТЬ\s+НЕ\s+NULL$/u;
 const EST_NE_NULL_KAK_RE = /((?:^|[^\p{L}\p{N}_])ЕСТЬ\s+НЕ\s+NULL) (КАК[\s(])/gu;
+// `… ЕСТЬ НЕ NULL )` перед ЗАКРЫВАЮЩЕЙ скобкой группы — тот же квирк: один лишний
+// пробел после NULL сохраняется (`(Поле ЕСТЬ НЕ NULL )`). Фаза 6.16.76, корпус.
+const EST_NE_NULL_PAREN_RE = /((?:^|[^\p{L}\p{N}_])ЕСТЬ\s+НЕ\s+NULL)\)/gu;
 function appendIsNotNullToLine(line: string): string {
   // `… ЕСТЬ НЕ NULL КАК Алиас` → один лишний пробел перед `КАК` (двойной пробел).
-  const out = line.replace(EST_NE_NULL_KAK_RE, '$1  $2');
+  let out = line.replace(EST_NE_NULL_KAK_RE, '$1  $2');
+  // `… ЕСТЬ НЕ NULL)` → один пробел перед закрывающей скобкой (`ЕСТЬ НЕ NULL )`).
+  out = out.replace(EST_NE_NULL_PAREN_RE, '$1 )');
   // `… ЕСТЬ НЕ NULL` на конце строки → один хвостовой пробел.
   return EST_NE_NULL_EOL_RE.test(out) ? out + ' ' : out;
 }
@@ -736,7 +741,92 @@ export function splitInlineLeafCase(text: string): string {
   return out;
 }
 
+/**
+ * Снимает ИЗБЫТОЧНУЮ группирующую пару скобок, обёрнутую ровно вокруг ОДНОГО
+ * вызова-функции (`ЕСТЬNULL((СУММА(ВЫБОР…)) - (СУММА(ВЫБОР…)), 0)` →
+ * `ЕСТЬNULL(СУММА(ВЫБОР…) - СУММА(ВЫБОР…), 0)`) — конструктор 1С такую обёртку
+ * убирает (вызов функции атомарен, скобки приоритета не несут), и делает это даже
+ * для МНОГОСТРОЧНОГО листа, где stripRedundantLeafParens (однострочный) не работает.
+ *
+ * Пара `( ИДЕНТ ( … ) )` снимается ТОЛЬКО когда:
+ *   - левый сосед открывающей скобки НЕ открывает вызов (isCallOpenContext) — т.е.
+ *     это группировка, а не аргумент-скобка самой функции (`ВНЕШ(ВНУТР(x))` не трогаем);
+ *   - сразу за `(` идёт идентификатор/слово-функция, затем `(`, и закрытие этого
+ *     внутреннего вызова приходится РОВНО на токен перед внешним `)` (т.е. содержимое
+ *     внешней пары — единственный вызов и ничего больше).
+ * Переводы строк сохраняются (заменяем только символы скобок пробелом и подчищаем
+ * прилегающие пробелы, не трогая `\n`). Фаза 6.16.76, MCP-проба оракула.
+ */
+export function stripRedundantCallWrapParens(text: string): string {
+  if (!text.includes('(')) return text;
+  let toks: Token[];
+  try {
+    toks = tokenize(text);
+  } catch {
+    return text;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  const match = new Map<number, number>();
+  const stack: number[] = [];
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (t.type === 'punct' && t.value === '(') stack.push(i);
+    else if (t.type === 'punct' && t.value === ')') {
+      const o = stack.pop();
+      if (o === undefined) return text;
+      match.set(o, i);
+    }
+  }
+  if (stack.length) return text;
+
+  const isOpen = (t: Token | undefined): boolean => !!t && t.type === 'punct' && t.value === '(';
+  const drop = new Set<number>();
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (!(t.type === 'punct' && t.value === '(')) continue;
+    if (drop.has(i)) continue;
+    const close = match.get(i)!;
+    const prev = i > 0 ? sig[i - 1] : undefined;
+    const nx = close + 1 < sig.length ? sig[close + 1] : undefined;
+    // Левый сосед открывает вызов (`func(`) — это аргумент-скобка функции, не группировка.
+    if (isCallOpenContext(prev)) continue;
+    // Сосед-сравнение/предикат — оракул скобки вокруг ОПЕРАНДА сравнения СОХРАНЯЕТ
+    // (`(ВЫРАЗИТЬ(…)) = &П`, `Сумма < (ВЫРАЗИТЬ(…))`). Снимаем лишь в арифм./арг-контексте.
+    const isCmpOrPred = (t: Token | undefined): boolean =>
+      !!t && ((t.type === 'punct' && COMPARISON_PUNCT_SET.has(t.value)) ||
+        ((t.type === 'keyword' || t.type === 'ident') && PRED_NEIGHBOR_WORDS.has(t.value.toUpperCase())));
+    if (isCmpOrPred(prev) || isCmpOrPred(nx)) continue;
+    // Содержимое: вызов АГРЕГАТА (СУММА/КОЛИЧЕСТВО/…) + `(` … `)`, и закрытие == close-1.
+    // Оракул снимает лишнюю обёртку лишь вокруг агрегата; вокруг ВЫРАЗИТЬ/др. — СОХРАНЯЕТ
+    // (`ЕСТЬNULL((ВЫРАЗИТЬ(…))`, `-(ВЫРАЗИТЬ(…))`, `(ВЫРАЗИТЬ(…)) - ВЫБОР` остаются).
+    const a = sig[i + 1];
+    const b = sig[i + 2];
+    if (!a || !AGGREGATE_WORDS.has(a.value.toUpperCase())) continue;
+    if (!isOpen(b)) continue;
+    const callClose = match.get(i + 2);
+    if (callClose === undefined || callClose !== close - 1) continue;
+    drop.add(i);
+    drop.add(close);
+  }
+  if (!drop.size) return text;
+
+  const positions: number[] = [];
+  for (const idx of drop) positions.push(sig[idx].pos);
+  positions.sort((a, b) => b - a);
+  let out = text;
+  for (const p of positions) {
+    out = out.slice(0, p) + ' ' + out.slice(p + 1);
+  }
+  // Подчистка прилегающих к снятым скобкам пробелов — только горизонтальных (не \n).
+  return out
+    .replace(/\( +/g, '(')
+    .replace(/ +\)/g, ')');
+}
+
 export function reindentLeafCase(text: string, base: number, funcParenDepth = false): string {
+  // Снимаем избыточную группировку вокруг одиночного вызова (`ЕСТЬNULL((СУММА(…))`),
+  // прежде чем считать геометрию CASE — иначе лишняя `(` сдвинула бы отступ (6.16.76).
+  text = stripRedundantCallWrapParens(text);
   // Инлайн-CASE (весь `ВЫБОР … КОНЕЦ` в одну строку, либо `КОГДА … ТОГДА` склеены)
   // предразбиваем на структурные строки, чтобы дальнейшая геометрия его разложила
   // (фаза 6.16.71). На многострочном каноне сплит идемпотентен (переводы уже стоят).
@@ -1591,9 +1681,10 @@ export function canonicalizeLeafLexemes(raw: string): string {
     for (const r of repls) out = out.slice(0, r.pos) + r.to + out.slice(r.pos + r.len);
   }
 
-  // 3) x НЕ В (…) → НЕ x В (…). Срабатывает только на однострочном листе-сравнении
-  //    (без переносов): ищем `НЕ`, за которым непосредственно следует оператор `В`,
-  //    при наличии операнда слева. Переносим `НЕ ` в начало операнда (= начало листа).
+  // 3) x НЕ В (…) → НЕ x В (…), а также x НЕ ПОДОБНО y → НЕ x ПОДОБНО y. Срабатывает
+  //    только на однострочном листе-сравнении (без переносов): ищем `НЕ`, за которым
+  //    непосредственно следует оператор членства `В` или `ПОДОБНО`, при наличии
+  //    операнда слева. Переносим `НЕ ` в начало операнда (= начало листа). Фаза 6.16.76.
   if (!out.includes('\n')) {
     let toks2: Token[];
     try {
@@ -1606,7 +1697,8 @@ export function canonicalizeLeafLexemes(raw: string): string {
       const t = sig2[k];
       if (!isW(t) || upOf(t) !== 'НЕ') continue;
       const nx = sig2[k + 1];
-      const isVOp = !!nx && nx.type === 'keyword' && upOf(nx) === 'В';
+      const nxU = nx ? upOf(nx) : '';
+      const isVOp = !!nx && nx.type === 'keyword' && (nxU === 'В' || nxU === 'ПОДОБНО');
       if (!isVOp) continue;
       // Операнд — всё от начала листа до токена `НЕ` (лист атомарен: верхнеуровневых
       // булевых операторов в нём нет, они расщепляются раньше).
@@ -1621,6 +1713,58 @@ export function canonicalizeLeafLexemes(raw: string): string {
   }
 
   return out;
+}
+
+/**
+ * Канонизация операндов сравнения для слотов ГДЕ/ИМЕЮЩИЕ: ПАРАМЕТР/ЛИТЕРАЛ слева,
+ * ПОЛЕ справа — конструктор печатает поле слева, параметр/литерал справа
+ * (`&П = Поле` → `Поле = &П`, `5 < Поле.Сумма` → `Поле.Сумма > 5`). По всему
+ * golden-корпусу параметр/литерал НИКОГДА не остаётся слева от сравнения с полем
+ * (param-on-right=16, param-on-left=0). НЕ применяется к слоту ПО — там конструктор
+ * порядок операндов СОХРАНЯЕТ (`ПО (&П = Поле)`).
+ *
+ * Срабатывает СТРОГО на однострочном листе РОВНО из `операнд ОП поле`, где:
+ *   - левый операнд — ОДИН токен: `&параметр` ИЛИ литерал (строка/число/дата);
+ *   - оператор — сравнение `= <> < > <= >=` (оператор зеркалится: `<`↔`>`, `<=`↔`>=`);
+ *   - правый операнд — путь-поле `ИДЕНТ(.ИДЕНТ)*`, причём НЕ литерал-ключевое слово
+ *     (`ЛОЖЬ`/`ИСТИНА`/`НЕОПРЕДЕЛЕНО`/`NULL` остаются справа — это не поле).
+ * Фаза 6.16.76.
+ */
+const CMP_MIRROR: Record<string, string> = { '<': '>', '>': '<', '<=': '>=', '>=': '<=', '=': '=', '<>': '<>' };
+const LITERAL_KEYWORDS = new Set(['ЛОЖЬ', 'ИСТИНА', 'НЕОПРЕДЕЛЕНО', 'NULL']);
+export function canonicalizeComparisonOperands(raw: string): string {
+  if (!raw || raw.includes('\n')) return raw;
+  let toks: Token[];
+  try {
+    toks = tokenize(raw);
+  } catch {
+    return raw;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length < 3) return raw;
+  const lhs = sig[0];
+  const op = sig[1];
+  const isLit = lhs.type === 'param' || lhs.type === 'string' ||
+    lhs.type === 'number' || lhs.type === 'date';
+  const isCmpOp = op.type === 'punct' && COMPARISON_PUNCT_SET.has(op.value);
+  if (!isLit || !isCmpOp) return raw;
+  // Правый операнд (от sig[2] до конца) — путь-поле: ИДЕНТ, далее чередование `.ИДЕНТ`.
+  for (let k = 2; k < sig.length; k++) {
+    const tk = sig[k];
+    if ((k - 2) % 2 === 0) {
+      if (tk.type !== 'ident' && tk.type !== 'keyword') return raw;
+      // Литерал-слово (ЛОЖЬ/ИСТИНА/НЕОПРЕДЕЛЕНО/NULL) — это НЕ поле; лексер метит его
+      // как ident, поэтому проверяем по значению независимо от типа токена.
+      if (k === 2 && sig.length === 3 && LITERAL_KEYWORDS.has((tk.text ?? tk.value).toUpperCase())) return raw;
+    } else if (!(tk.type === 'punct' && tk.value === '.')) {
+      return raw;
+    }
+  }
+  if ((sig.length - 2) % 2 !== 1) return raw; // RHS не должен заканчиваться точкой
+  const rhsText = raw.slice(sig[2].pos).replace(/\s+$/u, '');
+  const lhsText = lhs.text ?? lhs.value;
+  const opText = CMP_MIRROR[op.value] ?? op.value;
+  return `${rhsText} ${opText} ${lhsText}`;
 }
 
 // --- Переотрисовка арифметики листа (фаза 6.15.11a) -------------------------
