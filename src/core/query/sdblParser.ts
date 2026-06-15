@@ -63,6 +63,7 @@ import { wrapTabSectionAggregates } from './wrapTabSectionAggregates';
 import { dropUserIBConditions } from './dropUserIBConditions';
 import { qualifyBareFields, qualifyBareSectionFields, setSubqueryParser } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
+import { canonicalizeFieldCasing } from './canonicalizeFieldCasing';
 
 // Инжектируем разборщик подзапросов в пасс квалификации голых полей (для подзапросов,
 // встроенных в СЫРЫЕ выражения условий/полей), избегая циклического импорта.
@@ -3894,6 +3895,10 @@ export function parseDocument(text: string, resolver?: MetadataResolver): QueryD
         if (canon && canon !== t.fullName) t.fullName = canon;
       }
     }
+    // Канонизация РЕГИСТРА сегментов пути поля по метаданным (фаза 6.16.66):
+    // `ДоНачислено`→`Доначислено`, `ШтрихКод`→`Штрихкод`. После канонизации имени
+    // источника, до автопсевдонимов (склейка сегментов берёт канонический регистр).
+    canonicalizeFieldCasing(model, resolver);
     // Развёртка `*` по метаданным (фаза 6.15.15): до назначения автопсевдонимов
     // `ПолеN`, чтобы развёрнутые/удалённые звёзды не получали лишний `Поле1`.
     expandStarFields(model, resolver);

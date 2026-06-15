@@ -124,7 +124,13 @@ class ResolveCtx {
       const field = findField(cur, segs[i]);
       if (!field) return 'unknown';
       const ref = firstRef(field);
-      if (i === segs.length - 1) return ref !== undefined ? 'reference' : 'scalar';
+      // 6.16.66: синтетические колонки ВТ (`registerTempTables`) не несут типов
+      // (`types: []`) — нессылочность НЕ доказана, `.*` консервативно сохраняем.
+      // Реальный нессылочный реквизит (`Код`) имеет непустой `types` без `ref`.
+      if (i === segs.length - 1) {
+        if (ref !== undefined) return 'reference';
+        return field.types.length === 0 ? 'unknown' : 'scalar';
+      }
       if (!ref) return 'scalar';         // навигация через нессылочное — невозможна
       cur = this.resolver.tableByFullName(`${ref.kind}.${ref.name}`);
     }
