@@ -2892,7 +2892,15 @@ function renderBool(
       return renderCaseE(node, caseE, ctx);
     }
     case 'leaf': {
-      let t = ctx.stripNotParens ? stripNotFieldParens(stripNegatedFieldParens(node.text)) : node.text;
+      // Внутриконъюнктный разрыв разработчика (фаза 6.16.72): разработчик разорвал
+      // ОДИН конъюнкт по границе оператора (`Поле <>` + RHS `ЗНАЧЕНИЕ(…)` на след.
+      // строке) или развернул список значений `В (\n a,\n b)` — конструктор 1С
+      // сшивает оператор+RHS (список значений) обратно в ОДНУ строку перед раскладкой
+      // отступов. Лист здесь — уже отдельный конъюнкт (верхнеуровневые И/ИЛИ его
+      // расщепили), поэтому flattenMultilineLeaf безопасен: он сам отказывается
+      // сплющивать лист с подзапросом (ВЫБРАТЬ), вложенным ВЫБОР или булевым
+      // оператором на любой глубине — их многострочную геометрию не трогаем.
+      let t = ctx.stripNotParens ? stripNotFieldParens(stripNegatedFieldParens(flattenMultilineLeaf(node.text))) : flattenMultilineLeaf(node.text);
       // Снятие избыточных скобок вокруг операндов булева/предикатного слоя (как оракул):
       // `НЕ (Поле В (…))` → `НЕ Поле В (…)`, `(Поле ЕСТЬ NULL)` → `Поле ЕСТЬ NULL`,
       // `Поле = (&П)` → `Поле = &П`. Применяем во всех булевых слотах (лист — полный
@@ -3451,12 +3459,18 @@ export function formatJoinConjunct(raw: string, first: boolean, base = 2): strin
  */
 function renderJoinConjunct(node: Node, ind: number, ctx: RenderCtx, orLvl: number): string[] {
   switch (node.kind) {
-    case 'leaf':
+    case 'leaf': {
+      // Внутриконъюнктный разрыв разработчика (фаза 6.16.72): оператор+RHS (или
+      // развёрнутый список `В (\n a,\n b)`) одного конъюнкта ПО конструктор сшивает в
+      // одну строку. flattenMultilineLeaf сам пропускает листья с подзапросом
+      // (ВЫБРАТЬ), вложенным ВЫБОР и булевым оператором — их геометрию не трогаем.
+      const flat = flattenMultilineLeaf(node.text);
       // Подзапрос конъюнкта ПО — на base+2 для любого конъюнкта: первый (ind=base,
       // orLvl=0 → +2) и И-конъюнкт (ind=base+1, orLvl=1 → +1) дают один отступ (MCP).
       // Вложенный в лист ВЫБОР (`(ВЫБОР …)`) — КОНЕЦ на ind + число обрамляющих
       // скобок перед ВЫБОР (фаза 6.15.9b).
-      return reindentLeafCase(reindentLeafSubquery(node.text, ind + subDelta(orLvl, ctx)), ind).split('\n');
+      return reindentLeafCase(reindentLeafSubquery(flat, ind + subDelta(orLvl, ctx)), ind).split('\n');
+    }
     case 'case':
       return renderCase(node, ind, ctx, true);
     case 'not': {
