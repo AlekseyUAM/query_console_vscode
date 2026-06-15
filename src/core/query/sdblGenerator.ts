@@ -1175,7 +1175,10 @@ export function renderTabProjection(
   ): string => {
     if (alias !== undefined) return alias;
     if (deepPath && !wasExplicit) return `Поле${pos + 1}`;
-    return fieldName;
+    // Автопсевдоним голой колонки-ПУТИ (`Заказ.Номер`) — сегменты пути склеены без
+    // точек (`ЗаказНомер`): идентификатор не может содержать точку. Оракул печатает
+    // именно склейку; одно-сегментное поле остаётся как есть.
+    return fieldName.replace(/\./g, '');
   };
   const tsExprLines = (expression: string, alias: string | undefined, comma: string): string[] => {
     const rows = formatSelectExpression(expression).split('\n');
@@ -1916,9 +1919,9 @@ function appendMissingGroupRefs(
     if (aggregated.has(`${f.tableId} ${f.path}`)) continue; // агрегат (в grouping.aggregates)
     // КОНСЕРВАТИВНАЯ половина правила (нулевые регрессии): дописываем ТОЛЬКО простые
     // точечные поля выборки. Произвольные выражения (`ЕСТЬNULL(…)`, `ВЫБОР…`,
-    // `ПОДСТРОКА(…)`) конструктор дописывает лишь когда соответствующее ИМ поле НЕ
-    // сгруппировано (полная SQL-семантика GROUP BY) — это отдельный, рискованный
-    // случай, здесь его не реализуем.
+    // `ВЫРАЗИТЬ(…)`) конструктор дописывает по полной SQL-семантике зависимостей
+    // GROUP BY (выражение, зависящее от данных, — да; константа/display-функция —
+    // нет) — слишком рискованно (170 регрессий байт-в-байт), здесь не делаем.
     if (f.expression !== undefined) continue;
     if (f.tableId === '' || f.path === '') continue;
     const ref: FieldRef = { tableId: f.tableId, path: f.path };

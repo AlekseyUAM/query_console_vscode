@@ -131,7 +131,11 @@ class ResolveCtx {
         if (ref !== undefined) return 'reference';
         return field.types.length === 0 ? 'unknown' : 'scalar';
       }
-      if (!ref) return 'scalar';         // навигация через нессылочное — невозможна
+      // Промежуточный сегмент без ссылки: реальное нессылочное поле (есть типы) —
+      // навигация невозможна (`scalar`); синтетическая колонка ВТ с НЕИЗВЕСТНЫМ
+      // составом (`types: []`) — нессылочность не доказана (`Вт.Ссылка.Категория.*`:
+      // `Ссылка` ВТ на деле ссылочная) → `unknown`, `.*` сохраняем.
+      if (!ref) return field.types.length === 0 ? 'unknown' : 'scalar';
       cur = this.resolver.tableByFullName(`${ref.kind}.${ref.name}`);
     }
     return 'unknown';

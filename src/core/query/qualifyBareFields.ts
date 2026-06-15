@@ -148,8 +148,12 @@ function buildContext(
     // (`#Имя`/односегментное имя, зарегистрированных предыдущим `ПОМЕСТИТЬ`)
     // резолвер знает поля — пробуем его.
     const lookupName = fullName.startsWith('#') ? fullName.slice(1).replace(/#$/, '') : fullName;
-    const meta = resolver && !fullName.startsWith('&') && !t.virtual && fullName !== ''
-      ? resolver.tableByFullName(lookupName)
+    // Реальная таблица/временная по `tableByFullName`; ВИРТУАЛЬНАЯ (срез/остатки-
+    // обороты РН/РБ) — по `virtualTableByFullName` (резолвер знает её колонки).
+    const meta = resolver && !fullName.startsWith('&') && fullName !== ''
+      ? (t.virtual
+          ? resolver.virtualTableByFullName?.(lookupName)
+          : resolver.tableByFullName(lookupName))
       : undefined;
     if (meta) {
       sources.push({ alias, fields: new Set(meta.fields.map(f => up(f.name))), wildcard: false });
@@ -190,8 +194,12 @@ function ownerAlias(ctx: OwnerContext, name: string, requireMeta: boolean): stri
     }
     return s.alias;
   }
-  // Ровно один известный владелец и ни одного источника с неизвестным составом.
-  if (owners.length === 1 && wildcards.length === 0) return owners[0].alias;
+  // Ровно один известный (по метаданным) владелец поля → квалифицируем им, даже
+  // если присутствуют источники с неизвестным составом колонок (временная таблица
+  // /параметр/подзапрос). Оракул резолвит голое поле на единственный РЕАЛЬНЫЙ
+  // источник, несущий его (`СрокУплаты` РН + временная `ВТКурсы…` → РН), а не
+  // оставляет голым.
+  if (owners.length === 1) return owners[0].alias;
   // Ни один известный источник не несёт поле, но есть РОВНО ОДИН источник с
   // неизвестным составом колонок (параметр/временная/подзапрос).
   if (owners.length === 0 && wildcards.length === 1) return wildcards[0].alias;

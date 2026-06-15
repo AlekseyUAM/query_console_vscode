@@ -3212,6 +3212,66 @@ function parseOrder(cur: Cursor, ctx: SectionResolveContext): Order {
         if (cur.matchPunct(',')) continue;
         break;
       }
+      // Предикат `<путь> ЕСТЬ [НЕ] NULL` как ключ упорядочивания (сортирует ЛОЖЬ/
+      // ИСТИНА): поглощаем `ЕСТЬ [НЕ] NULL` в expression — иначе parseOrder терял
+      // хвост и следующее поле. Путь квалифицируем владельцем (как голую ссылку).
+      // Сравнение `<путь> <оп> <операнд>` как ключ упорядочивания (сортирует ЛОЖЬ/
+      // ИСТИНА результата): поглощаем хвост сравнения в expression до запятой/
+      // секции/модификатора (УБЫВ/ВОЗР/ИЕРАРХИЯ). Путь остаётся как есть — голую
+      // голову квалифицирует пасс qualifyBareFields над expression. Без этого
+      // parseOrder терял правую часть и следующее поле.
+      const cmpOp = ((): boolean => {
+        const t = cur.peek();
+        return t.type === 'punct' && (t.value === '=' || t.value === '<>' || t.value === '>'
+          || t.value === '<' || t.value === '>=' || t.value === '<=');
+      })();
+      if (cmpOp) {
+        const pathText = segs.join('.');
+        const rhsTokens: Token[] = [];
+        let depth = 0;
+        for (;;) {
+          const t = cur.peek();
+          if (depth === 0) {
+            if (t.type === 'keyword' && (isSectionKeyword(t.value) || t.value === 'УБЫВ' || t.value === 'ИЕРАРХИЯ')) break;
+            if ((t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === 'ВОЗР') break;
+            if (t.type === 'punct' && (t.value === ',' || t.value === ';' || t.value === '{' || t.value === '}')) break;
+            if (t.type === 'eof') break;
+          }
+          if (t.type === 'punct' && t.value === '(') depth++;
+          else if (t.type === 'punct' && t.value === ')') { if (depth > 0) depth--; }
+          rhsTokens.push(cur.next());
+        }
+        const { direction: cmpDir, hierarchy: cmpHier } = parseOrderModifiers(cur);
+        fields.push({
+          tableId: '', path: '', direction: cmpDir,
+          expression: `${pathText} ${sliceSource(cur.source, rhsTokens)}`,
+          ...(cmpHier ? { hierarchy: true } : {}),
+        });
+        if (cur.matchPunct(',')) continue;
+        break;
+      }
+      const peekIsEst = (): boolean => {
+        const t = cur.peek();
+        return (t.type === 'ident' || t.type === 'keyword') && t.value.toUpperCase() === 'ЕСТЬ';
+      };
+      if (peekIsEst()) {
+        cur.next(); // ЕСТЬ
+        const nt = cur.peek();
+        const neg = (nt.type === 'ident' || nt.type === 'keyword') && nt.value.toUpperCase() === 'НЕ';
+        if (neg) cur.next();
+        const ntn = cur.peek();
+        if ((ntn.type === 'ident' || ntn.type === 'keyword') && ntn.value.toUpperCase() === 'NULL') cur.next();
+        const { direction: nullDir, hierarchy: nullHier } = parseOrderModifiers(cur);
+        // Путь сохраняем голым/как-есть: квалификацию голой головы выполнит пасс
+        // qualifyBareFields над expression поля упорядочивания.
+        fields.push({
+          tableId: '', path: '', direction: nullDir,
+          expression: `${segs.join('.')} ЕСТЬ ${neg ? 'НЕ ' : ''}NULL`,
+          ...(nullHier ? { hierarchy: true } : {}),
+        });
+        if (cur.matchPunct(',')) continue;
+        break;
+      }
       const { direction, hierarchy } = parseOrderModifiers(cur);
       const hier = hierarchy ? { hierarchy } : {};
 
@@ -3682,6 +3742,30 @@ function parseIndexField(cur: Cursor, ctx: SectionResolveContext): FieldRef {
   if (t.type === 'param') {
     cur.next();
     return { tableId: '', path: '', expression: t.text };
+  }
+  // Вызов функции (`ЕСТЬNULL(…)`, `ВЫРАЗИТЬ(…)`) как поле индекса — не голое поле.
+  // Поглощаем выражение целиком (баланс скобок) до запятой/секции и сохраняем сырой
+  // срез как expression (генератор печатает дословно). Без этого readDottedPath
+  // останавливался на `(` и поле усекалось до имени функции.
+  const head = cur.peek();
+  if ((head.type === 'ident' || head.type === 'keyword') && cur.peek(1).type === 'punct' && cur.peek(1).value === '(') {
+    const exprTokens: Token[] = [cur.next()];
+    let depth = 0;
+    for (;;) {
+      const tk = cur.peek();
+      if (depth === 0) {
+        if (tk.type === 'keyword' && isSectionKeyword(tk.value)) break;
+        if (tk.type === 'punct' && (tk.value === ',' || tk.value === ';' || tk.value === '{' || tk.value === '}')) break;
+        if (tk.type === 'eof') break;
+      }
+      if (tk.type === 'punct' && tk.value === '(') depth++;
+      else if (tk.type === 'punct' && tk.value === ')') {
+        if (depth === 0) break;
+        depth--;
+      }
+      exprTokens.push(cur.next());
+    }
+    return { tableId: '', path: '', expression: sliceSource(cur.source, exprTokens) };
   }
   const segs = readDottedPath(cur);
   if (!segs) throw cur.error('ожидался псевдоним поля индекса', t);
@@ -4267,10 +4351,25 @@ export function parseBatch(text: string, resolver?: MetadataResolver): BatchDocu
  * (объединение задаёт колонки первым участником). Реестр служит синтетическими
  * метаданными для развёртки звезды в последующих операторах.
  */
+/**
+ * Выражение поля create-temp — ЧИСТЫЙ скалярный литерал (строка `"…"`, число,
+ * `ИСТИНА`/`ЛОЖЬ`)? Такая колонка ВТ заведомо нессылочная — суффикс `.*` на ней
+ * снимается. Любое поле/функция/параметр → false (тип неизвестен, `.*` сохраняем).
+ */
+function isScalarLiteralExpr(expr: string | undefined): boolean {
+  if (expr === undefined) return false;
+  const s = expr.trim();
+  if (s === '') return false;
+  if (/^"(?:[^"]|"")*"$/.test(s)) return true;        // строковый литерал
+  if (/^-?\d+(?:[.,]\d+)?$/.test(s)) return true;      // числовой литерал
+  if (/^(?:ИСТИНА|ЛОЖЬ)$/iu.test(s)) return true;       // булев литерал
+  return false;
+}
+
 function registerTempTables(doc: QueryDocument, tempTables: Map<string, MetaTable>): void {
   const m0 = doc.members[0]?.model;
   if (!m0 || m0.queryType !== 'createTemp' || !m0.tempTableName) return;
-  const aliases: string[] = [];
+  const cols: { alias: string; scalar: boolean }[] = [];
   const seen = new Set<string>();
   for (const f of m0.fields) {
     const a = fieldAlias(f, m0);
@@ -4281,10 +4380,18 @@ function registerTempTables(doc: QueryDocument, tempTables: Map<string, MetaTabl
     let n = 0;
     while (seen.has(alias.toUpperCase())) alias = `${a}${++n}`;
     seen.add(alias.toUpperCase());
-    aliases.push(alias);
+    cols.push({ alias, scalar: isScalarLiteralExpr(f.expression) });
   }
-  if (aliases.length === 0) return;
-  const fields: MetaField[] = aliases.map((name) => ({ name, kind: 'attribute', types: [] }));
+  if (cols.length === 0) return;
+  // Колонка из ЧИСТОГО литерала (`"строка"`/число/булево) — ДОКАЗУЕМО нессылочная:
+  // даём ей примитивный тип, чтобы `resolveBuilderStar` снял `.*` (`Товары.Ссылка.*`
+  // на ВТ, где `Ссылка` — строковый литерал, → `Товары.Ссылка`). Прочие колонки
+  // остаются с `types: []` (состав неизвестен — `.*` консервативно сохраняется).
+  const fields: MetaField[] = cols.map(({ alias, scalar }) => ({
+    name: alias,
+    kind: 'attribute',
+    types: scalar ? [{ primitive: 'Строка' as const }] : [],
+  }));
   tempTables.set(m0.tempTableName.toUpperCase(), {
     kind: 'Справочник', // вид не используется развёрткой ВТ (нет ТЧ/виртуальных полей)
     name: m0.tempTableName,
