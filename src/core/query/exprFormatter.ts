@@ -2528,16 +2528,25 @@ class Parser {
     const startTok = this.peek();
     // Хвост обязан начинаться с оператора сравнения; в булевом слоте (КОГДА/ГДЕ)
     // допускается и ведущий АРИФМЕТИЧЕСКИЙ оператор (`КОНЕЦ * НДФЛ.Сумма > 0` —
-    // CASE-операнд арифметики, замыкаемой одним сравнением; фаза 6.16.74).
+    // CASE-операнд арифметики, замыкаемой одним сравнением; фаза 6.16.74). Также
+    // ведущие МЕЖДУ/ПОДОБНО — `(ВЫБОР…КОНЕЦ) МЕЖДУ &A И &B` / `КОНЕЦ ПОДОБНО &Ш`:
+    // CASE — левый операнд диапазона/шаблона, скобки-обёртка лишние, оператор
+    // печатается на строке КОНЕЦ без `)` (фаза 6.16.75).
+    const leadBetween = isWord(startTok, 'МЕЖДУ');
+    const leadLike = isWord(startTok, 'ПОДОБНО');
     const leadOk =
-      startTok.type === 'punct' &&
-      (COMPARE_OPS.has(startTok.value) ||
-        (allowLeadingArith && (ARITH_ADD.has(startTok.value) || ARITH_MUL.has(startTok.value))));
+      (startTok.type === 'punct' &&
+        (COMPARE_OPS.has(startTok.value) ||
+          (allowLeadingArith && (ARITH_ADD.has(startTok.value) || ARITH_MUL.has(startTok.value))))) ||
+      leadBetween ||
+      leadLike;
     if (!leadOk) return undefined;
     const from = startTok.pos;
     let to = from;
     let depth = 0;
     let cmpCount = 0;
+    let betweenPending = leadBetween ? 1 : 0; // И из `МЕЖДУ a И b` — не разделитель
+    if (leadBetween || leadLike) { to = startTok.pos + startTok.text.length; this.i++; }
     while (!this.atEof()) {
       const t = this.peek();
       if (t.type === 'punct' && t.value === '(') { depth++; to = t.pos + t.value.length; this.i++; continue; }
@@ -2550,15 +2559,30 @@ class Parser {
         // хвост, когда CASE — операнд УСЛОВИЯ КОГДА (`КОГДА ВЫБОР…КОНЕЦ = &П ТОГДА …`);
         // в value-слоте ТОГДА на глубине 0 не встречается, так что стоп безопасен.
         if (isWhen(t) || isThen(t) || isElse(t) || isEnd(t)) break;
-        // Вложенный ВЫБОР или верхнеуровневый булев оператор → форма не простая.
-        if (isCase(t) || isOr(t) || isAnd(t)) { this.i = save; return undefined; }
-        if (t.type === 'punct' && COMPARE_OPS.has(t.value)) cmpCount++;
+        // Вложенный ВЫБОР → форма не простая.
+        if (isCase(t)) { this.i = save; return undefined; }
+        // И, принадлежащее ведущему/вложенному МЕЖДУ, — не булев разделитель.
+        if (isAnd(t)) {
+          if (betweenPending > 0) { betweenPending--; }
+          // Для МЕЖДУ/ПОДОБНО-хвоста верхнеур. И/ИЛИ — ГРАНИЦА операнда (CASE —
+          // левый операнд большего булева, хвост заканчивается тут); для сравнения
+          // оставляем прежнее поведение — форма не простая (фаза 6.16.75).
+          else if (leadBetween || leadLike) break;
+          else { this.i = save; return undefined; }
+        } else if (isOr(t)) {
+          if (leadBetween || leadLike) break;
+          this.i = save; return undefined;
+        }
+        else if (isWord(t, 'МЕЖДУ')) betweenPending++;
+        else if (t.type === 'punct' && COMPARE_OPS.has(t.value)) cmpCount++;
       }
       to = t.pos + t.value.length;
       this.i++;
     }
-    // Ровно один верхнеуровневый оператор сравнения (тот, с которого начали).
-    if (cmpCount !== 1) { this.i = save; return undefined; }
+    // Ровно один верхнеуровневый оператор сравнения, ЛИБО ведущий МЕЖДУ/ПОДОБНО
+    // (у которых 0 операторов сравнения).
+    const okShape = leadBetween || leadLike ? cmpCount === 0 : cmpCount === 1;
+    if (!okShape) { this.i = save; return undefined; }
     return normalizeLeafWhitespace(this.leafText(from, to));
   }
 
@@ -2814,8 +2838,13 @@ function renderBool(
           // уровне, что и ВЫБОР операндов `ИЛИ` (E=iliInd), а не на ind. Узкий гейт:
           // булев слот, операнд0 — лист с многострочным ВЫБОР. Прочие операнды0
           // (поле/подзапрос/вложенная группа) идут прежним путём (E=ind), байт-в-байт.
+          // То же и для СТРУКТУРНОГО CASE-операнда0 (`(ВЫБОР…КОНЕЦ <op>/МЕЖДУ … ИЛИ …)`):
+          // охватывающая `(` ИЛИ-группы на строке операнда0, и его ВЫБОР встаёт на
+          // уровне ВЫБОР операндов ИЛИ (E=iliInd), а не на ind (фаза 6.16.75).
           const op0CaseE =
-            ctx.caseBoolean && op.kind === 'leaf' && /(^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(op.text) && op.text.includes('\n')
+            ctx.caseBoolean &&
+            ((op.kind === 'leaf' && /(^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(op.text) && op.text.includes('\n')) ||
+              op.kind === 'case')
               ? iliInd
               : ind;
           const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, op0CaseE, childAnd, leadParenBase);
@@ -2879,13 +2908,18 @@ function renderBool(
         }
         return renderBool(child, ind, andCont, orLvl, ctx, caseE, subInd);
       }
+      // Скобка-ГРУППИРОВКА, охватывающая прямо ВЫБОР (`И (ВЫБОР … КОНЕЦ)`), добавляет
+      // CASE один уровень отступа: КОНЕЦ = caseE+1 (КОГДА=caseE+2 …). Без этого весь
+      // блок уезжал на −1 (фаза 6.16.75). Зеркало листового C1b. Иные дети группы
+      // (сравнение/вызов/вложенная группа) — прежний caseE.
+      const childCaseE = child.kind === 'case' ? caseE + 1 : caseE;
       const sub = renderBool(
         child,
         ind,
         andCont,
         orLvl,
         ctx,
-        caseE,
+        childCaseE,
         subInd,
         leadParenBase === undefined ? undefined : leadParenBase + 1
       );
