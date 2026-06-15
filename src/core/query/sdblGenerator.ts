@@ -3,7 +3,7 @@ import { defaultTableAlias, accountingPositionKeys } from './queryModel';
 import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns, unionHasTabSection, orderedSelectElements, elementAlias, type UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
-import { needsFormatting, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic } from './exprFormatter';
+import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic } from './exprFormatter';
 
 /**
  * Подавление автопсевдонима простых полей при рендере подзапроса оператора `В`
@@ -1329,7 +1329,10 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
  * только нормализацию регистра/пробелов листа.
  */
 export function formatSelectExpression(expression: string): string {
-  return needsFormatting(expression)
+  // Верхнеуровневая булева цепочка поля (`A И B КАК алиас`) переносится конструктором
+  // даже без OR/CASE (фаза 6.16.71) — needsFormatting её не ловит, поэтому проверяем
+  // отдельным select-предикатом. ОБА пути ведут в formatExpression('select').
+  return needsFormatting(expression) || selectColumnNeedsBoolWrap(expression)
     ? formatExpression(expression.trim(), 'select')
     // Квирк `… ЕСТЬ НЕ NULL ` (хвостовой пробел) действует и в слоте выборки: при
     // наличии `КАК <псевдоним>` это даёт двойной пробел `NULL  КАК` (как конструктор).

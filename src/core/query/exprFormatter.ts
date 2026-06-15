@@ -628,7 +628,119 @@ function isSingleTopLevelCaseValue(text: string): boolean {
  * геометрии (значение на нескольких строках, рассинхрон стека ВЫБОР/КОНЕЦ,
  * подзапрос внутри) функция возвращает исходный текст без изменений.
  */
+/**
+ * Предразбиение ИНЛАЙН-CASE на структурные строки (фаза 6.16.71). Конструктор 1С
+ * раскладывает КАЖДЫЙ `ВЫБОР … КОНЕЦ` по своим строкам, даже когда разработчик
+ * записал весь CASE в ОДНУ физическую строку (`МАКСИМУМ(ВЫБОР КОГДА A И B ТОГДА X
+ * ИНАЧЕ Y КОНЕЦ)`), или склеил `КОГДА <условие> ТОГДА <значение>` в одну строку.
+ * reindentLeafCase сам по себе бросает такой лист (нет `\n` / ТОГДА приклеен к
+ * КОГДА), поэтому ПЕРЕД ним вставляем переводы строки перед каждым верхнеуровневым
+ * (на глубине самого CASE) КОГДА/ТОГДА/ИНАЧЕ/КОНЕЦ и перед продолжением условия
+ * И/ИЛИ. Дальше штатная геометрия reindentLeafCase расставит отступы.
+ *
+ * Узкий гейт. Работает по токенам (строковые литералы `"…"`/`'…'` лексер выдаёт
+ * одним токеном — слова внутри них не трогаем). Возврат входа БЕЗ изменений, если:
+ *   - текст не токенизируется;
+ *   - есть подзапрос (ВЫБРАТЬ) — его раскладывает reindentLeafSubquery;
+ *   - у какого-либо ВЫБОР есть СЕЛЕКТОР (`ВЫБОР <выражение> КОГДА`) — селекторный
+ *     CASE раскладывает reflowLeafSelectorCase, не наш путь.
+ * И/ИЛИ разбиваем ТОЛЬКО внутри условия (между КОГДА и его ТОГДА): в значении ветки
+ * ТОГДА/ИНАЧЕ верхнеуровневые И/ИЛИ — это редкая геометрия продолжения значения,
+ * которую reindentLeafCase обрабатывает отдельно и которой нет в каноне; их не трогаем.
+ */
+export function splitInlineLeafCase(text: string): string {
+  if (!text.includes('ВЫБОР') && !/ВЫБОР/iu.test(text)) return text;
+  let toks: Token[];
+  try {
+    toks = tokenize(text);
+  } catch {
+    return text;
+  }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  const isW = (t: Token, w: string): boolean =>
+    (t.type === 'keyword' || t.type === 'ident') && t.value.toUpperCase() === w;
+  if (sig.some((t) => isW(t, 'ВЫБРАТЬ'))) return text;
+  if (!sig.some((t) => isW(t, 'ВЫБОР'))) return text;
+  // Глубина скобок ПЕРЕД каждым токеном.
+  const depthBefore: number[] = [];
+  let pd = 0;
+  for (const t of sig) {
+    depthBefore.push(pd);
+    if (t.type === 'punct' && t.value === '(') pd++;
+    else if (t.type === 'punct' && t.value === ')') pd--;
+  }
+  // Селекторный ВЫБОР (`ВЫБОР <не-КОГДА> …`) — не наша зона, отдаём reflowLeafSelectorCase.
+  for (let k = 0; k < sig.length; k++) {
+    if (isW(sig[k], 'ВЫБОР')) {
+      const nx = sig[k + 1];
+      if (!nx || !isW(nx, 'КОГДА')) return text;
+    }
+  }
+  // Стек глубин CASE: глубина скобок на уровне открывающего ВЫБОР. Структурную строку
+  // начинаем перед КОГДА/ТОГДА/ИНАЧЕ/КОНЕЦ ТЕКУЩЕГО CASE (на его скобочной глубине) и
+  // перед И/ИЛИ-продолжением условия (между КОГДА и ТОГДА того же CASE).
+  const caseStack: number[] = [];
+  // Внутри условия КОГДА текущего (верхнего) CASE? Тогда И/ИЛИ на той же глубине —
+  // продолжение условия и подлежит сплиту.
+  let inCondition = false;
+  const breakBefore = new Set<number>();
+  for (let k = 0; k < sig.length; k++) {
+    const t = sig[k];
+    const dep = depthBefore[k];
+    if (isW(t, 'ВЫБОР')) {
+      caseStack.push(dep);
+      inCondition = false;
+      continue;
+    }
+    const top = caseStack[caseStack.length - 1];
+    if (top === undefined) continue;
+    if (dep !== top) continue; // не на уровне текущего CASE — внутренняя группа/вложение
+    // Перенос ставим ТОЛЬКО когда токен СКЛЕЕН с предыдущим в одну физическую строку
+    // (в зазоре нет `\n`): инлайн-CASE мы разбиваем, а уже разложенные построчно
+    // структурные строки НЕ трогаем — иначе сорвём их ведущий отступ (фаза 6.16.71).
+    const gluedToPrev = (): boolean => {
+      const p = sig[k - 1];
+      if (!p) return false;
+      const pEnd = p.pos + p.text.length;
+      return !text.slice(pEnd, t.pos).includes('\n');
+    };
+    if (isW(t, 'КОГДА')) {
+      if (k > 0 && gluedToPrev()) breakBefore.add(k);
+      inCondition = true;
+    } else if (isW(t, 'ТОГДА')) {
+      if (k > 0 && gluedToPrev()) breakBefore.add(k);
+      inCondition = false;
+    } else if (isW(t, 'ИНАЧЕ')) {
+      if (k > 0 && gluedToPrev()) breakBefore.add(k);
+      inCondition = false;
+    } else if (isW(t, 'КОНЕЦ')) {
+      if (k > 0 && gluedToPrev()) breakBefore.add(k);
+      caseStack.pop();
+      inCondition = false;
+    } else if (inCondition && (isW(t, 'И') || isW(t, 'ИЛИ'))) {
+      if (k > 0 && gluedToPrev()) breakBefore.add(k);
+    }
+  }
+  if (breakBefore.size === 0) return text;
+  // Сборка: вставляем `\n` перед позицией каждого помеченного токена. Между токенами
+  // сохраняем исходный текст листа дословно (срезы по pos), правит уже reindentLeafCase.
+  let out = '';
+  let prev = 0;
+  for (let k = 0; k < sig.length; k++) {
+    if (breakBefore.has(k)) {
+      out += text.slice(prev, sig[k].pos).replace(/\s+$/u, '') + '\n';
+      prev = sig[k].pos;
+    }
+  }
+  out += text.slice(prev);
+  return out;
+}
+
 export function reindentLeafCase(text: string, base: number, funcParenDepth = false): string {
+  // Инлайн-CASE (весь `ВЫБОР … КОНЕЦ` в одну строку, либо `КОГДА … ТОГДА` склеены)
+  // предразбиваем на структурные строки, чтобы дальнейшая геометрия его разложила
+  // (фаза 6.16.71). На многострочном каноне сплит идемпотентен (переводы уже стоят).
+  text = splitInlineLeafCase(text);
   if (!text.includes('\n')) return text;
   // Подзапросы внутри листа обрабатывает reindentLeafSubquery — здесь не трогаем.
   if (/\bВЫБРАТЬ\b/u.test(text)) return text;
@@ -2578,6 +2690,29 @@ export function needsFormatting(raw: string): boolean {
     return false;
   }
   return treeHasStructure(tree);
+}
+
+/**
+ * Поле выборки = верхнеуровневая БУЛЕВА цепочка (`A И B [И C] КАК алиас`, `A ИЛИ B`,
+ * `A И (X ИЛИ Y)`)? Конструктор 1С такую цепочку В СЛОТЕ ВЫБОРКИ переносит: первый
+ * конъюнкт на строке поля, каждый следующий И/ИЛИ — на своей строке с отступом
+ * поле+1, `КАК алиас` приклеен к последнему конъюнкту (фаза 6.16.71, сверено
+ * корпусом). needsFormatting для ЧИСТОЙ И-цепочки листьев даёт false (treeHasStructure
+ * консервативна — бережёт принятые чистые И-условия ГДЕ/ПО), поэтому такое поле шло
+ * плоским листом. Здесь — УЗКИЙ предикат ТОЛЬКО для слота выборки: корень дерева —
+ * `and`/`or` с ≥2 операндами. Поведение ГДЕ/ИМЕЮЩИЕ/ПО НЕ затрагивается (предикат
+ * вызывается лишь из formatSelectExpression).
+ */
+export function selectColumnNeedsBoolWrap(raw: string): boolean {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return false;
+  let tree: Node;
+  try {
+    tree = new Parser(trimmed, true).parse();
+  } catch {
+    return false;
+  }
+  return (tree.kind === 'and' || tree.kind === 'or') && tree.operands.length >= 2;
 }
 
 // --- Printer (boolean) ------------------------------------------------------
