@@ -468,7 +468,13 @@ function reindentVtCondition(condition: string, base: number): string {
         condParen += parenDelta(lines[j]);
       }
     } else {
-      out.push('\t'.repeat(ind) + prefix + c.text);
+      // Одиночный однострочный конъюнкт-ОТРИЦАНИЕ поля: снимаем избыточную обёртку, как
+      // оракул (`И (НЕ Поле)` → `И НЕ Поле`; фаза 6.16.78). ВАЖНО: прочие предикатные
+      // обёртки (`И (Год МЕЖДУ a И b)`, `И (a = b)`) в параметре ВТ оракул СОХРАНЯЕТ —
+      // поэтому общий stripRedundantLeafParens здесь НЕ применяем (корпус УчётНДФЛ,
+      // ЖурналУчётаСчетовФактур).
+      const cText = stripNotFieldParens(stripNegatedFieldParens(c.text));
+      out.push('\t'.repeat(ind) + prefix + cText);
     }
   });
   return out.join('\n');
@@ -553,7 +559,7 @@ function isPlainFieldComparison(expr: string): boolean {
  * `(a = &П)`, `(joined.x = seed.y)`, `(функция(...))`. Сложные конъюнкты (ИЛИ/ВЫБОР/
  * подзапрос) сюда не попадают — для них `renderJoinCondition` выбирает legacy-путь.
  */
-function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number): string {
+function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number, fromAndSplit = false): string {
   // Многострочный лист (`В (\n a,\n b)` и т.п.) конструктор сплющивает в одну
   // строку (правило 6.15.3, для ПО — фаза 6.15.5); стоп-условия (ВЫБРАТЬ/ВЫБОР/
   // И/ИЛИ/`{`) оставляют текст как есть. Лист с подзапросом (`X В\n(ВЫБРАТЬ …)`)
@@ -579,9 +585,23 @@ function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number):
   // ВАЖНО: в `ПО` конструктор СОХРАНЯЕТ прочие избыточные скобки (`(ВЫРАЗИТЬ(…)) = X`),
   // поэтому общий stripRedundantLeafParens здесь неприменим — снимаем строго пару
   // вокруг операнда ведущего `НЕ` (фаза 6.16.59).
+  // Голый операнд-приведение `ВЫРАЗИТЬ(…)` сравнения в конъюнкте ПО оракул печатает в
+  // СВОИХ скобках (`= (ВЫРАЗИТЬ(…))`), сверх обёртки конъюнкта (фаза 6.16.78, корпус
+  // ЭлектронныеДокументыЭДО/Синхронизация...). wrapBareCastOperand узок (одностр., только
+  // целый операнд ВЫРАЗИТЬ; обычные вызовы/`.Поле`-доступ не трогает).
+  const norm = wrapBareCastOperand(normalizeLeafCase(stripLeadingNotOperandParens(body)));
+  // Конъюнкт ПО, расщеплённый из ВЛОЖЕННОЙ И-группы (`И (a = b И f(x) >= &П)`),
+  // конструктор печатает БЕЗ обёртки, если это ПРОСТОЕ сравнение двух ссылок на поля
+  // (`Алиас.Путь <оп> Алиас.Путь`); прочие (литерал/параметр/функция/унарность) — в
+  // скобках (живой оракул, фаза 6.16.78). ВАЖНО: правило применимо ТОЛЬКО к конъюнктам,
+  // полученным расщеплением И-цепочки (fromAndSplit) — самостоятельный `ПО (a = b)`
+  // оракул оставляет В СКОБКАХ (temp/builder-таблицы, корпус ВидыКонтактнойИнформации).
+  if (fromAndSplit && !norm.includes('\n') && isPlainFieldComparison(norm)) {
+    return appendIsNotNullTrailingSpace(norm);
+  }
   // Квирк `… ЕСТЬ НЕ NULL )` (один пробел перед закрывающей скобкой группы) — после
   // обёртки конъюнкта в `(…)` (фаза 6.16.76, корпус ВедомостьНаВыплатуЗарплаты).
-  return appendIsNotNullTrailingSpace(`(${normalizeLeafCase(stripLeadingNotOperandParens(body))})`);
+  return appendIsNotNullTrailingSpace(`(${norm})`);
 }
 
 /**
@@ -700,7 +720,7 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
       // многострочный CASE в правой части сравнения раскладываем на нём (КОНЕЦ=cont).
       // Первый конъюнкт (k===0) стоит после `ПО ` / на 3+depth — там CASE-конъюнктов
       // в корпусе нет, поведение не трогаем.
-      sub = [renderArbitraryConjunct(c.expression ?? '', depth, k > 0 ? cont : undefined)];
+      sub = [renderArbitraryConjunct(c.expression ?? '', depth, k > 0 ? cont : undefined, !!(c as { __fromAndSplit?: boolean }).__fromAndSplit)];
     }
     if (k > 0) sub[0] = `${'\t'.repeat(cont)}И ${sub[0]}`;
     else if (poOwnLine) sub[0] = `${'\t'.repeat(3 + depth)}${sub[0]}`;
@@ -767,7 +787,9 @@ function expandAndChainConjuncts(conditions: NonNullable<Join['conditions']>): N
     if (c.custom && e && hasTopLevelBooleanOp(e) && !/(^|[^\p{L}\p{N}_])(ИЛИ|ВЫБОР)([^\p{L}\p{N}_]|$)/iu.test(e)) {
       const parts = splitTopLevelAnd(e);
       if (parts.length > 1) {
-        for (const p of parts) out.push({ custom: true, expression: stripOneEnclosingParen(p) });
+        // Помечаем пьесы как полученные расщеплением И-цепочки (фаза 6.16.78):
+        // простое сравнение полей среди них печатается без обёртки (renderArbitraryConjunct).
+        for (const p of parts) out.push({ custom: true, expression: stripOneEnclosingParen(p), __fromAndSplit: true } as NonNullable<Join['conditions']>[number]);
         continue;
       }
     }

@@ -929,6 +929,77 @@ export function stripRedundantCallWrapParens(text: string): string {
     .replace(/ +$/, '');
 }
 
+/**
+ * Снимает обёртку `(…)`, охватывающую ВСЁ многострочное условие КОГДА (фаза 6.16.78).
+ * Для каждой строки `КОГДА (…`, чья ведущая `(` (сразу после слова КОГДА) парна
+ * закрывающей `)` в КОНЦЕ последней строки-продолжения условия (перед ТОГДА/КОНЕЦ/
+ * КОГДА/ИНАЧЕ), и внутри есть верхнеуровневый булев И/ИЛИ — убирает обе скобки.
+ * Мутирует массив `lines` на месте. Однострочные условия не трогает (их снимает
+ * stripClause / stripRedundantCaseClauseParens).
+ */
+function stripMultilineWhenWrap(lines: string[]): void {
+  const fw = (s: string): string => {
+    const m = /^[\t ]*([\p{L}]+)/u.exec(s);
+    return m ? m[1].toUpperCase() : '';
+  };
+  const parenDelta = (s: string): number => {
+    let d = 0, inS = false;
+    for (let c = 0; c < s.length; c++) {
+      const ch = s[c];
+      if (ch === '"') { inS = !inS; continue; }
+      if (inS) continue;
+      if (ch === '(') d++;
+      else if (ch === ')') d--;
+    }
+    return d;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    if (fw(lines[i]) !== 'КОГДА') continue;
+    // Строка вида `КОГДА (<тело…>` — ведущая `(` сразу после КОГДА, и она НЕ
+    // закрывается на этой же строке (delta>0). Однострочные обёртки не наш случай.
+    const m = /^([\t ]*КОГДА[\t ]+)\((.*)$/u.exec(lines[i]);
+    if (!m) continue;
+    const headDelta = parenDelta('(' + m[2]);
+    if (headDelta < 1) continue; // ведущая `(` закрывается на этой строке
+    // Идём по продолжениям, отслеживая глубину. Закрытие ведущей `(` (глубина → 0)
+    // должно прийти РОВНО на последнем символе строки, а следующая значимая строка —
+    // структурное слово конца условия (ТОГДА/КОНЕЦ/КОГДА/ИНАЧЕ). Иначе обёртка не
+    // охватывает всё условие — не трогаем.
+    let depth = headDelta;
+    let closeLine = -1;
+    let hasBool = /(?:^|[^\p{L}\p{N}_])(И|ИЛИ)(?:[^\p{L}\p{N}_]|$)/u.test(m[2]);
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') continue;
+      const w = fw(lines[j]);
+      if (w === 'И' || w === 'ИЛИ') { hasBool = true; }
+      else if (w === 'ТОГДА' || w === 'КОНЕЦ' || w === 'КОГДА' || w === 'ИНАЧЕ') break;
+      const before = depth;
+      depth += parenDelta(lines[j]);
+      if (depth === 0) {
+        // Закрытие ведущей `(` пришло на этой строке. Требуем: (а) `)` — ПОСЛЕДНИЙ
+        // непробельный символ строки; (б) СЛЕДУЮЩАЯ значимая строка — терминатор
+        // условия (ТОГДА), т.е. обёртка охватывает ВСЁ условие КОГДА, а не его ПЕРВУЮ
+        // часть (`КОГДА (A ИЛИ B) И C` — здесь `)` закрывается посреди условия, и
+        // оракул обёртку СОХРАНЯЕТ; фаза 6.16.78, корпус ПриходнаяНакладная).
+        if (before > 0 && /\)\s*$/u.test(lines[j])) {
+          let nextW = '';
+          for (let k = j + 1; k < lines.length; k++) {
+            if (lines[k].trim() === '') continue;
+            nextW = fw(lines[k]); break;
+          }
+          if (nextW === 'ТОГДА') closeLine = j;
+        }
+        break;
+      }
+      if (depth < 0) break;
+    }
+    if (closeLine < 0 || !hasBool) continue;
+    // Снимаем ведущую `(` после КОГДА и закрывающую `)` в конце closeLine.
+    lines[i] = m[1] + m[2];
+    lines[closeLine] = lines[closeLine].replace(/\)(\s*)$/u, '$1');
+  }
+}
+
 export function reindentLeafCase(text: string, base: number, funcParenDepth = false): string {
   // Снимаем избыточную группировку вокруг одиночного вызова (`ЕСТЬNULL((СУММА(…))`),
   // прежде чем считать геометрию CASE — иначе лишняя `(` сдвинула бы отступ (6.16.76).
@@ -1014,6 +1085,15 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
     lines.push(...canonical);
     openIdx = 0;
   }
+
+  // Снятие ИЗБЫТОЧНОЙ обёртки `(…)` вокруг ВСЕГО условия КОГДА, разнесённого по
+  // нескольким строкам (`КОГДА (НЕ A ЕСТЬ NULL\n И НЕ B ЕСТЬ NULL)` → без скобок).
+  // Оракул снимает группу, охватывающую всё условие (И связывает крепче, чем нужна
+  // обёртка) — зеркало renderWhenCondition (case 'group') для структурного пути,
+  // фаза 6.16.78 (живой оракул). Однострочную обёртку снимает stripClause ниже;
+  // здесь — только МНОГОСТРОЧНУЮ. Закрывающая `)` снимается с последней строки
+  // условия (перед ТОГДА/КОНЕЦ/КОГДА/ИНАЧЕ).
+  stripMultilineWhenWrap(lines);
 
   // Баланс скобок от начала листа до слова ВЫБОР на строке openIdx. Параллельно
   // считаем «эффективную» глубину: подряд идущие открывающие скобки `((` конструктор
@@ -1152,10 +1232,12 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
   const stripClause = (line: string, kw: string): string => {
     const m = new RegExp(`^([\\t ]*${kw}[\\t ]+)([\\s\\S]+)$`, 'u').exec(line);
     if (!m) return line;
-    // Сначала снимаем избыточную охватывающую пару, затем оборачиваем голый
-    // ВЫРАЗИТЬ-операнд сравнения/арифметики (фаза 6.16.69): правило применяется в
-    // КОГДА/ТОГДА/ИНАЧЕ-теле так же, как в верхнеуровневом сравнении ГДЕ/ИМЕЮЩИЕ.
-    const body = wrapBareCastOperand(stripRedundantCaseClauseParens(m[2]));
+    // Сначала снимаем избыточную охватывающую пару; затем переотрисовываем чисто
+    // арифметическое тело (снятие избыточных скобок по приоритету: `(A * B) / (C * D)`
+    // → `A * B / (C * D)`, фаза 6.16.78) — reprintLeafArithmetic безопасно пасует на
+    // не-чистой арифметике (сравнение/булева/стоп-слово → исходный текст); затем
+    // оборачиваем голый ВЫРАЗИТЬ-операнд (фаза 6.16.69).
+    const body = wrapBareCastOperand(reprintLeafComparison(reprintLeafArithmetic(stripRedundantCaseClauseParens(m[2]))));
     return body === m[2] ? line : m[1] + body;
   };
   // Голова значения ТОГДА/ИНАЧЕ, ОТКРЫВАЮЩАЯ вложенный ВЫБОР (`ТОГДА ВЫРАЗИТЬ(…) * ВЫБОР`):
@@ -2438,6 +2520,51 @@ export function reprintLeafArithmetic(raw: string): string {
   }
 }
 
+/**
+ * Снимает ИЗБЫТОЧНЫЕ скобки арифметического операнда СРАВНЕНИЯ (`(A - B) > 0` →
+ * `A - B > 0`, `X > (B - C)` → `X > B - C`): арифметика связывает крепче сравнения,
+ * поэтому обёртка операнда сравнения избыточна (живой оракул, фаза 6.16.78). Узко:
+ * РОВНО один верхнеуровневый оператор сравнения, обе стороны — чистая арифметика/атом
+ * (reprintLeafArithmetic их разбирает целиком). Иначе исходный текст без изменений
+ * (булева логика/предикаты/несколько сравнений не трогаем).
+ */
+export function reprintLeafComparison(raw: string): string {
+  if (!raw || raw.includes('\n') || !raw.includes('(')) return raw;
+  let toks: Token[];
+  try { toks = tokenize(raw); } catch { return raw; }
+  const sig = toks.filter((t) => t.type !== 'eof');
+  if (sig.length === 0) return raw;
+  // Единственный верхнеуровневый оператор сравнения.
+  let depth = 0;
+  let cmpIdx = -1;
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (t.type === 'punct' && t.value === '(') { depth++; continue; }
+    if (t.type === 'punct' && t.value === ')') { depth--; continue; }
+    if (depth !== 0) continue;
+    // Любое предикатное/булево слово на верхнем уровне → не наш случай.
+    if ((t.type === 'keyword' || t.type === 'ident') &&
+        new Set(['И', 'ИЛИ', 'НЕ', 'ЕСТЬ', 'МЕЖДУ', 'ПОДОБНО', 'ССЫЛКА', 'В', 'КАК', 'ВЫБОР']).has((t.text ?? t.value).toUpperCase())) {
+      return raw;
+    }
+    if (t.type === 'punct' && COMPARISON_PUNCT_SET.has(t.value)) {
+      if (cmpIdx >= 0) return raw; // несколько сравнений — не трогаем
+      cmpIdx = i;
+    }
+  }
+  if (cmpIdx < 0) return raw;
+  const leftToks = sig.slice(0, cmpIdx);
+  const rightToks = sig.slice(cmpIdx + 1);
+  if (leftToks.length === 0 || rightToks.length === 0) return raw;
+  try {
+    const left = new ArithReprinter(leftToks).parseAll();
+    const right = new ArithReprinter(rightToks).parseAll();
+    return `${left} ${sig[cmpIdx].value} ${right}`;
+  } catch {
+    return raw;
+  }
+}
+
 export function normalizeLeafCase(raw: string): string {
   if (!raw) return raw;
   raw = canonicalizeLeafLexemes(raw);
@@ -3278,7 +3405,15 @@ function renderBool(
       const iliInd = Math.max(ind + orDelta, andCont);
       const childAnd = iliInd + 1;
       const lines: string[] = [];
-      node.operands.forEach((op, k) => {
+      // Операнд ИЛИ-цепочки — скобочная И-группа (`(A И B) ИЛИ (C И D)`) или одиночный
+      // скобочный предикат-лист (`(X МЕЖДУ a И b) ИЛИ …`, `(X ЕСТЬ NULL) ИЛИ …`): обёртка
+      // избыточна (И/предикат связывают крепче ИЛИ), оракул её снимает. Разворачиваем
+      // `group(and)`/`group(leaf)` (фаза 6.16.78, корпус ОбработкаНовостей, ИМЕЮЩИЕ
+      // СопоставлениеНоменклатуры). `group(or)` НЕ трогаем (значимая вложенная обёртка).
+      const orOperands = node.operands.map((op) =>
+        op.kind === 'group' && (op.child.kind === 'and' || op.child.kind === 'leaf') ? op.child : op
+      );
+      orOperands.forEach((op, k) => {
         if (k === 0) {
           // operand0 печатается на отступе ind; CASE-операнд → E=ind.
           // Подзапрос листа-операнда — на childAnd (выравнен с операндами ИЛИ).
@@ -3435,7 +3570,13 @@ function renderWhenCondition(node: Node, whenInd: number, ctx: RenderCtx): strin
       return renderWhenCondition(node.child, whenInd, ctx);
     case 'or': {
       const lines: string[] = [];
-      node.operands.forEach((op, k) => {
+      // Операнд ИЛИ-условия КОГДА — скобочная И-группа или одиночный скобочный
+      // предикат-лист (`(X МЕЖДУ a И b) ИЛИ …`): обёртка избыточна, оракул её снимает
+      // (фаза 6.16.78, корпус ОбработкаНовостей). `group(or)` сохраняем.
+      const orOps = node.operands.map((op) =>
+        op.kind === 'group' && (op.child.kind === 'and' || op.child.kind === 'leaf') ? op.child : op
+      );
+      orOps.forEach((op, k) => {
         if (k === 0) {
           // Подзапрос операнда0 выравнивается с операндами ИЛИ: contInd+1 (MCP, 6.15.9).
           // ВЫБОР как операнд0 верхнеуровневого ИЛИ КОГДА-условия: его КОНЕЦ конструктор
@@ -3660,7 +3801,9 @@ function renderBranchValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: str
   // Голый ВЫРАЗИТЬ-операнд сравнения/арифметики в значении ТОГДА/ИНАЧЕ — в скобках
   // (`ТОГДА (ВЫРАЗИТЬ(…)) - X`; фаза 6.16.69), как и в верхнеуровневом сравнении.
   // reprintLeafArithmetic дополнительно ловит унарный `-ВЫРАЗИТЬ(…)` → `-(ВЫРАЗИТЬ(…))`.
-  const bare = reprintLeafArithmetic(wrapBareCastOperand(stripRedundantCaseClauseParens(flat)));
+  // reprintLeafComparison снимает избыточную обёртку арифм. операнда сравнения
+  // (`(A - B) > 0` → `A - B > 0`; фаза 6.16.78), пасует на булевой/предикатной логике.
+  const bare = reprintLeafComparison(reprintLeafArithmetic(wrapBareCastOperand(stripRedundantCaseClauseParens(flat))));
   return [tabs(kwInd) + keyword + ' ' + reindentLeafSubquery(bare, kwInd + 2)];
 }
 
@@ -3940,7 +4083,14 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       const iliInd = Math.max(ind + 1, andCont);
       const childAnd = iliInd + 1;
       const lines: string[] = [];
-      node.operands.forEach((op, k) => {
+      // Операнд ИЛИ-цепочки — скобочная И-группа (`(A И B) ИЛИ (C И D)`) или одиночный
+      // скобочный предикат-лист (`(X МЕЖДУ a И b) ИЛИ …`): обёртка избыточна, оракул её
+      // снимает. Разворачиваем `group(and)`/`group(leaf)` (фаза 6.16.78). `group(or)`
+      // сохраняем (значимая обёртка).
+      const orOperands = node.operands.map((op) =>
+        op.kind === 'group' && (op.child.kind === 'and' || op.child.kind === 'leaf') ? op.child : op
+      );
+      orOperands.forEach((op, k) => {
         if (k === 0) {
           // CASE-операнд0 ИЛИ-цепочки value-слота (`ВЫБОР…КОНЕЦ ИЛИ …`) — булев CASE
           // (КОНЕЦ=ind+1, корпус Документооборот). Прочие операнды0 — прежним путём.
