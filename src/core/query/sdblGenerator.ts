@@ -1313,15 +1313,27 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
     const lhs = func
       ? wrapAggregate(func, `${tableAlias}.${f.path}`)
       : `${tableAlias}.${f.path}`;
-    // Автопсевдоним простого поля без явного `КАК` (агрегаты — без автопсевдонима):
+    // Автопсевдоним простого поля без явного `КАК`:
     //  • квалифицированное поле (`Алиас.Путь`) — склейка ВСЕХ сегментов пути
     //    (`Родитель.Имя` → `РодительИмя`), с отбрасыванием ведущего `Ссылка` у
     //    источника-ТЧ (см. qualifiedAutoAlias, фаза 6.16, сверено MCP);
     //  • голое поле (квалифицировано единственным источником) — последний сегмент
     //    (`Владелец.Наименование` → `Наименование`, курируемый 0043).
-    const autoAlias = !func && !suppressAutoAlias
-      ? synthesizedFieldAlias(model, f)
-      : undefined;
+    // Агрегат над КВАЛИФИЦИРОВАННЫМ операндом (`МАКСИМУМ(Док.Контрагент.Наименование)`)
+    // тоже получает автопсевдоним склейкой сегментов (`КонтрагентНаименование`) —
+    // сверено по golden-корпусу (195 случаев) и живому оракулу; агрегат над ГОЛЫМ
+    // операндом (`МАКСИМУМ(ИмяУзла)`) остаётся без псевдонима (13 случаев). Применяем
+    // лишь к парсерным агрегатам с флагом `funcOperandQualified` (legacy/UI-модели,
+    // где функция из общего списка `aggregates`, не трогаем).
+    let autoAlias: string | undefined;
+    if (!suppressAutoAlias) {
+      if (!func) {
+        autoAlias = synthesizedFieldAlias(model, f);
+      } else if (f.func !== undefined && f.funcOperandQualified) {
+        const tbl = model.tables.find(tb => tb.id === f.tableId);
+        autoAlias = qualifiedAutoAlias(f.path, isTabularSectionSource(tbl));
+      }
+    }
     let effAlias = f.alias ?? autoAlias;
     if (effAlias !== undefined) {
       // Явный псевдоним регистрируется как есть; автопсевдоним простого поля —

@@ -154,10 +154,13 @@ describe('parseQuery — round-trip identity (generate∘parse∘generate)', () 
     });
   }
 
-  it('5b. aggregate without alias', () => {
+  it('5b. aggregate over a qualified operand gets a synthesized alias', () => {
+    // Конструктор 1С синтезирует `КАК <последний-сегмент>` для агрегата над
+    // КВАЛИФИЦИРОВАННЫМ операндом (`СУММА(Валюты.Наценка)` → `КАК Наценка`);
+    // парсер помечает поле `funcOperandQualified`. Round-trip идемпотентен.
     const model: QueryModel = {
       tables: [{ id: 't1', fullName: 'Справочник.Валюты' }],
-      fields: [{ tableId: 't1', path: 'Наценка' }],
+      fields: [{ tableId: 't1', path: 'Наценка', func: 'Сумма', funcOperandQualified: true }],
       grouping: {
         multiple: false,
         groupFields: [],
@@ -222,7 +225,7 @@ describe('parseQuery — model shape', () => {
       aggregates: [{ tableId: 't0', path: 'Наценка', func: 'КоличествоРазличных' }],
     });
     expect(model.fields).toEqual([
-      { tableId: 't0', path: 'Наценка', alias: 'Наценка', func: 'КоличествоРазличных' },
+      { tableId: 't0', path: 'Наценка', alias: 'Наценка', func: 'КоличествоРазличных', funcOperandQualified: true },
     ]);
   });
 });

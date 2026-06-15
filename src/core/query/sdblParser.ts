@@ -1821,6 +1821,7 @@ function interpretField(
   const agg = tryAggregate(rf.bodyTokens, aliasToId, resolveOwner, tableFullNames);
   if (agg) {
     const field: SelectedField = { tableId: agg.tableId, path: agg.path, func: agg.func };
+    if (agg.operandQualified) field.funcOperandQualified = true;
     if (rf.alias !== undefined) field.alias = rf.alias;
     fields.push(field);
     aggregates.push({ tableId: agg.tableId, path: agg.path, func: agg.func });
@@ -1850,6 +1851,8 @@ interface AggHit {
   tableId: string;
   path: string;
   func: AggregateFunction;
+  /** Операнд агрегата был ЯВНО квалифицирован псевдонимом (`СУММА(Алиас.Путь)`). */
+  operandQualified?: boolean;
 }
 
 /** Разбор `<ФУНК>( [РАЗЛИЧНЫЕ] <alias>.<path> )`. */
@@ -1881,7 +1884,7 @@ function tryAggregate(
   if (!func) return undefined;
 
   const ref = parseFieldRef(inner, aliasToId);
-  if (ref) return { tableId: ref.tableId, path: ref.path, func };
+  if (ref) return { tableId: ref.tableId, path: ref.path, func, operandQualified: true };
   // Голое поле внутри агрегата (`МИНИМУМ(ДатаЗаписи)` → `МИНИМУМ(Т.ДатаЗаписи)`,
   // `МАКСИМУМ(Валюта.Наименование)` при голове-НЕпсевдониме): аргумент — чистый
   // точечный путь без квалификации. Конструктор 1С квалифицирует его таблицей-
