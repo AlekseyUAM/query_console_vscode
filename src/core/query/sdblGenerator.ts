@@ -1207,7 +1207,25 @@ export function renderTabProjection(
  */
 function exprAutoAlias(expression: string, next: () => string): string {
   const m = BARE_PARAM.exec(expression.trim());
-  return m ? m[1] : next();
+  if (m) return m[1];
+  const repr = representationAutoAlias(expression);
+  return repr ?? next();
+}
+
+/**
+ * Автопсевдоним вызова `ПРЕДСТАВЛЕНИЕ(<поле>)` / `ПРЕДСТАВЛЕНИЕССЫЛКИ(<поле>)` без
+ * явного `КАК`: конструктор 1С даёт ему `<ПоследнийСегмент>Представление`
+ * (`ПРЕДСТАВЛЕНИЕ(T.Номенклатура)` → `НоменклатураПредставление`,
+ * `ПРЕДСТАВЛЕНИЕССЫЛКИ(Сотрудники.Ставка)` → `СтавкаПредставление`). Узко: ровно
+ * один аргумент-поле (последовательность сегментов через точку, без иных символов).
+ * Возвращает `undefined`, если выражение не подходит. Фаза 6.16.73.
+ */
+function representationAutoAlias(expression: string): string | undefined {
+  const m = /^(?:ПРЕДСТАВЛЕНИЕ|ПРЕДСТАВЛЕНИЕССЫЛКИ)\s*\(\s*([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_.]*)\s*\)$/iu
+    .exec(expression.trim());
+  if (!m) return undefined;
+  const lastSeg = m[1].split('.').pop();
+  return lastSeg ? `${lastSeg}Представление` : undefined;
 }
 
 /**
@@ -1255,7 +1273,14 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
       if (suppressAutoAlias && (f.alias === undefined || /^Поле\d+$/u.test(f.alias))) {
         return `\t${formatSelectExpression(f.expression)}`;
       }
-      const alias = f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
+      // `ПРЕДСТАВЛЕНИЕ(<поле>)`/`ПРЕДСТАВЛЕНИЕССЫЛКИ(<поле>)` без явного `КАК` получает
+      // `<ПоследнийСегмент>Представление` (а не сквозной `Поле{n}`). Парсер уже навесил
+      // авто-`Поле{n}` (assignExpressionFieldAliases), поэтому распознаём этот случай по
+      // авто-псевдониму (`Поле{n}` или его отсутствию) и пересчитываем. Явный `КАК` (не
+      // `Поле{n}`) сохраняется как есть.
+      const autoExpr = f.alias === undefined || /^Поле\d+$/u.test(f.alias);
+      const repr = autoExpr ? representationAutoAlias(f.expression) : undefined;
+      const alias = repr ?? f.alias ?? exprAutoAlias(f.expression, () => `Поле${++exprCounter}`);
       usedAliases.add(alias);
       return `\t${formatSelectExpression(f.expression)} КАК ${alias}`;
     }
@@ -1442,22 +1467,34 @@ function renderOrder(order: Order | undefined, model: QueryModel, includeAuto = 
         : f.qualified
         ? `${tableAliases.get(f.tableId) ?? f.tableId}.${f.path}`
         : sectionFieldRefText(model, tableAliases, f.tableId, f.path);
-      // `ИЕРАРХИЯ` после поля упорядочивания конструктор 1С выводит ТОЛЬКО когда
-      // поле — иерархическая ссылка (по схеме метаданных, недоступной здесь): для
-      // стандартного поля `Ссылка` сохраняет (оно всегда ссылочное в иерархических
-      // справочниках), для `Наименование`/`ЭтоГруппа`/`Элемент` — убирает. Прочие
-      // имена (`Группа`↔`Элемент`) текстом не различимы, но в корпусе все KEEP-случаи
-      // адресуются именно `…Ссылка`, поэтому ограничиваемся этим признаком. R3, 6.8.
-      // Для источника БЕЗ метаданных (таблица-параметр `&Имя`, временная таблица,
-      // подзапрос) конструктор отбрасывает ИЕРАРХИЯ даже у `…Ссылка` (MCP, 6.15.4).
+      // `ИЕРАРХИЯ` после поля упорядочивания конструктор 1С выводит, опираясь на то,
+      // МОЖЕТ ли он переопределить иерархичность поля по схеме источника:
+      //  • КВАЛИФИЦИРОВАННАЯ ссылка `<алиас>.<path>` на реальную таблицу МЕТАДАННЫХ
+      //    (`Справочник.X`, `РегистрСведений.X`, ПВХ — fullName с точкой): конструктор
+      //    знает схему и СОХРАНЯЕТ ИЕРАРХИЯ только для ИЕРАРХИЧЕСКОГО справочника/ПВХ
+      //    либо для стандартного `…Ссылка` (всегда ссылочного); прочее (`Наименование`/
+      //    `ЭтоГруппа`/…) — УБИРАЕТ (curated 0078). R3, 6.8.
+      //  • Поле, адресованное ПСЕВДОНИМОМ ВЫБОРКИ (`f.selectAlias`): конструктор видит
+      //    лишь псевдоним и НЕ может переопределить иерархичность → СОХРАНЯЕТ входной
+      //    ИЕРАРХИЯ дословно — НО лишь когда источник всё же резолвим (метаданные/ВТ);
+      //    у таблицы-параметра `&Имя` ИЕРАРХИЯ отбрасывается даже по псевдониму
+      //    (golden DROP `Элемент` на `&ИмяТаблицы`).
+      //  • ВРЕМЕННАЯ таблица `ВТ…`/результат `ПОМЕСТИТЬ` (fullName без точки и не `&`):
+      //    схемы поля нет → конструктор СОХРАНЯЕТ входной ИЕРАРХИЯ (still `Подразделение`).
+      //  • Таблица-параметр `&Имя`/подзапрос/нерезолвимое — ОТБРАСЫВАЕТ. Фаза 6.16.73.
       const lastSeg = f.path.split('.').pop();
       const ownerTable = model.tables.find(t => t.id === f.tableId);
-      const metadataTable = ownerTable !== undefined && !ownerTable.subquery && ownerTable.fullName.includes('.');
-      // Конструктор сохраняет ИЕРАРХИЯ, если источник — ИЕРАРХИЧЕСКИЙ справочник/ПВХ
-      // (по метаданным, фаза 6.16.6): тогда ИЕРАРХИЯ держится на ЛЮБОМ поле
-      // (Родитель/Наименование/…), а не только на `…Ссылка`. Прежний признак
-      // `lastSeg === 'Ссылка'` оставлен как фолбэк для случаев без флага hierarchical.
-      const hierKeep = metadataTable && (ownerTable!.hierarchical || lastSeg === 'Ссылка');
+      const resolvable = ownerTable !== undefined && ownerTable.subquery !== true;
+      const paramTable = ownerTable !== undefined && ownerTable.fullName.startsWith('&');
+      const metadataTable = resolvable && !paramTable && ownerTable!.fullName.includes('.');
+      const tempTable = resolvable && !paramTable && !ownerTable!.fullName.includes('.');
+      const hierKeep =
+        // Резолвимый источник, адресованный псевдонимом выборки (не &параметр): KEEP.
+        (resolvable && !paramTable && f.selectAlias !== undefined) ||
+        // Временная таблица (схемы нет): KEEP.
+        tempTable ||
+        // Квалифицированная ссылка на метаданные: KEEP лишь для иерарх./`…Ссылка`.
+        (metadataTable && (ownerTable!.hierarchical || lastSeg === 'Ссылка'));
       const hierSuffix = f.hierarchy && hierKeep ? ' ИЕРАРХИЯ' : '';
       const suffix = (f.direction === 'desc' ? ' УБЫВ' : '') + hierSuffix;
       const comma = i < order.fields.length - 1 ? ',' : '';
