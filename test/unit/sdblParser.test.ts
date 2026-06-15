@@ -218,7 +218,7 @@ describe('parseQuery — model shape', () => {
     });
     const model = parseQuery(text);
     expect(model.grouping).toEqual({
-      multiple: false, groupFields: [], groupSets: [],
+      multiple: false, groupFields: [], groupSets: [], explicitGroupCount: 0,
       aggregates: [{ tableId: 't0', path: 'Наценка', func: 'КоличествоРазличных' }],
     });
     expect(model.fields).toEqual([
@@ -868,6 +868,7 @@ describe('parseQuery 6.2.B — группировка (round-trip)', () => {
       multiple: false,
       groupFields: [{ tableId: 't0', path: 'Ссылка' }],
       groupSets: [],
+      explicitGroupCount: 1,
       aggregates: [{ tableId: 't0', path: 'Наценка', func: 'Сумма' }],
     });
   });

@@ -1919,6 +1919,78 @@ function appendMissingGroupRefs(
 }
 
 /**
+ * Перекладка дублей в списке СГРУППИРОВАТЬ ПО под порядок конструктора 1С (фаза
+ * 6.16, кластер reorder). Конструктор НЕ сохраняет позиции повторов ЯВНОГО списка
+ * группировки: применяет СТАБИЛЬНУЮ дедупликацию ЯВНОЙ части — сначала идут все
+ * различные поля (в порядке первого появления), затем «хвост» из лишних копий В
+ * ИСХОДНОМ порядке, и лишь ПОТОМ автодописанные парсером расширения выборки.
+ * Так явное `…A, B, A, C, B…` → `…A, B, C, A, B`, а явное `…A, B, A` (дубль в
+ * конце) — фиксированная точка, остаётся как есть. Поле, дописанное генератором
+ * из ВЫБРАТЬ (`appended`), встаёт в хвост явной части сразу ПОСЛЕ последней копии
+ * того же поля (примыкает к своим дублям), иначе — в самый конец. Если дублей в
+ * явной части нет И дописок нет — порядок НЕ меняется (байт-в-байт как раньше).
+ *
+ * @param fields       grouping.groupFields (явные + автодописанные парсером)
+ * @param explicitCount граница явной части в `fields`
+ * @param appended     поля, дописанные генератором (appendMissingGroupRefs)
+ */
+function clusterGroupDuplicates(
+  fields: FieldRef[],
+  explicitCount: number,
+  appended: FieldRef[],
+  aliases: Map<string, string>
+): FieldRef[] {
+  const explicit = fields.slice(0, explicitCount);
+  const parserAppended = fields.slice(explicitCount);
+  // Индекс ПОСЛЕДНЕГО произвольного выражения (`ВЫБОР…`, `ЕСТЬNULL(…)`) в явной части.
+  // Выражения — НЕПОДВИЖНЫЕ якоря: дубль простого поля, после которого (по индексу)
+  // ещё есть выражение, конструктор 1С НЕ переносит в конец (он остаётся на месте);
+  // переносятся лишь дубли из «хвостового» простого участка (после последнего ВЫБОР).
+  let lastExprIdx = -1;
+  for (let i = 0; i < explicit.length; i++) {
+    if (explicit[i].expression !== undefined) lastExprIdx = i;
+  }
+  // Быстрый выход: в ЯВНОЙ части нет переносимых дублей и нет дописок → как раньше.
+  if (appended.length === 0) {
+    const seen = new Set<string>();
+    let hasMovableDup = false;
+    for (let i = 0; i < explicit.length; i++) {
+      const f = explicit[i];
+      if (f.expression !== undefined) continue;
+      const k = fieldRefExpr(f, aliases);
+      if (seen.has(k) && i > lastExprIdx) { hasMovableDup = true; break; }
+      seen.add(k);
+    }
+    if (!hasMovableDup) return fields;
+  }
+  // Стабильная дедупликация ЯВНОЙ части: различные поля → core; лишняя копия → tail
+  // ТОЛЬКО если после её позиции нет выражения-якоря, иначе остаётся на месте (core).
+  const core: FieldRef[] = [];
+  const tail: FieldRef[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < explicit.length; i++) {
+    const f = explicit[i];
+    if (f.expression !== undefined) { core.push(f); continue; }
+    const k = fieldRefExpr(f, aliases);
+    if (!seen.has(k)) { seen.add(k); core.push(f); }
+    else if (i > lastExprIdx) tail.push(f);
+    else core.push(f);
+  }
+  // Дописанные генератором поля встают в хвост явной части, примыкая к последней
+  // копии того же поля; если такого поля в хвосте нет — в самый конец хвоста.
+  for (const a of appended) {
+    const k = fieldRefExpr(a, aliases);
+    let pos = -1;
+    for (let i = 0; i < tail.length; i++) {
+      if (fieldRefExpr(tail[i], aliases) === k) pos = i;
+    }
+    if (pos >= 0) tail.splice(pos + 1, 0, a);
+    else tail.push(a);
+  }
+  return [...core, ...tail, ...parserAppended];
+}
+
+/**
  * Секция СГРУППИРОВАТЬ ПО (или ГРУППИРУЮЩИМ НАБОРАМ). Возвращает [] если
  * группировка не задана или неактивна — тогда вывод байт-в-байт как раньше.
  */
@@ -1948,7 +2020,14 @@ function renderGrouping(
     // группировки): пустой список = группировки нет, и дописка не должна порождать
     // секцию СГРУППИРОВАТЬ ПО на ровном месте.
     const appended = model && fields.length > 0 ? appendMissingGroupRefs(model, fields, aliases) : [];
-    const all = [...fields, ...appended];
+    // Граница явной части: `explicitGroupCount` считался до фильтрации `isConstGroupExpr`,
+    // поэтому пересчитываем её относительно отфильтрованного `fields` (отброшенные
+    // голые параметры были в явной части).
+    const rawExplicit = grouping.explicitGroupCount ?? grouping.groupFields.length;
+    const explicitCount = grouping.groupFields
+      .slice(0, rawExplicit)
+      .filter(f => !isConstGroupExpr(f.expression)).length;
+    const all = clusterGroupDuplicates(fields, explicitCount, appended, aliases);
     if (all.length === 0) return [];
     const lines = all.map((f, i) => {
       const comma = i < all.length - 1 ? ',' : '';

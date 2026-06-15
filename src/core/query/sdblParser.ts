@@ -681,6 +681,8 @@ function parseSingleQuery(
       groupFields: groupingFromClause?.groupFields ?? [],
       groupSets: groupingFromClause?.groupSets ?? [],
       aggregates,
+      // Граница ЯВНОЙ части группировки — до автодописанных ниже расширений выборки.
+      explicitGroupCount: groupingFromClause?.groupFields.length ?? 0,
     };
     // Авторасширение СГРУППИРОВАТЬ ПО (сверено с живым оракулом, фаза 6.16):
     // конструктор 1С дописывает в группировку каждое НЕагрегатное поле выборки —
