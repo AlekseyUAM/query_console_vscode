@@ -2837,6 +2837,15 @@ function isElse(t: Token): boolean {
 function isEnd(t: Token): boolean {
   return isWord(t, 'КОНЕЦ');
 }
+/**
+ * Является ли токен бинарным оператором (сравнения или арифметики), ПОСЛЕ которого
+ * вложенный `ВЫБОР` — это RHS-операнд внутри листа (`= ВЫБОР`, `- ВЫБОР`, `* ВЫБОР`),
+ * а не ведущий структурный CASE (тот идёт через parsePrimary).
+ */
+function isLeafCaseOpenerOp(t: Token): boolean {
+  return t.type === 'punct' &&
+    (COMPARISON_PUNCT.has(t.value) || ARITH_ADD.has(t.value) || ARITH_MUL.has(t.value));
+}
 
 /**
  * Добавляет операнд в список операндов ИЛИ, разворачивая левую ассоциативность:
@@ -3133,12 +3142,22 @@ class Parser {
     let to = from;
     let depth = 0;
     let betweenPending = 0; // сколько И ждём «съесть» внутри МЕЖДУ
+    // Глубина вложенного ВЫБОР…КОНЕЦ как RHS бинарного оператора внутри листа
+    // (`&П = ВЫБОР… КОНЕЦ`, `A - ВЫБОР… КОНЕЦ` — операнд цепочки ИЛИ/И/арифметики):
+    // без отслеживания лист обрывался на первом КОГДА, `)` охватывающей группы
+    // вставлялась после ВЫБОР (`= ВЫБОР)`), а тело CASE терялось. Считаем ВЫБОР
+    // открывателем CASE-уровня ТОЛЬКО когда он стоит СРАЗУ за оператором сравнения
+    // или арифметики (`= ВЫБОР`, `<> ВЫБОР`, `- ВЫБОР`): узкий RHS-случай; ведущий
+    // CASE (`ВЫБОР…КОНЕЦ <op> …`) идёт через parsePrimary и сюда не попадает.
+    let caseDepth = 0;
+    let prevSig: Token | undefined; // предыдущий значимый (не-EOF) токен
 
     while (!this.atEof()) {
       const t = this.peek();
       if (t.type === 'punct' && t.value === '(') {
         depth++;
         to = t.pos + t.value.length;
+        prevSig = t;
         this.i++;
         continue;
       }
@@ -3146,10 +3165,28 @@ class Parser {
         if (depth === 0) break; // закрывающая чужой группы — стоп
         depth--;
         to = t.pos + t.value.length;
+        prevSig = t;
         this.i++;
         continue;
       }
       if (depth === 0) {
+        if (caseDepth > 0) {
+          // Внутри вложенного RHS-CASE: КОГДА/ТОГДА/ИНАЧЕ — не границы; КОНЕЦ закрывает.
+          if (isCase(t)) caseDepth++;
+          else if (isEnd(t)) caseDepth--;
+          to = t.pos + t.value.length;
+          prevSig = t;
+          this.i++;
+          continue;
+        }
+        // RHS-CASE сравнения/арифметики открывает CASE-уровень.
+        if (isCase(t) && prevSig !== undefined && isLeafCaseOpenerOp(prevSig)) {
+          caseDepth++;
+          to = t.pos + t.value.length;
+          prevSig = t;
+          this.i++;
+          continue;
+        }
         // границы листа на верхнем уровне
         if (isOr(t)) break;
         if (isAnd(t)) {
@@ -3163,6 +3200,7 @@ class Parser {
         if (isWord(t, 'МЕЖДУ')) betweenPending++;
       }
       to = t.pos + t.value.length;
+      prevSig = t;
       this.i++;
     }
     return { kind: 'leaf', text: this.leafText(from, to) };
