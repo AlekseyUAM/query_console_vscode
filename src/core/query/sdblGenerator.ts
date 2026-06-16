@@ -5,6 +5,7 @@ import { deriveUnionColumns, unionHasTabSection, orderedSelectElements, elementA
 import type { BatchDocument } from './batchModel';
 import { parseDocument } from './sdblParser';
 import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic, canonicalizeComparisonOperands, setInlineSubqueryReflow } from './exprFormatter';
+import { tokenize } from './sdblLexer';
 
 // Регистрируем в exprFormatter канонический ре-рендер инлайн-подзапроса членства
 // (`Поле В (ВЫБРАТЬ …)` в листе ГДЕ/ПО/ИМЕЮЩИЕ): exprFormatter не может импортировать
@@ -2085,6 +2086,73 @@ function fieldRefExpr(f: FieldRef, aliases: Map<string, string>): string {
   return `${tableAlias}.${f.path}`;
 }
 
+const AGG_WORDS_GROUP = new Set(['СУММА', 'КОЛИЧЕСТВО', 'МАКСИМУМ', 'МИНИМУМ', 'СРЕДНЕЕ']);
+const DISPLAY_META_WORDS = new Set(['ЗНАЧЕНИЕ', 'ТИП', 'ПРЕДСТАВЛЕНИЕ', 'ПРЕДСТАВЛЕНИЕССЫЛКИ']);
+/**
+ * Разбор произвольного выражения выборки (`ВЫБОР…КОНЕЦ`, `ЕСТЬNULL(…)`,
+ * `ВЫРАЗИТЬ(…)`, арифметика) на: (а) содержит ли оно агрегат
+ * (`СУММА/КОЛИЧЕСТВО/МАКСИМУМ/МИНИМУМ/СРЕДНЕЕ`) и (б) множество текстов точечных
+ * полей-цепочек `Алиас.Поле…`, считающихся ссылками НА ДАННЫЕ. Полем НЕ считаются:
+ *   - аргументы агрегатов;
+ *   - содержимое display/meta-вызовов `ЗНАЧЕНИЕ/ТИП/ПРЕДСТАВЛЕНИЕ/ПРЕДСТАВЛЕНИЕССЫЛКИ`;
+ *   - имя ТИПА после `КАК` (приведение `ВЫРАЗИТЬ(… КАК Справочник.X)`) и после
+ *     оператора `ССЫЛКА` (`Поле ССЫЛКА Документ.X`).
+ * Результат используется для решения, дописывать ли выражение целиком в
+ * СГРУППИРОВАТЬ ПО (см. appendMissingGroupRefs). Тексты полей берутся в исходном
+ * написании, чтобы сравниваться с отрендеренным списком группировки.
+ * Возвращает `undefined` при ошибке токенизации.
+ */
+function analyzeGroupExpr(expression: string): { hasAgg: boolean; fields: string[] } | undefined {
+  let toks;
+  try { toks = tokenize(expression); } catch { return undefined; }
+  const sig = toks.filter(t => t.type !== 'eof');
+  let depth = 0;
+  const aggDepths: number[] = [];
+  const metaDepths: number[] = [];
+  let hasAgg = false;
+  const fields: string[] = [];
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (t.type === 'punct' && t.value === '(') {
+      const head = sig[i - 1];
+      const headV = head ? (head.text ?? head.value).toUpperCase() : '';
+      depth++;
+      if (AGG_WORDS_GROUP.has(headV)) { aggDepths.push(depth); hasAgg = true; }
+      else if (DISPLAY_META_WORDS.has(headV)) metaDepths.push(depth);
+      continue;
+    }
+    if (t.type === 'punct' && t.value === ')') {
+      if (aggDepths.length && aggDepths[aggDepths.length - 1] === depth) aggDepths.pop();
+      if (metaDepths.length && metaDepths[metaDepths.length - 1] === depth) metaDepths.pop();
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (t.type === 'ident' || t.type === 'keyword') {
+      const prev = sig[i - 1];
+      const next = sig[i + 1];
+      if (prev && prev.type === 'punct' && prev.value === '.') continue; // хвост цепочки
+      const prevV = prev ? (prev.text ?? prev.value).toUpperCase() : '';
+      // Имя ТИПА метаданных, а не поле: после `КАК` (приведение `ВЫРАЗИТЬ(… КАК Тип)`)
+      // или после оператора проверки типа `… ССЫЛКА Тип`. Точечная цепочка тут —
+      // составное имя типа (`Справочник.Номенклатура`, `Документ.ПоступлениеВКассу`).
+      if (prevV === 'КАК' || prevV === 'ССЫЛКА') continue;
+      const dotted = next && next.type === 'punct' && next.value === '.';
+      if (!dotted) continue; // голый идентификатор/имя функции — не поле
+      if (aggDepths.length || metaDepths.length) continue; // под агрегатом / ЗНАЧЕНИЕ / ПРЕДСТАВЛЕНИЕ
+      // Собираем полный текст точечной цепочки `Алиас.Поле.Поле…`.
+      let chain = t.text ?? t.value;
+      let j = i + 1;
+      while (j + 1 < sig.length && sig[j].type === 'punct' && sig[j].value === '.'
+             && (sig[j + 1].type === 'ident' || sig[j + 1].type === 'keyword')) {
+        chain += '.' + (sig[j + 1].text ?? sig[j + 1].value);
+        j += 2;
+      }
+      fields.push(chain);
+    }
+  }
+  return { hasAgg, fields };
+}
+
 /**
  * НЕагрегатные ПРОСТЫЕ поля ВЫБРАТЬ (в порядке выборки), которых не хватает в
  * исходном списке группировки `existing`, — для дополнения СГРУППИРОВАТЬ ПО.
@@ -2101,9 +2169,15 @@ function appendMissingGroupRefs(
 ): FieldRef[] {
   // Счётчик уже покрытых группировкой вхождений по тексту.
   const covered = new Map<string, number>();
+  // Множество ПРОСТЫХ точечных полей, уже присутствующих в группировке (по
+  // отрендеренному тексту). Нужно для SQL-проверки зависимостей выражений: если
+  // ВСЕ поля выражения уже сгруппированы по отдельности, выражение целиком в
+  // группировку НЕ дописывается (`ЕСТЬNULL(Т.Поле,0)` при `Т.Поле` в группировке).
+  const existingFieldTexts = new Set<string>();
   for (const f of existing) {
     const key = fieldRefExpr(f, aliases);
     covered.set(key, (covered.get(key) ?? 0) + 1);
+    if (f.expression === undefined) existingFieldTexts.add(key);
   }
   const out: FieldRef[] = [];
   // Поля, агрегированные через ОТДЕЛЬНЫЙ список `grouping.aggregates` (модель webview,
@@ -2120,12 +2194,29 @@ function appendMissingGroupRefs(
   for (const f of candidates) {
     if (f.func !== undefined) continue; // агрегат (на поле) — не группируется
     if (aggregated.has(`${f.tableId} ${f.path}`)) continue; // агрегат (в grouping.aggregates)
-    // КОНСЕРВАТИВНАЯ половина правила (нулевые регрессии): дописываем ТОЛЬКО простые
-    // точечные поля выборки. Произвольные выражения (`ЕСТЬNULL(…)`, `ВЫБОР…`,
-    // `ВЫРАЗИТЬ(…)`) конструктор дописывает по полной SQL-семантике зависимостей
-    // GROUP BY (выражение, зависящее от данных, — да; константа/display-функция —
-    // нет) — слишком рискованно (170 регрессий байт-в-байт), здесь не делаем.
-    if (f.expression !== undefined) continue;
+    // Произвольное выражение выборки (`ЕСТЬNULL(…)`, `ВЫБОР…`, `ВЫРАЗИТЬ(…)`).
+    // Дописываем ЦЕЛИКОМ по SQL-семантике зависимостей GROUP BY тогда и только тогда,
+    // когда выражение:
+    //   1) НЕ содержит агрегата (агрегатное выражение само не группируется; его
+    //      НЕагрегированные подссылки — отдельный кейс декомпозиции, здесь не делаем);
+    //   2) ссылается ≥1 раз на поле таблицы вне ЗНАЧЕНИЕ/ТИП/ПРЕДСТАВЛЕНИЕ;
+    //   3) ХОТЯ БЫ ОДНА такая полевая ссылка ещё НЕ покрыта группировкой по отдельности
+    //      (если ВСЕ поля выражения уже сгруппированы — выражение валидно как есть и
+    //      конструктор его НЕ дописывает, сверено живым оракулом validate_query).
+    // Сопоставление с существующей группировкой — по ОТРЕНДЕРЕННОМУ тексту.
+    if (f.expression !== undefined) {
+      const info = analyzeGroupExpr(f.expression);
+      if (!info || info.hasAgg || info.fields.length === 0) continue;
+      const ref: FieldRef = { tableId: '', path: '', expression: f.expression };
+      const key = fieldRefExpr(ref, aliases);
+      const need = covered.get(key) ?? 0;
+      if (need > 0) { covered.set(key, need - 1); continue; } // выражение уже в группировке
+      // Все поля выражения уже сгруппированы по отдельности → не дописываем.
+      const allCovered = info.fields.every(fld => existingFieldTexts.has(fld));
+      if (allCovered) continue;
+      out.push(ref);
+      continue;
+    }
     if (f.tableId === '' || f.path === '') continue;
     const ref: FieldRef = { tableId: f.tableId, path: f.path };
     const key = fieldRefExpr(ref, aliases);
