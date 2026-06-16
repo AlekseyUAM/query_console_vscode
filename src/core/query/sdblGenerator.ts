@@ -1468,6 +1468,11 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
       // явный (НЕ `Поле{n}`) псевдоним сохраняется (фаза 6.15.27, MCP). Парсер уже
       // навесил авто-`Поле{n}` (assignExpressionFieldAliases) — снимаем его здесь.
       if (suppressAutoAlias && (f.alias === undefined || /^Поле\d+$/u.test(f.alias))) {
+        // Явно написанный разработчиком `Поле{n}` конструктор СОХРАНЯЕТ даже под
+        // подавлением (MCP-проба); синтезированный — снимает (фаза 6.16.77).
+        if (f.exprAliasExplicit) {
+          return `\t${formatSelectExpression(f.expression)} КАК ${f.exprAliasExplicit}`;
+        }
         return `\t${formatSelectExpression(f.expression)}`;
       }
       // `ПРЕДСТАВЛЕНИЕ(<поле>)`/`ПРЕДСТАВЛЕНИЕССЫЛКИ(<поле>)` без явного `КАК` получает

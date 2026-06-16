@@ -457,6 +457,105 @@ function synthesizeImplicitFrom(cur: Cursor): Cursor {
 }
 
 /**
+ * Синтез секции `ИЗ` из ЕДИНСТВЕННОГО префикса-ВТ при её отсутствии (фаза 6.16.77,
+ * MCP-проба).
+ *
+ * Когда участник запроса НЕ содержит секции `ИЗ` верхнего уровня, а ВСЕ поля
+ * квалифицированы ОДНИМ И ТЕМ ЖЕ ведущим сегментом `<имя>.`, причём `<имя>` —
+ * известная временная таблица (создана ранним `ПОМЕСТИТЬ <имя>`, видна через
+ * `sourceResolver.tableByFullName`), конструктор 1С синтезирует источник
+ * `ИЗ <имя> КАК <имя>` (приём «выборка из ВТ без явного ИЗ»; MCP подтверждает
+ * `ВЫБРАТЬ ВТ.Поле` → дописывается `ИЗ\n\tВТ КАК ВТ`). Псевдоним = само имя ВТ,
+ * поэтому переписывание префиксов полей НЕ требуется — достаточно вставить секцию.
+ *
+ * Отличие от synthesizeImplicitFrom: там голова — двусегментный вид метаданных
+ * `Тип.Объект`, здесь — односегментное имя ВТ, и резолвиться оно должно как ВТ.
+ */
+function synthesizeTempTableFrom(cur: Cursor): Cursor {
+  const tokens = cur.allTokens;
+  if (!(tokens[0]?.type === 'keyword' && tokens[0].value === 'ВЫБРАТЬ')) return cur;
+  const resolver = sourceResolver;
+  if (!resolver) return cur;
+
+  // Точка вставки + проверка отсутствия `ИЗ` верхнего уровня (как в synthesizeImplicitFrom).
+  let depth = 0;
+  let insertBeforePos: number | undefined;
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && (t.value === '(' || t.value === '{')) { depth++; continue; }
+    if (t.type === 'punct' && (t.value === ')' || t.value === '}')) { depth--; continue; }
+    if (depth !== 0) continue;
+    if (t.type === 'keyword' && t.value === 'ИЗ') return cur;
+    if (insertBeforePos === undefined && t.type === 'keyword' && SECTION_AFTER_FIELDS.has(t.value)) {
+      insertBeforePos = t.pos;
+    }
+  }
+
+  // Собрать ведущие сегменты квалифицированных путей `<имя>.<поле>` на ВЕРХНЕМ
+  // уровне. Голова цепочки: имя-токен, перед которым нет `.`, за которым идёт `.`
+  // + имя/звезда. Любое голое поле/выражение-голова (имя без последующей `.`,
+  // функция, параметр) делает синтез неоднозначным — выходим без изменений.
+  const heads = new Set<string>();
+  depth = 0;
+  let skipUntilDepth: number | undefined;
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'punct' && (t.value === '(' || t.value === '{')) { depth++; continue; }
+    if (t.type === 'punct' && (t.value === ')' || t.value === '}')) {
+      depth--;
+      if (skipUntilDepth !== undefined && depth < skipUntilDepth) skipUntilDepth = undefined;
+      continue;
+    }
+    if (skipUntilDepth !== undefined) continue;
+    // Достигли первой секции после списка полей (ПОМЕСТИТЬ/УПОРЯДОЧИТЬ/ГДЕ/…) —
+    // дальше не сканируем (поля сортировки/группировки могут быть голыми).
+    if (depth === 0 && t.type === 'keyword' && SECTION_AFTER_FIELDS.has(t.value)) break;
+    if (!isNameToken(t)) continue;
+    const up = t.text.toUpperCase();
+    if ((up === 'ЗНАЧЕНИЕ' || up === 'ТИП') &&
+        tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '(') {
+      skipUntilDepth = depth + 1;
+      continue;
+    }
+    // Структурные ключевые слова списка полей (`КАК`, `ССЫЛКА`, направление
+    // сортировки) — не головы путей. `КАК <псевдоним>`/`<поле> ССЫЛКА <тип>`
+    // вводят имя, которое НЕ должно считаться головой; пропускаем и его, и
+    // следующий токен (псевдоним/тип-голову).
+    if (t.type === 'keyword' && (up === 'КАК' || up === 'ССЫЛКА')) { i++; continue; }
+    if (t.type === 'keyword') continue; // прочие ключевые слова (ВОЗР/УБЫВ/И/ИЛИ/…)
+    // Голова цепочки только на верхнем уровне.
+    if (depth !== 0) continue;
+    const prev = tokens[i - 1];
+    if (prev && prev.type === 'punct' && prev.value === '.') continue; // продолжение чужого пути
+    // Вызов функции (`Имя(`) — не путь поля; синтез неоднозначен.
+    if (tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '(') return cur;
+    // Голова пути: имя + `.` + имя.
+    if (tokens[i + 1]?.type === 'punct' && tokens[i + 1].value === '.' && isNameToken(tokens[i + 2])) {
+      heads.add(t.text);
+      continue;
+    }
+    // Имя-голова без последующей `.` (голое поле/идентификатор) — неоднозначно.
+    return cur;
+  }
+
+  if (heads.size !== 1) return cur;
+  const name = [...heads][0];
+  // Имя должно резолвиться как ВТ: односегментное (без точки) и известно резолверу.
+  if (name.includes('.')) return cur;
+  if (!resolver.tableByFullName(name)) return cur;
+  const canonical = resolver.canonicalFullName?.(name) ?? name;
+
+  const start = tokens[0].pos;
+  const lastReal = tokens[tokens.length - 1].type === 'eof'
+    ? tokens[tokens.length - 2] : tokens[tokens.length - 1];
+  const end = lastReal.pos + lastReal.value.length;
+  const fromText = `\nИЗ\n\t${canonical} КАК ${canonical}\n`;
+  const insertAt = insertBeforePos ?? end;
+  const out = cur.source.slice(start, insertAt) + fromText + cur.source.slice(insertAt, end);
+  return new Cursor(tokenize(out), out);
+}
+
+/**
  * Ключевые слова секций, идущих ПОСЛЕ списка полей (и после `ИЗ`). Точка вставки
  * синтезированной секции `ИЗ` — перед первым из них (synthesizeImplicitFrom).
  */
@@ -473,6 +572,9 @@ function parseSingleQuery(
   // Синтез источника `ИЗ` из полных путей полей `Тип.Объект.поле` при отсутствии
   // секции `ИЗ` (фаза 6.16.17): возвращает переписанный курсор либо исходный.
   cur = synthesizeImplicitFrom(cur);
+  // Синтез источника `ИЗ <ВТ> КАК <ВТ>` при отсутствии секции `ИЗ` и едином
+  // префиксе-ВТ у всех полей (фаза 6.16.77).
+  cur = synthesizeTempTableFrom(cur);
 
   // УНИЧТОЖИТЬ <name> — самостоятельный запрос (без ВЫБРАТЬ).
   if (cur.isKeyword('УНИЧТОЖИТЬ')) {
@@ -1830,6 +1932,16 @@ function interpretField(
     // конструктор его сохраняет (НЕ переалиасит в имя параметра). Фиксируем
     // alias явно, иначе авто-правило `&Имя → Имя` сломает воспроизведение.
     if (BARE_PARAM_ALIAS.test(rf.rawBody.trim())) field.alias = rf.alias;
+    else {
+      // Явно написанный `Поле{n}` конструктор СОХРАНЯЕТ ДОСЛОВНО (MCP-проба:
+      // `… КАК Поле5` остаётся `Поле5`, а синтезируемый позиционный счётчик его
+      // НЕ занимает). Кладём в alias (тогда счётчик `Поле{n}` его пропускает —
+      // assignExpressionFieldAliases трогает только поля без alias) и помечаем
+      // `exprAliasExplicit`, чтобы в suppress-контексте `В (ВЫБРАТЬ …)` он сохранялся
+      // (в отличие от синтезированного, который под подавлением снимается).
+      field.alias = rf.alias;
+      field.exprAliasExplicit = rf.alias;
+    }
     fields.push(field);
     return;
   }
