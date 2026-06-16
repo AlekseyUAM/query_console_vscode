@@ -64,7 +64,7 @@ import { dropUserIBConditions } from './dropUserIBConditions';
 import { dropUnlimitedStringConditions } from './dropUnlimitedStringConditions';
 import { qualifyBareFields, qualifyBareSectionFields, setSubqueryParser } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
-import { dropRedundantGroupDerefs, moveLeadingMovementCaseToEnd, moveBeforePrefixGroupDerefToEnd, substituteGroupFieldWithSelectExpr, dropFunctionallyDeterminedMovementCase, relocateKeptMovementCase } from './dropRedundantGroupDerefs';
+import { dropRedundantGroupDerefs, moveLeadingMovementCaseToEnd, moveBeforePrefixGroupDerefToEnd } from './dropRedundantGroupDerefs';
 import { canonicalizeFieldCasing } from './canonicalizeFieldCasing';
 
 // Инжектируем разборщик подзапросов в пасс квалификации голых полей (для подзапросов,
@@ -4406,15 +4406,6 @@ function parseDocumentInner(text: string, resolver?: MetadataResolver): QueryDoc
     // Перенос ведущего `ВЫБОР` с результатом-видом движения регистра в конец
     // СГРУППИРОВАТЬ ПО (фаза 6.18): конструктор 1С ставит такой элемент последним.
     moveLeadingMovementCaseToEnd(model);
-    // Минимизация GROUP BY: дроп функц-определённого CASE-вида-движения (фаза 6.19,
-    // Взаимозачет): отбрасывается, если все поля выражения сгруппированы и определимость
-    // не идёт через сгруппированную ссылку; иначе сохраняется и переносится в конец.
-    dropFunctionallyDeterminedMovementCase(model, resolver);
-    relocateKeptMovementCase(model, resolver);
-    // Замена простого поля группировки `Алиас.Имя` выражением выборки `… КАК Имя`
-    // (`ВЫБОР … ИНАЧЕ Алиас.Имя КОНЕЦ`) с переносом в конец СГРУППИРОВАТЬ ПО (фаза 6.19,
-    // корпус ЗависшиеЗадачи): конструктор 1С группирует по выражению, а не по его листу.
-    substituteGroupFieldWithSelectExpr(model, resolver);
     // Пометка иерархических источников (для суффикса ИЕРАРХИЯ в УПОРЯДОЧИТЬ ПО,
     // фаза 6.16.6). По метаданным; без резолвера флаг не ставится.
     if (resolver) {
