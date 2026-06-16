@@ -16,6 +16,13 @@ const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
 function mapParsedType(pt: ParsedType): MetaType {
   const k = pt.kind;
   if (k === 'Строка' || k === 'Число' || k === 'Булево' || k === 'Дата') {
+    if (k === 'Строка') {
+      return {
+        primitive: k,
+        ...(pt.length !== undefined ? { length: pt.length } : {}),
+        ...(pt.allowedLength !== undefined ? { allowedLength: pt.allowedLength } : {}),
+      };
+    }
     return { primitive: k };
   }
   if (k === 'ref' && pt.ref) {

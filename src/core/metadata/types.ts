@@ -11,6 +11,10 @@ export type TableKind =
 export interface MetaType {
   primitive?: 'Строка' | 'Число' | 'Булево' | 'Дата';
   ref?: { kind: TableKind; name: string };
+  /** Для строкового типа: квалификатор длины (0 при неограниченной длине). */
+  length?: number;
+  /** Для строкового типа: 'Fixed' | 'Variable'. */
+  allowedLength?: string;
 }
 
 export interface MetaField {

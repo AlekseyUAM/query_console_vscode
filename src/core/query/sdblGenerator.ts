@@ -1748,8 +1748,18 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   const byList: string[] = [];
   if (totals.grand) byList.push('ОБЩИЕ');
   for (const g of totals.groupFields) {
+    // Квалифицированное группировочное поле, СОВПАДАЮЩЕЕ с колонкой выборки по
+    // (tableId, path), конструктор 1С печатает по ПСЕВДОНИМУ этой колонки (а не
+    // `<алиас>.<path>`): `ИТОГИ ПО ДанныеПула.ЗаказНаЭмиссию` → `ИТОГИ ПО
+    // ЗаказНаЭмиссию`/`… КАК <алиас>` (MCP-проба, фаза 6.17). Применяем УЗКО:
+    // ровно одна колонка выборки делит (tableId, path) и несёт псевдоним.
+    const qualifiedSelectMatches = g.qualified && !g.expression
+      ? model.fields.filter(f => f.tableId === g.tableId && f.path === g.path && f.alias)
+      : [];
     const alias = g.expression
       ? g.expression
+      : qualifiedSelectMatches.length === 1
+      ? qualifiedSelectMatches[0].alias!
       : g.qualified
       ? `${tableAliases.get(g.tableId) ?? g.tableId}.${g.path}`
       : sectionFieldRefText(model, tableAliases, g.tableId, g.path);

@@ -61,6 +61,7 @@ import { expandStarFields } from './expandStarFields';
 import { expandTabSectionFields } from './expandTabSectionFields';
 import { wrapTabSectionAggregates } from './wrapTabSectionAggregates';
 import { dropUserIBConditions } from './dropUserIBConditions';
+import { dropUnlimitedStringConditions } from './dropUnlimitedStringConditions';
 import { qualifyBareFields, qualifyBareSectionFields, setSubqueryParser } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
 import { canonicalizeFieldCasing } from './canonicalizeFieldCasing';
@@ -1735,7 +1736,11 @@ function readJoinCondition(cur: Cursor, stopOnBrace = false): { tokens: Token[];
       // Закрывающая `}` опционального соединения построителя завершает условие.
       if (stopOnBrace && t.type === 'punct' && t.value === '}') break;
       if (isJoinKeyword(cur)) break;
-      if (t.type === 'keyword' && JOIN_COND_STOP.has(t.value)) break;
+      // Ключевое слово-секция, использованное как ИМЯ ТАБЛИЦЫ/псевдонима в точечной
+      // ссылке поля (`ИТОГИ.Ссылка`, где `ИТОГИ` совпадает с keyword `ИТОГИ`): если
+      // за ним идёт `.`, это голова ссылки поля правого операнда сравнения, а не
+      // начало секции — границей условия соединения не считаем (фаза 6.17).
+      if (t.type === 'keyword' && JOIN_COND_STOP.has(t.value) && !cur.isPunct('.', 1)) break;
       // Блок построителя (`{ГДЕ …}` или `{<вид> СОЕДИНЕНИЕ …}` сразу после условия
       // ПО) — не часть условия.
       if (cur.isBuilderStart() || cur.isBuilderJoinStart()) break;
@@ -4173,6 +4178,9 @@ function parseDocumentInner(text: string, resolver?: MetadataResolver): QueryDoc
     // Тихий дроп конъюнкта ГДЕ, навигирующего к идентификационным реквизитам ИБ
     // через ссылку на пользователя (фаза 6.15.23, по типам метаданных).
     dropUserIBConditions(model, resolver);
+    // Тихий дроп конъюнкта ГДЕ, сравнивающего поле неограниченной длины оператором,
+    // недопустимым платформой на таких полях (фаза 6.17, по типам метаданных).
+    dropUnlimitedStringConditions(model, resolver);
     // Суффикс `.*` поля построителя сохраняется только для ссылочного поля
     // (по типам метаданных); у нессылочного/нерезолвимого — снимается.
     resolveBuilderStar(model, resolver);

@@ -97,7 +97,7 @@ describe('loadMetadataFromYaml', () => {
     const result = loadMetadataFromYaml(tmpDir);
     const fields = result.tables[0].fields;
 
-    expect(fields[0].types).toEqual([{ primitive: 'Строка' }]);
+    expect(fields[0].types).toEqual([{ primitive: 'Строка', length: 100 }]);
     expect(fields[1].types).toEqual([{ primitive: 'Число' }]);
     expect(fields[2].types).toEqual([{ primitive: 'Дата' }]);
     expect(fields[3].types).toEqual([{ primitive: 'Булево' }]);
@@ -400,7 +400,7 @@ describe('loadMetadataFromYaml', () => {
     expect(table.fields).toHaveLength(1);
     expect(table.fields[0].name).toBe('Значение');
     expect(table.fields[0].kind).toBe('standard');
-    expect(table.fields[0].types).toEqual([{ primitive: 'Строка' }]);
+    expect(table.fields[0].types).toEqual([{ primitive: 'Строка', length: 20 }]);
   });
 
   it('loads a Перечисление with Ссылка and Порядок fields', () => {
