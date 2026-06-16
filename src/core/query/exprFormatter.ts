@@ -680,7 +680,12 @@ export function reindentLeafSubquery(text: string, base: number): string {
     const opInd = opM[1].length;
     const operandInd = (lines[j].match(/^\t*/u) ?? [''])[0].length;
     if (operandInd <= opInd) continue;
-    lines[j] = lines[j].replace(/^(\t*)/u, `$1${opM[2]} `);
+    // Конъюнкт `И`, набранный отдельной строкой: оракул держит склеенный `И операнд` на
+    // уровне ОПЕРАТОРА (= уровень предыдущего конъюнкта), без скобок (`a = b\n\tИ\n\t\tc = d`
+    // → `a = b\n\tИ c = d`, MCP). `ИЛИ` остаётся на уровне ОПЕРАНДА (на +1, со скобками
+    // выше) — прежнее поведение. Узкий гейт по оператору.
+    const targetInd = opM[2] === 'И' ? opInd : operandInd;
+    lines[j] = lines[j].replace(/^\t*/u, `${TAB.repeat(targetInd)}${opM[2]} `);
     lines.splice(i, 1);
     i--; // строка сдвинулась
   }
@@ -1930,6 +1935,31 @@ function valueListIsMulti(param: string): boolean {
     else if (ch === ',' && depth === 0) return true;
   }
   return false;
+}
+
+/**
+ * Лист-условие ГДЕ верхнего уровня (НЕ внутри подзапроса/VT-параметра) вида ПРОСТОГО
+ * членства `<путь-поля> В (<один элемент>)` / `… В ИЕРАРХИИ (<один элемент>)` оракул
+ * печатает БЕЗ пробела перед скобкой (`В(&П)`) — как структурный путь renderOperatorRhs.
+ * Срабатывает СТРОГО на всём листе: ведущее `НЕ` (`НЕ Поле В (&П)`), многоэлементный
+ * список (`В (a, b)`), подзапрос (`В (ВЫБРАТЬ …)`) и любые иные операторы пробел
+ * СОХРАНЯЮТ (оракул их печатает с пробелом). Многострочный лист (подзапрос/VT-параметр —
+ * контекст leafSpacing) не трогается. Применяется к простому листу; формат-выражения
+ * сюда не попадают.
+ */
+export function tightenLeafInOperator(text: string): string {
+  if (text.includes('\n')) return text;
+  // Весь лист — `<путь> В[ ИЕРАРХИИ] (<группа>)` с хвостовым `)` в самом конце.
+  const m = /^([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)\s+(В(?:\s+ИЕРАРХИИ)?)\s+(\(.*\))$/u.exec(text);
+  if (!m) return text;
+  const group = m[3];
+  // Группа должна быть СБАЛАНСИРОВАННОЙ парой (одиночный элемент), не списком/подзапросом.
+  if (!isPureBalancedList(group)) return text;
+  if (valueListIsMulti(group)) return text;
+  // Оракул убирает пробел ТОЛЬКО когда единственный элемент — ПАРАМЕТР `(&X)`.
+  // Для значения/выражения (`(ЗНАЧЕНИЕ(…))`, `(ВЫРАЗИТЬ(…))`, литерал) пробел СОХРАНЯЕТСЯ.
+  if (!/^\(\s*&[\p{L}_][\p{L}\p{N}_]*\s*\)$/u.test(group)) return text;
+  return `${m[1]} ${m[2].replace(/\s+/g, ' ')}${group}`;
 }
 
 /**

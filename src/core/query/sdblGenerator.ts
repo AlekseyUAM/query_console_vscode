@@ -4,7 +4,7 @@ import type { QueryDocument } from './unionModel';
 import { deriveUnionColumns, unionHasTabSection, orderedSelectElements, elementAlias, type UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
 import { parseDocument } from './sdblParser';
-import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic, canonicalizeComparisonOperands, setInlineSubqueryReflow } from './exprFormatter';
+import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic, canonicalizeComparisonOperands, setInlineSubqueryReflow, tightenLeafInOperator } from './exprFormatter';
 import { tokenize } from './sdblLexer';
 
 // Регистрируем в exprFormatter канонический ре-рендер инлайн-подзапроса членства
@@ -154,8 +154,11 @@ function renderSource(t: SelectedTable, bodyTabs = 1): string {
   // Регистр бухгалтерии: фиксированная арность, хвостовые пустые позиции сохраняются,
   // скобки — только если задан хоть один параметр.
   if (kind === 'РегистрБухгалтерии') {
-    const positions = accountingPositions(slice, v);
+    let positions = accountingPositions(slice, v);
     if (!positions.some(p => p !== '') && !v.hadParens) return t.fullName;
+    // Автопсевдоним `Поле<2k>` для выражений в DCS-скобках `{(…)}` (как в renderVirtualParams).
+    const dcsStateAcc = { k: 0 };
+    positions = positions.map(p => (p ? aliasDcsBraceExprs(wrapDcsBraceParam(p), dcsStateAcc) : p));
     // Конструктор 1С разносит вызов виртуальной таблицы регистра бухгалтерии по
     // строкам, когда хотя бы одна позиция — СОСТАВНОЕ выражение (верхнеуровневый И/ИЛИ)
     // или многострочный подзапрос: каждый позиционный параметр (включая пустые и
@@ -261,6 +264,33 @@ function wrapDcsBraceParam(text: string): string {
   });
 }
 
+/**
+ * Содержимое DCS-фигурного параметра ВТ (`{(<выражение>)}`) — выражение (не голый
+ * параметр `&Имя` и не список полей с запятой) — конструктор 1С снабжает
+ * автопсевдонимом `Поле<2k>`, где k — порядковый номер ИМЕНУЕМОГО выражения-скобки
+ * (1-based) среди всех `{…}`-параметров вызова ВТ; голые `{(&Имя)}` не нумеруются и
+ * счётчик не двигают (сверено живым оракулом validate_query). Применяется к каждой
+ * позиции/условию ВТ с общим счётчиком `state` через все позиции вызова.
+ */
+function aliasDcsBraceExprs(text: string, state: { k: number }): string {
+  if (!text.includes('{')) return text;
+  return text.replace(/\{([^{}]*)\}/gu, (whole, inner: string) => {
+    const c = inner.trim();
+    // Уже с псевдонимом — не трогаем (но всё равно считаем выражением-слотом).
+    if (/(^|[^\p{L}\p{N}_])КАК([^\p{L}\p{N}_]|$)/iu.test(c)) { state.k += 1; return whole; }
+    // Должна быть одиночная охватывающая пара скобок `( … )`.
+    if (!c.startsWith('(') || !c.endsWith(')')) return whole;
+    // Внутреннее содержимое.
+    const innerExpr = c.slice(1, -1).trim();
+    // Голый параметр `&Имя` — не нумеруется.
+    if (/^&[\p{L}\p{N}_]+$/u.test(innerExpr)) return whole;
+    // Список полей DCS (верхнеуровневая запятая) — не наш случай.
+    if (hasTopLevelComma(c)) return whole;
+    state.k += 1;
+    return `{${c} КАК Поле${2 * state.k}}`;
+  });
+}
+
 function renderVirtualParams(fullName: string, positions: string[], condition: string, bodyTabs: number): string {
   // Регистровая нормализация параметров виртуальной таблицы (период, условие):
   // конструктор приводит зарезервированные слова/функции/литералы к ВЕРХНЕМУ
@@ -270,6 +300,15 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // переводов строк).
   positions = positions.map(p => (p ? wrapDcsBraceParam(normalizeLeafCase(p)) : p));
   condition = condition ? wrapDcsBraceParam(normalizeLeafCase(condition)) : condition;
+  // Автопсевдоним `Поле<2k>` для выражений в DCS-скобках `{(…)}` вызова ВТ (см.
+  // aliasDcsBraceExprs). Общий счётчик идёт по позициям; условие (= последняя позиция)
+  // нумеруется тем же счётчиком только если оно НЕ дубликат positions[last].
+  const dcsState = { k: 0 };
+  const condDup = condition !== '' && positions.length > 0 && positions[positions.length - 1] === condition;
+  positions = positions.map(p => (p ? aliasDcsBraceExprs(p, dcsState) : p));
+  if (condition && condition.includes('{')) {
+    condition = condDup ? positions[positions.length - 1] : aliasDcsBraceExprs(condition, dcsState);
+  }
   // Сплющиваем «лишние» переносы разработчика внутри ПРОСТОГО условия-параметра
   // (`Валюта В (&А,\n  &Б)` → одна строка): конструктор печатает такой параметр ВТ
   // инлайн (фаза 6.16.72). flattenMultilineLeaf консервативен — НЕ трогает условие с
@@ -962,7 +1001,7 @@ function stripLeadingNotOperandParens(text: string): string {
  * многострочный) — структурной переотрисовкой форматера с той же геометрией, что
  * у legacy-пути (фаза 6.15.5: ворота «сложный конъюнкт → legacy» сняты).
  */
-function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>, depth = 0, poOwnLine = false): string {
+function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliases: Map<string, string>, depth = 0, poOwnLine = false, joinParenthesized = true): string {
   const lines: string[] = [];
   // Внутри подзапроса-операнда условия (`В (ВЫБРАТЬ … СОЕДИНЕНИЕ … ПО …)`) конструктор
   // 1С печатает `ПО` на отдельной строке, а условие НИЖЕ с доп. отступом +1: первый
@@ -994,7 +1033,13 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
       // RHS-CASE — на 3+depth (КОГДА на +1). При poOwnLine конъюнкт стоит на 3+depth →
       // КОНЕЦ на 4+depth. Гейт раскладки узкий (CASE-на-RHS, ровно один КОНЕЦ).
       const caseBase = k > 0 ? cont : (poOwnLine ? 4 + depth : 3 + depth);
-      sub = [renderArbitraryConjunct(c.expression ?? '', depth, caseBase, !!(c as { __fromAndSplit?: boolean }).__fromAndSplit)];
+      // Единственный самостоятельный конъюнкт БЕЗ скобок во вводе (`ПО a = b`),
+      // ставший произвольным лишь из-за переквалификации голого поля
+      // (`ПО Ссылка = T.Поле` → `ПО Алиас.Ссылка = T.Поле`), оракул печатает БЕЗ
+      // обёртки — как простое сравнение. Гейт: ровно один конъюнкт и !parenthesized
+      // (скобки во вводе → сохраняем обёртку, фаза ВидыКонтактнойИнформации).
+      const standaloneUnwrap = expanded.length === 1 && !joinParenthesized;
+      sub = [renderArbitraryConjunct(c.expression ?? '', depth, caseBase, !!(c as { __fromAndSplit?: boolean }).__fromAndSplit || standaloneUnwrap)];
     }
     if (k > 0) sub[0] = `${'\t'.repeat(cont)}И ${sub[0]}`;
     else if (poOwnLine) sub[0] = `${'\t'.repeat(3 + depth)}${sub[0]}`;
@@ -1089,7 +1134,7 @@ function renderJoinCondition(join: Join, aliases: Map<string, string>, depth = 0
   // по месту (фаза 6.15.5). Legacy-путь ниже остаётся для моделей без conditions[]
   // (построенных вебвью/сторой).
   if (join.conditions && join.conditions.length > 0) {
-    return renderJoinConjuncts(join.conditions, aliases, depth, poOwnLine);
+    return renderJoinConjuncts(join.conditions, aliases, depth, poOwnLine, join.parenthesized ?? true);
   }
   if (join.custom) {
     // Составное условие (верхнеуровневый И/ИЛИ) или структура (ИЛИ/ВЫБОР) —
@@ -2607,7 +2652,12 @@ function buildConditionStrings(
       const caseBaseLeaf = subBase - 1 + (leadsWithNot ? 1 : 0);
       // Канонизация операндов сравнения (`&П = Поле` → `Поле = &П`) в ГДЕ/ИМЕЮЩИЕ —
       // только для простого листа-сравнения (не formatExpression, не ПО). Фаза 6.16.76.
-      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(canonicalizeComparisonOperands(flattenMultilineLeaf(expr)), subBase), caseBaseLeaf, true))))))));
+      // Лист-условие ГДЕ верхнего уровня (НЕ внутри подзапроса): одиночный `В (&П)`
+      // оракул печатает БЕЗ пробела (`В(&П)`), как структурный путь — даже когда
+      // условие стало произвольным листом из-за переквалификации голого поля.
+      const tightenIn = (s: string): string =>
+        slot === 'where' && !inConditionSubquery ? tightenLeafInOperator(s) : s;
+      if (expr) conds.push(needsFormatting(expr) || isRootNotGroup(expr) ? formatExpression(expr, slot, inConditionSubquery ? 1 : undefined) : appendIsNotNullTrailingSpace(tightenIn(stripNotFieldParens(stripNegatedFieldParens(wrapBareCastOperand(stripRedundantLeafParens(normalizeLeafCase(reindentLeafCase(reindentLeafSubquery(canonicalizeComparisonOperands(flattenMultilineLeaf(expr)), subBase), caseBaseLeaf, true)))))))));
       continue;
     }
     // Нессылочный левый операнд `В`-подзапроса (`1 В (ВЫБРАТЬ …)`, фаза 6.15.27):
