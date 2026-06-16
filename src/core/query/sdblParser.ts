@@ -64,6 +64,7 @@ import { dropUserIBConditions } from './dropUserIBConditions';
 import { dropUnlimitedStringConditions } from './dropUnlimitedStringConditions';
 import { qualifyBareFields, qualifyBareSectionFields, setSubqueryParser } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
+import { dropRedundantGroupDerefs, moveLeadingMovementCaseToEnd, moveBeforePrefixGroupDerefToEnd } from './dropRedundantGroupDerefs';
 import { canonicalizeFieldCasing } from './canonicalizeFieldCasing';
 
 // Инжектируем разборщик подзапросов в пасс квалификации голых полей (для подзапросов,
@@ -753,14 +754,22 @@ function parseSingleQuery(
   // `validate_query`; не зависит от числа статических условий ГДЕ и числа полей
   // выборки). Простые поля (`Т.Код`) и одиночный параметр (`&Отбор` — вставка
   // целого блока отбора) псевдонима не получают и счётчик k не двигают.
+  // НЕСКОЛЬКО соседних `{ГДЕ …}` блоков подряд конструктор 1С СКЛЕИВАЕТ в ОДИН блок
+  // построителя (корпус СобытияМониторингаСПАРКРиски: четыре `{ГДЕ …}` → единый `{ГДЕ}`
+  // с четырьмя условиями). Автопсевдоним `Поле<2k>` нумеруется ПО КАЖДОМУ исходному
+  // блоку отдельно (k сбрасывается на границе блоков): четыре одиночных блока дают
+  // `Поле2` каждому. Накапливаем условия из всех подряд идущих блоков.
   const readBuilderWhere = (): void => {
-    builder.conditions = parseBuilderBlock(cur, 'ГДЕ');
-    let exprNo = 0;
-    for (const f of builder.conditions) {
-      if (!f.condition) continue;
-      if (f.alias || /^&[\p{L}\p{N}_]+$/u.test(f.ref)) continue;
-      exprNo += 1;
-      f.alias = `Поле${2 * exprNo}`;
+    while (cur.isBuilderBlock('ГДЕ')) {
+      const block = parseBuilderBlock(cur, 'ГДЕ');
+      let exprNo = 0;
+      for (const f of block) {
+        if (!f.condition) continue;
+        if (f.alias || /^&[\p{L}\p{N}_]+$/u.test(f.ref)) continue;
+        exprNo += 1;
+        f.alias = `Поле${2 * exprNo}`;
+      }
+      builder.conditions.push(...block);
     }
   };
   if (cur.isBuilderBlock('ГДЕ')) {
@@ -2754,7 +2763,14 @@ function trySimpleCondition(
     if (opTok === 'В') {
       const subTokens = tokens.slice(opIdx + 1);
       const inner = subqueryInnerText(subTokens, source);
-      if (inner !== undefined && isCompactSubquerySource(inner)) {
+      // Канонически набранный (НЕ компактный) подзапрос-операнд с нессылочным LHS
+      // обычно уже байт-в-байт на текстовом пути (равномерный сдвиг) — НЕ трогаем.
+      // ИСКЛЮЧЕНИЕ (фаза 6.16): тело содержит ИМЕЮЩИЕ, чья корневая ИЛИ-цепочка обёрнута
+      // в ИЗБЫТОЧНЫЕ внешние скобки (`ИМЕЮЩИЕ\n\t(A И B)\n\tИЛИ (C И D)`). Текстовый
+      // путь скобки СОХРАНЯЕТ, а конструктор 1С их снимает (внутри подзапроса-операнда,
+      // в отличие от ИМЕЮЩИЕ верхнего уровня) — расхождение. Разворачиваем структурно
+      // (renderConditionSubquery), где formatExpression снимает обёртку байт-в-байт.
+      if (inner !== undefined && (isCompactSubquerySource(inner) || hasRedundantHavingOrParens(inner))) {
         const sub = trySubqueryParam(subTokens, source);
         // Компактный подзапрос (`ВЫБРАТЬ … ИЗ` на одной строке) с нессылочным LHS
         // конструктор разворачивает структурно по строкам. Одноветочный подзапрос
@@ -2923,6 +2939,38 @@ function subqueryInnerText(paramTokens: Token[], source: string): string | undef
 function isCompactSubquerySource(inner: string): boolean {
   const re = /(?:^|[^\p{L}\p{N}_])ВЫБРАТЬ(?:[^\p{L}\p{N}_].*?)(?:^|[^\p{L}\p{N}_])ИЗ(?:[^\p{L}\p{N}_]|$)/u;
   return inner.split('\n').some((l) => re.test(l));
+}
+
+/**
+ * Содержит ли тело подзапроса-операнда секцию `ИМЕЮЩИЕ` с ВЕРХНЕУРОВНЕВЫМ `ИЛИ`
+ * (`ИМЕЮЩИЕ (A И B) ИЛИ (C И D)` или `ИМЕЮЩИЕ A И B ИЛИ C И D`)? На ВЕРХНЕМ уровне
+ * запроса конструктор 1С оборачивает такую цепочку во внешние скобки, а ВНУТРИ
+ * подзапроса-операнда условия — НЕТ (проверено MCP-оракулом), плюс снимает избыточные
+ * скобки И-групп-операндов. Текстовый (равномерный сдвиг) путь сохраняет исходную
+ * скобочную геометрию — расхождение. Разворачиваем такое тело структурно
+ * (renderConditionSubquery → formatExpression), где обе нормализации делаются
+ * байт-в-байт. Узкий гейт (фаза 6.16): берём текст ОТ `ИМЕЮЩИЕ` до конца тела (либо
+ * до следующей секции) и требуем верхнеуровневый (depth==0, вне строк) `ИЛИ`.
+ */
+function hasRedundantHavingOrParens(inner: string): boolean {
+  const m = /(?:^|[^\p{L}\p{N}_])ИМЕЮЩИЕ(?![\p{L}\p{N}_])/u.exec(inner);
+  if (!m) return false;
+  let rest = inner.slice(m.index + m[0].length);
+  const tailKw = /(?:^|[^\p{L}\p{N}_])(?:ИНДЕКСИРОВАТЬ|УПОРЯДОЧИТЬ|ОБЪЕДИНИТЬ|ИТОГИ)(?![\p{L}\p{N}_])/u.exec(rest);
+  if (tailKw) rest = rest.slice(0, tailKw.index);
+  let depth = 0, inStr = false;
+  const isW = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  for (let i = 0; i < rest.length; i++) {
+    const ch = rest[i];
+    if (inStr) { if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '(') { depth++; continue; }
+    if (ch === ')') { depth--; continue; }
+    if (depth === 0 && (ch === 'И' || ch === 'и') && !isW(rest[i - 1]) && /^ИЛИ(?![\p{L}\p{N}_])/iu.test(rest.slice(i))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function trySubqueryParam(paramTokens: Token[], source: string): QueryDocument | undefined {
@@ -4347,6 +4395,17 @@ function parseDocumentInner(text: string, resolver?: MetadataResolver): QueryDoc
     // Дотированный автопсевдоним квалифицированного поля с НЕРЕЗОЛВИМОЙ навигацией
     // по источнику-ВТ (фаза 6.18). После квалификации, до автопсевдонимов.
     markDottedAutoAlias(model, resolver);
+    // Тихий дроп избыточной многосегментной ссылки `Алиас.A.B` из СГРУППИРОВАТЬ ПО
+    // (фаза 6.18, по метаданным): когда префикс `Алиас.A` (ссылочное поле) тоже в
+    // группировке и `Алиас.A.B` не выбрано отдельной колонкой — оракул его отбрасывает.
+    dropRedundantGroupDerefs(model, resolver);
+    // Перенос ссылки `Алиас.A.B` (стоящей ПЕРЕД сгруппированным префиксом `Алиас.A`,
+    // потребляемой агрегатным выражением выборки) в конец явной группировки (фаза
+    // 6.18, корпус ФормированиеПартийЗЕРНО bsl_5). После прямого дропа.
+    moveBeforePrefixGroupDerefToEnd(model, resolver);
+    // Перенос ведущего `ВЫБОР` с результатом-видом движения регистра в конец
+    // СГРУППИРОВАТЬ ПО (фаза 6.18): конструктор 1С ставит такой элемент последним.
+    moveLeadingMovementCaseToEnd(model);
     // Пометка иерархических источников (для суффикса ИЕРАРХИЯ в УПОРЯДОЧИТЬ ПО,
     // фаза 6.16.6). По метаданным; без резолвера флаг не ставится.
     if (resolver) {

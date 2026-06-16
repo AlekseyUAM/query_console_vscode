@@ -607,6 +607,18 @@ export function reindentLeafSubquery(text: string, base: number): string {
     const kwInd = (kwLine.match(/^\t*/u) ?? [''])[0].length;
     lines[i] = TAB.repeat(Math.max(0, kwInd - 1));
   }
+  // Пустые строки ВНУТРИ тела подзапроса, набранные разработчиком ради читаемости
+  // (напр. перед `УПОРЯДОЧИТЬ ПО` или между секциями), конструктор 1С УБИРАЕТ —
+  // значимы лишь разделители вокруг `ОБЪЕДИНИТЬ` (их сохраняет ветка выше, MCP-проба
+  // `В (ВЫБРАТЬ … ГДЕ …\n\n УПОРЯДОЧИТЬ ПО …)` → пустая строка исчезает). Удаляем
+  // пустые строки тела (i > start), НЕ соседние с `ОБЪЕДИНИТЬ` (фаза 6.16).
+  for (let i = lines.length - 1; i > start; i--) {
+    if (lines[i].trim() !== '') continue;
+    const prevKw = isUnionKw(lines[i - 1] ?? '');
+    const nextKw = i + 1 < lines.length && isUnionKw(lines[i + 1]);
+    if (prevKw || nextKw) continue;
+    lines.splice(i, 1);
+  }
   // Хвостовые пробелы СОДЕРЖАТЕЛЬНЫХ строк подзапроса конструктор срезает
   // (`ИЗ ` → `ИЗ`). Не трогаем: строки со строковым литералом (там пробел может быть
   // значимым) и пустые/только-пробельные строки-разделители (конструктор сохраняет их
@@ -689,6 +701,53 @@ export function reindentLeafSubquery(text: string, base: number): string {
     lines.splice(i, 1);
     i--; // строка сдвинулась
   }
+  // Скобочная группа `НЕ(…)`, набранная разработчиком МНОГОСТРОЧНО с ПЛОСКИМИ
+  // продолжениями (`И НЕ(A = B` на отступе N, `И C = D)` — тоже на N): конструктор 1С
+  // отбивает продолжения такой группы на ДВА таба ГЛУБЖЕ строки-открывателя `НЕ(`
+  // (N+2), пока скобка группы не закроется (MCP-проба `ГДЕ … И НЕ(A\n\t\t…И B)` в
+  // подзапросе-операнде → продолжение на openerInd+2). Равномерный сдвиг этого не делает.
+  // Узкий гейт: строка открывает группу `НЕ(` со скобкой, остающейся ОТКРЫТОЙ к концу
+  // строки, а продолжения — `И`/`ИЛИ` на отступе <= openerInd (плоская геометрия).
+  // Фаза 6.16.
+  {
+    const indOf = (s: string): number => (s.match(/^\t*/u) ?? [''])[0].length;
+    const balance = (s: string): number => {
+      let d = 0, inStr = false;
+      for (const ch of s) {
+        if (ch === '"') inStr = !inStr;
+        else if (!inStr && ch === '(') d++;
+        else if (!inStr && ch === ')') d--;
+      }
+      return d;
+    };
+    // Открывает ли строка группу `НЕ(` (слово НЕ вплотную/через пробел перед `(`),
+    // и баланс скобок ПОСЛЕ строки >= 1 (группа продолжается ниже).
+    const opensNotGroup = /(?:^|[^\p{L}\p{N}_])НЕ\s*\(/u;
+    for (let i = start; i < lines.length; i++) {
+      if (!opensNotGroup.test(lines[i])) continue;
+      if (balance(lines[i]) < 1) continue;
+      const openerInd = indOf(lines[i]);
+      let depth = balance(lines[i]);
+      let j = i + 1;
+      // Все продолжения группы должны быть плоскими (<= openerInd) — иначе геометрия
+      // уже задана разработчиком, не трогаем (отступ от строки-открывателя break).
+      const span: number[] = [];
+      let flat = true;
+      for (; j < lines.length && depth > 0; j++) {
+        if (lines[j].trim() === '') continue;
+        if (indOf(lines[j]) > openerInd) { flat = false; break; }
+        if (/^\t*(?:И|ИЛИ)(?:[^\p{L}\p{N}_])/u.test(lines[j])) span.push(j);
+        else { flat = false; break; }
+        depth += balance(lines[j]);
+      }
+      if (flat && depth <= 0 && span.length > 0) {
+        for (const k of span) {
+          lines[k] = TAB.repeat(openerInd + 2) + lines[k].replace(/^\t*/u, '');
+        }
+        i = j - 1;
+      }
+    }
+  }
   // Внутри подзапроса-операнда условия `ПО` соединения печатается на отдельной
   // строке, а условие — НИЖЕ с отступом +1 (фаза 6.15.14, MCP). В сыром тексте
   // подзапроса (`В (ВЫБРАТЬ … СОЕДИНЕНИЕ … ПО <условие>)`) перекладываем строку
@@ -748,7 +807,7 @@ function isSingleTopLevelCaseValue(text: string): boolean {
     // глубина там 1, и под гейт не подпадает).
     const viPos = trailingVyborPos(line);
     let d = depth;
-    let s = inStr;
+    let s: boolean = inStr;
     for (let c = 0; c < line.length; c++) {
       if (c === viPos && !s && d === 0) return true;
       const ch = line[c];
@@ -821,6 +880,55 @@ function opensWithTopLevelVybor(text: string): boolean {
     if (openGroupParensOf(head) > 0) return false;
   }
   return true;
+}
+
+/**
+ * Значение ветки ТОГДА/ИНАЧЕ, в котором единственный ВЫБОР открыт ВНУТРИ ВЫЗОВА
+ * функции (`ВЫРАЗИТЬ(A * B / (C * ВЫБОР … КОНЕЦ) КАК Тип)`), а АРИФМЕТИЧЕСКАЯ ГОЛОВА
+ * перед этим ВЫБОР разнесена разработчиком по НЕСКОЛЬКИМ физическим строкам
+ * (`ВЫРАЗИТЬ(A * B\n / (C * ВЫБОР`). Конструктор 1С СКЛЕИВАЕТ голову в одну строку
+ * (как и любую арифметику) и раскладывает вложенный CASE по funcParenDepth-глубине —
+ * ровно то, что делает reindentLeafCase(.., funcParenDepth=true). isSingleTopLevelCaseValue
+ * этот лист не ловит (его ВЫБОР на глубине скобок > 0), opensWithTopLevelVybor — тоже
+ * (первая структурная строка НЕ оканчивается словом ВЫБОР, она оборвана арифметикой).
+ *
+ * Узкий гейт (фаза 6.16.104): ровно один ВЫБОР; нет подзапроса; строка-открыватель
+ * (оканчивается словом ВЫБОР) стоит на глубине скобок > 0; голова до этой строки —
+ * МНОГОСТРОЧНАЯ (есть что склеивать; одностроковый открыватель уже идёт штатным путём);
+ * до строки-открывателя НЕ встречается закрывающая `)` (чистая вложенность вызова).
+ */
+function opensWithVyborInCall(text: string): boolean {
+  if (!text.includes('\n')) return false;
+  if (/(?:^|[^\p{L}\p{N}_])ВЫБРАТЬ(?:[^\p{L}\p{N}_]|$)/iu.test(text)) return false;
+  const vyborCount = (text.match(/(?:^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/giu) ?? []).length;
+  if (vyborCount !== 1) return false;
+  const lines = text.split('\n');
+  const trailingVyborPos = (line: string): number => {
+    const m = /(^|[^\p{L}\p{N}_])(ВЫБОР)\s*$/u.exec(line);
+    return m ? m.index + m[1].length : -1;
+  };
+  let depth = 0;
+  let inStr = false;
+  let sawClose = false;
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const viPos = trailingVyborPos(line);
+    let d = depth;
+    let s: boolean = inStr;
+    for (let c = 0; c < line.length; c++) {
+      // Строка-открыватель CASE: оканчивается словом ВЫБОР на глубине вызова > 0,
+      // ей предшествует МНОГОСТРОЧНАЯ голова, и до неё не было закрывающих скобок.
+      if (c === viPos && !s) return d > 0 && li > 0 && !sawClose;
+      const ch = line[c];
+      if (ch === '"') { s = !s; continue; }
+      if (s) continue;
+      if (ch === '(') d++;
+      else if (ch === ')') { d--; if (d < 0) return false; sawClose = true; }
+    }
+    depth = d;
+    inStr = s;
+  }
+  return false;
 }
 
 /**
@@ -1589,6 +1697,49 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
     return levels;
   };
 
+  // Значение ветки ТОГДА/ИНАЧЕ — членство `(…) В (ВЫБРАТЬ …)`, где подзапрос разнесён
+  // разработчиком по строкам ПОД строкой ключевого слова. reindentLeafCase сам по себе
+  // не умеет вкладывать подзапрос (строки тела не структурные → штатный bail), а внешний
+  // равномерный сдвиг (reindentLeafSubquery вокруг всего CASE) роняет геометрию КОГДА.
+  // Здесь: если строка-значение `kwIdx` ОКАНЧИВАЕТСЯ оператором `В`/`В ИЕРАРХИИ`, а
+  // следующая структурная строка открывает `(ВЫБРАТЬ`, отдаём блок подзапроса (от
+  // строки `(ВЫБРАТЬ` до её сбалансированного `)`) в reindentLeafSubquery с base =
+  // отступ ключевого слова + 2 (`(ВЫБРАТЬ` встаёт на anchor+2, тело глубже — как оракул).
+  // Возвращаем индекс ПОСЛЕДНЕЙ поглощённой строки (или kwIdx, если случай не подходит).
+  // Узкий гейт: ровно `… В` в конце строки kwIdx, подзапрос-операнд `(ВЫБРАТЬ` следом.
+  const consumeValueSubquery = (kwIdx: number, anchor: number): number => {
+    if (!/(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*$/u.test(lines[kwIdx])) return kwIdx;
+    // Найти строку, начинающуюся с `(ВЫБРАТЬ` среди ближайших непустых.
+    let sub = -1;
+    for (let j = kwIdx + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') continue;
+      if (/^[\t ]*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/u.test(lines[j])) { sub = j; break; }
+      return kwIdx; // первой непустой строкой идёт не подзапрос — не наш случай
+    }
+    if (sub < 0) return kwIdx;
+    // Баланс скобок блока подзапроса от строки `(ВЫБРАТЬ` до закрытия.
+    let depth = 0, inS = false, end = -1;
+    for (let j = sub; j < lines.length; j++) {
+      for (const ch of lines[j]) {
+        if (ch === '"') inS = !inS;
+        else if (!inS && ch === '(') depth++;
+        else if (!inS && ch === ')') depth--;
+      }
+      if (depth <= 0) { end = j; break; }
+    }
+    if (end < 0) return kwIdx;
+    // Реиндент блока подзапроса: `(ВЫБРАТЬ` на anchor+2, тело глубже. reindentLeafSubquery
+    // ждёт «голову» перед строкой `(ВЫБРАТЬ`; даём фиктивную (пустую) строку-голову,
+    // чтобы start>0, затем отбрасываем её. base подзапроса = anchor + 2 (его `(ВЫБРАТЬ`
+    // ложится на base = anchor+2).
+    const block = ['', ...lines.slice(sub, end + 1)].join('\n');
+    const re = reindentLeafSubquery(block, anchor + 2).split('\n');
+    re.shift(); // убрать фиктивную голову
+    if (re.length !== end - sub + 1) return kwIdx; // геометрия не разложилась — не трогаем
+    for (let j = sub; j <= end; j++) lines[j] = re[j - sub];
+    return end;
+  };
+
   for (let i = openIdx + 1; i < lines.length; i++) {
     const raw = lines[i];
     if (raw.trim() === '') continue; // пустые/разделительные строки не трогаем
@@ -1674,6 +1825,19 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       // ОстаткиТоваровМеньшеНуля). Сдвиг хранится по уровням скобок.
       const curShift = condShiftStack[condParen] ?? 0;
       lines[i] = reTab(raw, curWhen + 2 + condParen + curShift + orShift);
+      // Избыточная обёртка вокруг операнда продолжения `ИЛИ` условия КОГДА
+      // (`ИЛИ (X МЕЖДУ a И b)`, `ИЛИ (X ЕСТЬ NULL)`): предикат/сравнение связывает
+      // крепче ИЛИ, и оракул скобки снимает (`ИЛИ X МЕЖДУ a И b`). Зеркало
+      // renderBool/renderWhenCondition (`group(leaf)`-операнд ИЛИ разворачивается).
+      // ТОЛЬКО для `ИЛИ`: операнд `И` оракул В СКОБКАХ СОХРАНЯЕТ (`И (X МЕЖДУ a И b)`
+      // остаётся со скобками — живой оракул; зеркало `and`-ветки renderBool, которая
+      // group(leaf) НЕ разворачивает). Узко: пара ОТКРЫВАЕТСЯ и ЗАКРЫВАЕТСЯ на этой
+      // же строке (parenDelta==0, не трогаем учёт уровней condParen), внутри нет
+      // верхнеуровневого И/ИЛИ/ВЫБОР (stripRedundantCaseClauseParens сам пасует) —
+      // значимую группу `(A ИЛИ B)` не разворачиваем (корпус ОбработкаНовостейСлужебный).
+      if (w === 'ИЛИ' && parenDelta(raw) === 0) {
+        lines[i] = stripClause(lines[i], w);
+      }
       // Открытие новых уровней скобок на этой строке наследует сдвиг текущей строки
       // (curShift + orShift) — он действует на всё содержимое открытой группы. Группа
       // `НЕ(…)` добавляет содержимому ЕЩЁ +1 (НЕ — отдельный уровень над скобкой) и
@@ -1702,7 +1866,11 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
         const callDepth = funcParenDepth ? openCallParens(head.replace(/^\t*/u, '')) : 0;
         stack.push(E + 2 + callDepth + 1); curWhen = -1; valueAnchor = -1;
       }
-      else { curWhen = -1; valueAnchor = E + 2; condParen = parenDelta(lines[i]); }
+      else {
+        curWhen = -1; valueAnchor = E + 2; condParen = parenDelta(lines[i]);
+        const consumed = consumeValueSubquery(i, E + 2);
+        if (consumed > i) { i = consumed; valueAnchor = -1; }
+      }
     } else if (w === 'ИНАЧЕ') {
       const tabbed = reTab(raw, E + 1);
       lines[i] = endsWithVybor(raw) ? wrapClauseHeadCast(tabbed, 'ИНАЧЕ') : stripClause(tabbed, 'ИНАЧЕ');
@@ -1711,7 +1879,11 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
         const callDepth = funcParenDepth ? openCallParens(head.replace(/^\t*/u, '')) : 0;
         stack.push(E + 1 + callDepth + 1); curWhen = -1; valueAnchor = -1;
       }
-      else { curWhen = -1; valueAnchor = E + 1; condParen = parenDelta(lines[i]); }
+      else {
+        curWhen = -1; valueAnchor = E + 1; condParen = parenDelta(lines[i]);
+        const consumed = consumeValueSubquery(i, E + 1);
+        if (consumed > i) { i = consumed; valueAnchor = -1; }
+      }
     } else if (w === 'КОНЕЦ') {
       // Хвост-арифметика после КОНЕЦ (`КОНЕЦ / ВЫРАЗИТЬ(…)`): голый ВЫРАЗИТЬ-операнд
       // оборачиваем (`КОНЕЦ / (ВЫРАЗИТЬ(…))`; фаза 6.16.69). wrapBareCastOperand —
@@ -3292,10 +3464,58 @@ class Parser {
     return false;
   }
 
+  /**
+   * Ведущий CASE-операнд сравнения, чей RHS — тоже ВЫБОР (`ВЫБОР…КОНЕЦ <op> ВЫБОР…КОНЕЦ`).
+   * `tryParseSimpleCaseTrailing` такую форму бракует (вложенный ВЫБОР в хвосте), а
+   * структурный CASE-узел не несёт многоклаузный CASE-RHS. Поэтому, как и зеркальный
+   * случай `<лист> <op> ВЫБОР…КОНЕЦ` (который parseLeaf поглощает листом через caseDepth),
+   * поглощаем весь сравнительный цепочечный CASE одним ЛИСТОМ — рендер раскладывает обе
+   * (и более) ветви ВЫБОР через reindentLeafCase, печатая `КОНЕЦ <op> ВЫБОР` единой
+   * строкой (сверено живым оракулом: `КОНЕЦ <> ВЫБОР` на одной строке, RHS-CASE
+   * многострочно). Возвращает листовой текст ИЛИ undefined (позицию НЕ двигает).
+   */
+  private tryParseCaseCompareCaseLeaf(): string | undefined {
+    const save = this.i;
+    const from = this.peek().pos;
+    let to = from;
+    let caseDepth = 0;
+    let chained = false; // встретился ли хотя бы один `КОНЕЦ <op> ВЫБОР`
+    while (!this.atEof()) {
+      const t = this.peek();
+      if (isCase(t)) { caseDepth++; to = t.pos + t.text.length; this.i++; continue; }
+      if (isEnd(t)) {
+        to = t.pos + t.text.length; this.i++;
+        if (caseDepth > 0) caseDepth--;
+        if (caseDepth === 0) {
+          // CASE закрыт. Если дальше `<op> ВЫБОР` — продолжаем цепочку; иначе стоп.
+          const op = this.atEof() ? undefined : this.peek();
+          const rhs = this.toks[this.i + 1];
+          if (op && op.type === 'punct' && COMPARE_OPS.has(op.value) && rhs && isCase(rhs)) {
+            chained = true;
+            to = op.pos + op.value.length;
+            this.i++; // съесть оператор; следующий ВЫБОР откроет CASE на новой итерации
+            continue;
+          }
+          break; // конец цепочки CASE-сравнений
+        }
+        continue;
+      }
+      // Внутри (любой глубины) CASE — поглощаем дословно (КОГДА/ТОГДА/ИНАЧЕ/И/ИЛИ/листы).
+      to = t.pos + t.value.length; this.i++;
+    }
+    if (!chained || caseDepth !== 0) { this.i = save; return undefined; }
+    return this.leafText(from, to);
+  }
+
   private parsePrimary(): Node {
     const t = this.peek();
     // ВЫБОР … КОНЕЦ
     if (isCase(t)) {
+      // `ВЫБОР…КОНЕЦ <op> ВЫБОР…КОНЕЦ` — сравнение двух CASE: поглощаем листом (см.
+      // tryParseCaseCompareCaseLeaf). Должно идти ДО parseCase, иначе CASE-узел съест
+      // лишь LHS, а `<op> RHS-ВЫБОР` осиротеет (попадёт в tail дословно).
+      const chainLeaf = this.tryParseCaseCompareCaseLeaf();
+      if (chainLeaf !== undefined) return { kind: 'leaf', text: chainLeaf };
       const caseNode = this.parseCase();
       // Хвост сравнения после КОНЕЦ в БУЛЕВОМ/условном слоте (`ВЫБОР…КОНЕЦ = &П` как
       // операнд условия КОГДА / ГДЕ): конструктор держит CASE структурным и приклеивает
@@ -3738,6 +3958,12 @@ interface RenderCtx {
   // Дельта отступа подзапроса `В (ВЫБРАТЬ …)` для листа на orLvl=0 (фаза 6.15.9):
   // корневое ГДЕ — 2 (`(ВЫБРАТЬ` на ind+2), условия ВНУТРИ В-подзапроса — 1.
   subDelta0?: number;
+  // КОРНЕВАЯ ИЛИ-цепочка ИМЕЮЩИЕ ВНУТРИ подзапроса-операнда условия `В (ВЫБРАТЬ …
+  // ИМЕЮЩИЕ A И B ИЛИ C И D)`: оракул НЕ оборачивает её во внешние скобки (в отличие
+  // от ИМЕЮЩИЕ верхнего уровня запроса, где обёртка добавляется). Флаг взводится
+  // только на КОРНЕВОЙ вызов renderBool такого ИМЕЮЩИЕ и снимается на первом же
+  // уровне рекурсии (вложенные ИЛИ-группы скобки сохраняют). Фаза 6.16.
+  rootOrNoParens?: boolean;
 }
 
 /** Дельта отступа подзапроса листа по глубине ИЛИ (см. orDelta в renderBool). */
@@ -3800,6 +4026,11 @@ function renderBool(
 ): string[] {
   switch (node.kind) {
     case 'or': {
+      // Корневая ИЛИ-цепочка ИМЕЮЩИЕ внутри подзапроса-операнда условия: оракул не
+      // оборачивает её во внешние скобки. Снимаем флаг сразу — вложенные ИЛИ-группы
+      // (операнды) скобки сохраняют (фаза 6.16).
+      const noWrap = ctx.rootOrNoParens === true;
+      ctx.rootOrNoParens = false;
       const orDelta = orLvl === 0 ? 2 : 1;
       // Скобочная ИЛИ-группа, вложенная как операнд0 И-цепочки, которая сама — операнд
       // верхнеуровневого ИЛИ (`((A ИЛИ B) И C ИЛИ D)`): конструктор выравнивает её `ИЛИ`
@@ -3839,7 +4070,7 @@ function renderBool(
               ? iliInd
               : ind;
           const sub = renderBool(op, ind, childAnd, orLvl + 1, ctx, op0CaseE, childAnd, leadParenBase);
-          sub[0] = '(' + sub[0];
+          if (!noWrap) sub[0] = '(' + sub[0];
           lines.push(...sub);
         } else {
           // operandK на отступе iliInd; CASE-операнд → E=iliInd.
@@ -3848,7 +4079,7 @@ function renderBool(
           lines.push(...sub);
         }
       });
-      lines[lines.length - 1] += ')';
+      if (!noWrap) lines[lines.length - 1] += ')';
       return lines;
     }
     case 'and': {
@@ -4202,7 +4433,7 @@ function renderBranchValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: str
   // структурная строка — голое слово `ВЫБОР` на глубине скобок 0). reindentLeafCase
   // раскладывает несколько ВЫБОР-блоков и сам бракует нестандартную геометрию (корпус
   // УчётСтраховыхВзносовУНФ: `ИНАЧЕ ВЫБОР…КОНЕЦ - ВЫБОР…КОНЕЦ`).
-  if (value.includes('\n') && (isSingleTopLevelCaseValue(value) || opensWithTopLevelVybor(value))) {
+  if (value.includes('\n') && (isSingleTopLevelCaseValue(value) || opensWithTopLevelVybor(value) || opensWithVyborInCall(value))) {
     // opensWithTopLevelVybor (открыватель — хвост `… <вызов>( … / ВЫБОР`, ЦЕПОЧКА
     // `ВЫБОР…КОНЕЦ - ВЫБОР…КОНЕЦ`, или CASE внутри вызова без селектора) считает глубину
     // CASE ТОЛЬКО по ВЫЗОВ-функции скобкам (funcParenDepth=true): скобка-ГРУППИРОВКА
@@ -4227,6 +4458,22 @@ function renderBranchValueLines(keyword: 'ТОГДА' | 'ИНАЧЕ', value: str
   // reprintLeafComparison снимает избыточную обёртку арифм. операнда сравнения
   // (`(A - B) > 0` → `A - B > 0`; фаза 6.16.78), пасует на булевой/предикатной логике.
   const bare = reprintLeafComparison(reprintLeafArithmetic(wrapBareCastOperand(stripRedundantCaseClauseParens(flat))));
+  // Значение ветки — членство `Поле В (ВЫБРАТЬ …)` с подзапросом, чьё тело конструктор
+  // переотрисовывает (напр. оборачивает верхнеуровневую ИЛИ-цепочку ГДЕ в скобки), тогда
+  // как reindentLeafSubquery лишь равномерно сдвигает авторский текст. Через хук генератора
+  // (reflowInlineMembershipSubquery) перепарсиваем подзапрос и рендерим канонически: поле
+  // на kwInd, `(ВЫБРАТЬ` на kwInd+2. Хук сам решает (узкий гейт), нужен ли ре-флоу — иначе
+  // возвращает null, и мы идём прежним (дословным) путём байт-в-байт. Фаза 6.16.
+  if (
+    inlineSubqueryReflow &&
+    /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(bare)
+  ) {
+    const reflowed = inlineSubqueryReflow(bare, kwInd + 2);
+    if (reflowed) {
+      const head = reflowed[0].replace(/^\t+/u, '');
+      return [tabs(kwInd) + keyword + ' ' + head, ...reflowed.slice(1)];
+    }
+  }
   return [tabs(kwInd) + keyword + ' ' + reindentLeafSubquery(bare, kwInd + 2)];
 }
 
@@ -4354,12 +4601,28 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
       // конструктор печатает на отступе условия: КОНЕЦ = cont, КОГДА = cont+1 (а НЕ
       // в булевом слоте cont+1/КОНЕЦ). В ГДЕ конъюнкты склеиваются префиксом `И ВЫБОР`,
       // и там ВЫБОР остаётся в булевом слоте (E = cont+1) — фаза 6.15.19, MCP.
-      body = renderCase(tree, ctx.cont, ctx, slot === 'where').join('\n');
+      // ВНУТРИ подзапроса-операнда условия (`В (ВЫБРАТЬ … ГДЕ ВЫБОР…КОНЕЦ <> X)`)
+      // конструктор печатает CASE-сравнение ГДЕ в НЕ-булевом слоте: КОНЕЦ = cont
+      // (вровень с ВЫБОР), КОГДА = cont+1 — а НЕ в булевом (КОНЕЦ = cont+1), как на
+      // ВЕРХНЕМ уровне запроса (сверено живым оракулом validate_query: вложенный
+      // `ГДЕ ВЫБОР…КОНЕЦ <> 5` даёт КОНЕЦ вровень с ВЫБОР). Признак подзапроса —
+      // rootSubDelta задан. Фаза 6.16.
+      const caseBoolean = slot === 'where' && rootSubDelta === undefined;
+      body = renderCase(tree, ctx.cont, ctx, caseBoolean).join('\n');
     } else if (tree.kind === 'not' && tree.child.kind === 'group') {
       // НЕ-блок целиком (`НЕ (…)`): конструктор печатает `НЕ(` слитно и держит
       // скобки независимо от наличия ИЛИ внутри (фаза 6.14, MCP).
       body = renderNotGroup(tree.child.child, 1, startOrLvl, ctx).join('\n');
     } else {
+      // ИМЕЮЩИЕ ВНУТРИ подзапроса-операнда условия (`В (ВЫБРАТЬ … ИМЕЮЩИЕ A И B ИЛИ C
+      // И D)`): корневую ИЛИ-цепочку оракул печатает БЕЗ внешних скобок (на верхнем
+      // уровне запроса — со скобками). Признак — слот ИМЕЮЩИЕ + condition-subquery
+      // (rootSubDelta задан). Флаг подхватывает renderBool на корневом `or`/`group(or)`
+      // и снимает после первого уровня. Фаза 6.16.
+      if (slot === 'having' && rootSubDelta !== undefined) {
+        const root = tree.kind === 'group' ? tree.child : tree;
+        if (root.kind === 'or') ctx.rootOrNoParens = true;
+      }
       body = renderBool(tree, 1, 1, startOrLvl, ctx).join('\n');
     }
   } else if (slot === 'select') {

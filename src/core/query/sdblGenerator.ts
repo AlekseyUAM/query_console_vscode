@@ -82,7 +82,7 @@ function accountingPositions(slice: string, v: SelectedTable['virtual'] & {}): s
  * скобкой (`(ВЫБРАТЬ`), а к последней строке приклеивает закрывающую `)`. Тело
  * запроса в результате получает отступ `baseTabs + 1` (канонический +1 таб тела).
  */
-function renderConditionSubquery(subquery: QueryDocument, baseTabs: number): string {
+function renderConditionSubquery(subquery: QueryDocument, baseTabs: number, leadingNot = false): string {
   const pad = '\t'.repeat(baseTabs);
   const prev = suppressAutoAlias;
   const prevInSubquery = inConditionSubquery;
@@ -114,9 +114,24 @@ function renderConditionSubquery(subquery: QueryDocument, baseTabs: number): str
   }
   // Пустые строки-разделители вокруг `ОБЪЕДИНИТЬ ВСЕ` внутри подзапроса-операнда
   // конструктор отбивает на ОДИН таб мельче тела (`baseTabs - 1`), а не на baseTabs
-  // (фаза 6.15.19, MCP). Прочие строки получают полный pad.
-  const padBlank = '\t'.repeat(Math.max(0, baseTabs - 1));
-  const inner = text.split('\n');
+  // (фаза 6.15.19, MCP). Ведущее `НЕ` подзапроса (`И НЕ Поле В (…)`) дало baseTabs
+  // лишний +1 на ВСЁ тело — но разделитель объединения этот +1 НЕ перенимает, поэтому
+  // при negated он на `baseTabs - 2` (MCP-проба `И НЕ Поле В (ВЫБРАТЬ … ОБЪЕДИНИТЬ …)`,
+  // фаза 6.16). Прочие строки получают полный pad.
+  const padBlank = '\t'.repeat(Math.max(0, baseTabs - 1 - (leadingNot ? 1 : 0)));
+  // generateDocument ставит пустую строку-разделитель перед УПОРЯДОЧИТЬ/ИТОГИ всего
+  // объединения (`\n\n`), но ВНУТРИ подзапроса-операнда `В` конструктор такие
+  // НЕ-союзные пустые строки убирает (MCP-проба `В (ВЫБРАТЬ … ГДЕ …\n\nУПОРЯДОЧИТЬ …)`
+  // → пустой строки нет). Сохраняем только разделители, СОСЕДНИЕ с `ОБЪЕДИНИТЬ`
+  // (объединение участников), прочие пустые строки удаляем (фаза 6.16).
+  const isUKw = (s: string): boolean => /^\t*ОБЪЕДИНИТЬ(?:\s+ВСЕ)?\s*$/u.test(s.trim());
+  const raw = text.split('\n');
+  const inner = raw.filter((l, k) => {
+    if (l.trim() !== '') return true;
+    const prevKw = k > 0 && isUKw(raw[k - 1]);
+    const nextKw = k + 1 < raw.length && isUKw(raw[k + 1]);
+    return prevKw || nextKw;
+  });
   return inner
     .map((l, k) => {
       if (l === '') return padBlank;
@@ -291,6 +306,42 @@ function aliasDcsBraceExprs(text: string, state: { k: number }): string {
   });
 }
 
+/**
+ * DCS-секция параметра ВТ может состоять из НЕСКОЛЬКИХ соседних фигурных скобок
+ * (`{(Ном).* КАК Ном} {(Хар).* КАК Хар} …`) — конструктор 1С СКЛЕИВАЕТ их в ОДНУ
+ * пару `{a, b, …}`, перечисляя содержимое через запятую и сплющивая внутренние
+ * переносы/отступы в один пробел (корпус ТоварныйОтчетТОРГ29). Одиночную `{…}`-скобку
+ * НЕ трогаем (её внутренний перенос конструктор сохраняет дословно — корпус
+ * ОстаткиИОборотыРезервов). Гейт: строка содержит ≥2 верхнеуровневых `{…}` подряд.
+ * Фаза 6.16.
+ */
+function mergeDcsBraces(text: string): string {
+  if (!text.includes('{')) return text;
+  const inners: string[] = [];
+  let i = 0, count = 0;
+  const n = text.length;
+  // Между скобками допускаются только пробелы/переносы; иначе это не чистая DCS-секция.
+  while (i < n) {
+    const c = text[i];
+    if (c === '{') {
+      let depth = 0, j = i;
+      for (; j < n; j++) {
+        if (text[j] === '{') depth++;
+        else if (text[j] === '}') { depth--; if (depth === 0) break; }
+      }
+      if (j >= n) return text; // несбалансированная — не трогаем
+      inners.push(text.slice(i + 1, j).replace(/\s+/gu, ' ').trim());
+      count++;
+      i = j + 1;
+      continue;
+    }
+    if (/\s/u.test(c)) { i++; continue; }
+    return text; // непробельный символ вне скобок — не чистая DCS-секция
+  }
+  if (count < 2) return text;
+  return `{${inners.join(', ')}}`;
+}
+
 function renderVirtualParams(fullName: string, positions: string[], condition: string, bodyTabs: number): string {
   // Регистровая нормализация параметров виртуальной таблицы (период, условие):
   // конструктор приводит зарезервированные слова/функции/литералы к ВЕРХНЕМУ
@@ -298,6 +349,10 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // normalizeLeafCase не трогает сегменты `.`-пути и тело строковых литералов и
   // безопасен для многострочных условий-подзапросов (правит лишь промежутки без
   // переводов строк).
+  // Склейка нескольких соседних DCS-скобок в одну (`{a} {b}` → `{a, b}`) до всех
+  // прочих преобразований — иначе посчитаем их раздельными параметрами.
+  positions = positions.map(p => (p ? mergeDcsBraces(p) : p));
+  condition = condition ? mergeDcsBraces(condition) : condition;
   positions = positions.map(p => (p ? wrapDcsBraceParam(normalizeLeafCase(p)) : p));
   condition = condition ? wrapDcsBraceParam(normalizeLeafCase(condition)) : condition;
   // Автопсевдоним `Поле<2k>` для выражений в DCS-скобках `{(…)}` вызова ВТ (см.
@@ -326,6 +381,20 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   if (condition && positions.length > 0 && positions[positions.length - 1]) {
     const li = positions.length - 1;
     positions[li] = stripRedundantLeafParens(flattenMultilineLeaf(positions[li]));
+  }
+  // DCS-условие в фигурных скобках (`{(…)}`, в т.ч. многострочное и с внутренним И/ИЛИ
+  // или списком полей `{(Ном).* КАК Ном, …}`) конструктор 1С печатает ВЕСЬ вызов ВТ
+  // ИНЛАЙН: позиционные параметры остаются на строке вызова, а содержимое скобок (с
+  // уже проставленными автопсевдонимами `КАК Поле2`) идёт дословно. Внутренний перенос
+  // строки и булевы операторы НЕ должны навязывать многострочную раскладку параметров
+  // (это отличает DCS-условие `{…}` от обычного составного условия/подзапроса). Узкий
+  // гейт: условие целиком обёрнуто в одну пару `{…}`. Фаза 6.16.
+  const condTrim = condition.trim();
+  const condIsDcsBrace =
+    condTrim.startsWith('{') && condTrim.endsWith('}') &&
+    positions.length > 0 && positions[positions.length - 1].trim() === condTrim;
+  if (condIsDcsBrace) {
+    return `${fullName}(${positions.join(', ')})`;
   }
   const hasBool = !!condition && hasTopLevelBooleanOp(condition);
   // Условие-подзапрос (`(поля) В (ВЫБРАТЬ …)`) тоже разносит параметры по строкам,
@@ -493,6 +562,53 @@ function splitTopLevelBoolConjuncts(expr: string): { op: string; text: string }[
  * оператора конъюнкта (`И `/`ИЛИ `/``), `ind` — отступ строки конъюнкта,
  * `subBase` — отступ строки `(ВЫБРАТЬ` (обычно base+2).
  */
+/**
+ * Содержит ли тело подзапроса секцию `ГДЕ`/`ИМЕЮЩИЕ`, чья ВЕРХНЕУРОВНЕВАЯ ИЛИ-цепочка
+ * НЕ обёрнута в единственную внешнюю пару скобок (`ГДЕ A > 0 ИЛИ B`)? Конструктор 1С
+ * (внутри подзапроса-операнда) оборачивает такую цепочку в `(…)`, а текстовый путь
+ * сохраняет исходную геометрию — поэтому при canonical-геометрии тела всё равно нужно
+ * развернуть его структурно. Узкий гейт (фаза 6.16). Для КАЖДОЙ секции берём её текст
+ * до следующей секции/конца, ищем верхнеуровневый (depth==0) `ИЛИ`; если он есть И
+ * выражение НЕ целиком в одной внешней паре скобок — возвращаем true.
+ */
+function bodyHasUnwrappedBoolOr(inner: string): boolean {
+  const secRe = /(?:^|[^\p{L}\p{N}_])(ГДЕ|ИМЕЮЩИЕ)(?![\p{L}\p{N}_])/gu;
+  const nextSec = /(?:^|[^\p{L}\p{N}_])(?:СГРУППИРОВАТЬ|ИМЕЮЩИЕ|УПОРЯДОЧИТЬ|ИНДЕКСИРОВАТЬ|ОБЪЕДИНИТЬ|ИТОГИ|ГДЕ)(?![\p{L}\p{N}_])/u;
+  const isW = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  let m: RegExpExecArray | null;
+  while ((m = secRe.exec(inner)) !== null) {
+    let seg = inner.slice(m.index + m[0].length);
+    const nm = nextSec.exec(seg);
+    if (nm) seg = seg.slice(0, nm.index);
+    seg = seg.trim();
+    if (!seg) continue;
+    // Верхнеуровневый ИЛИ (depth==0, вне строк)?
+    let depth = 0, inStr = false, topOr = false;
+    for (let i = 0; i < seg.length; i++) {
+      const ch = seg[i];
+      if (inStr) { if (ch === '"') inStr = false; continue; }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '(') { depth++; continue; }
+      if (ch === ')') { depth--; continue; }
+      if (depth === 0 && (ch === 'И' || ch === 'и') && !isW(seg[i - 1]) && /^ИЛИ(?![\p{L}\p{N}_])/iu.test(seg.slice(i))) { topOr = true; break; }
+    }
+    if (!topOr) continue;
+    // ИЛИ верхнеуровневый ⇒ выражение НЕ обёрнуто в одну внешнюю пару (иначе ИЛИ был бы
+    // на depth==1). Расхождение с оракулом ⇒ нужно развернуть.
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Поле выборки-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранное инлайн: поле на ind=0
+ * (отступ добавит вызывающий), `(ВЫБРАТЬ` на 2, тело глубже. Тонкая обёртка над
+ * reflowInlineMembershipSubquery (фаза 6.16).
+ */
+function inlineSelectMembershipReflow(text: string): string[] | null {
+  return reflowInlineMembershipSubquery(text, 0, 2, '');
+}
+
 function reflowInlineMembershipSubquery(
   text: string,
   ind: number,
@@ -566,12 +682,37 @@ function reflowInlineMembershipSubquery(
         innerText.includes('\n') &&
         !/(?:^|[^\p{L}\p{N}_])ИЗ[ \t]+\S/u.test(innerText) &&
         !gluedJoin;
-      if (isCanonical) return null;
+      // ИСКЛЮЧЕНИЕ из canonical-bail (фаза 6.16): тело СО ВНЕШНЕ-канонической геометрией,
+      // но с секцией `ГДЕ`/`ИМЕЮЩИЕ`, чья ВЕРХНЕУРОВНЕВАЯ ИЛИ-цепочка НЕ обёрнута во
+      // внешние скобки (`ГДЕ A > 0 ИЛИ B`). Внутри подзапроса-операнда конструктор 1С
+      // ОБОРАЧИВАЕТ такую цепочку в `(…)` и разносит по строкам, а текстовый (равномерный
+      // сдвиг) путь оставляет её как в исходнике — расхождение. Разворачиваем структурно
+      // (renderConditionSubquery → formatExpression), где обёртка ставится байт-в-байт.
+      // ИСКЛЮЧЕНИЕ №2 (фаза 6.16): тело со внешне-канонической геометрией, но с
+      // ВЛОЖЕННЫМ многострочным CASE-как-значением (`ТОГДА ВЫБОР … КОНЕЦ`). Разработчик
+      // нередко набирает внутренний ВЫБОР на ОДИН уровень мельче канона (его КОГДА на
+      // ТОГДА+1, а не ТОГДА+2; продолжение `И` условия — вровень с КОГДА). Равномерный
+      // сдвиг (reindentLeafSubquery) сохранил бы эту НЕканоническую вложенность; оракул
+      // же ВКЛАДЫВАЕТ внутренний CASE структурно. Перепарсиваем и рендерим канонически.
+      // Признак: строка-значение `ТОГДА`/`ИНАЧЕ`, ОКАНЧИВАЮЩАЯСЯ голым словом ВЫБОР.
+      const hasNestedCaseValue =
+        /(?:^|[^\p{L}\p{N}_])(?:ТОГДА|ИНАЧЕ)[ \t]+ВЫБОР[ \t]*(?:\r?\n|$)/u.test(innerText);
+      if (isCanonical && !bodyHasUnwrappedBoolOr(innerText) && !hasNestedCaseValue) return null;
       let doc: QueryDocument;
       try { doc = parseDocument(innerText); }
       catch { return null; }
       const block = renderConditionSubquery(doc, subBase).split('\n');
-      const head = '\t'.repeat(ind) + prefix + lhs + ' В' + hier;
+      // ЛЕВЫЙ операнд `В` — кортеж `(поле1, поле2, …)`, набранный разработчиком на
+      // НЕСКОЛЬКИХ строках: конструктор 1С печатает его на ОДНОЙ строке. Сплющиваем
+      // внутренние переносы/отступы lhs в одиночные пробелы (как делает reindentLeaf-
+      // Subquery со своей головой-кортежем), нормализуя стыки `( `/` )`/` ,`.
+      const lhsFlat = lhs
+        .replace(/[ \t\r\n]+/gu, ' ')
+        .replace(/\(\s+/gu, '(')
+        .replace(/\s+\)/gu, ')')
+        .replace(/\s+,/gu, ',')
+        .trim();
+      const head = '\t'.repeat(ind) + prefix + lhsFlat + ' В' + hier;
       return [head, ...block];
     }
   }
@@ -686,11 +827,39 @@ function reindentVtCondition(condition: string, base: number): string {
       /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(c.text)
         ? reflowInlineMembershipSubquery(c.text, ind, base + 2, prefix)
         : null;
+    // Конъюнкт — CASE (`ВЫБОР … КОНЕЦ`), В ТЕЛЕ которого есть подзапрос `В (ВЫБРАТЬ …)`
+    // (значение ветки ТОГДА/ИНАЧЕ — членство): это НЕ подзапрос-операнд верхнего уровня,
+    // а CASE с вложенным подзапросом. Подзапросная ветка ниже (reindentLeafSubquery)
+    // равномерно сдвинула бы ВЕСЬ CASE на лишний +1 (КОГДА/ТОГДА/КОНЕЦ over-shift); CASE
+    // должен раскладываться структурно (reindentLeafCase), а его внутренний подзапрос —
+    // reindentLeafSubquery уже изнутри. Узкий гейт: текст НАЧИНАЕТСЯ словом ВЫБОР (фаза 6.16).
+    const conjunctIsCase = /^ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(c.text.trim());
     if (inlineReflow) {
+      // Разделитель ОБЪЕДИНИТЬ внутри подзапроса-операнда `В` параметра условия ВТ
+      // оракул печатает на отступе БАЗЫ условия (`base`), а не относительно ключевого
+      // слова (renderConditionSubquery даёт baseTabs−1). Перебиваем пустые строки-
+      // разделители, соседние с `ОБЪЕДИНИТЬ`, на `base` табов — как в reindentLeaf-
+      // Subquery-ветке ниже (фаза 6.16).
+      const isUKw = (s: string): boolean => /^\t*ОБЪЕДИНИТЬ(?:\s+ВСЕ)?\s*$/u.test(s.trim());
+      for (let q = 0; q < inlineReflow.length; q++) {
+        if (inlineReflow[q].trim() !== '') continue;
+        const adj = (q > 0 && isUKw(inlineReflow[q - 1])) || (q + 1 < inlineReflow.length && isUKw(inlineReflow[q + 1]));
+        if (adj) inlineReflow[q] = '\t'.repeat(base);
+      }
       out.push(...inlineReflow);
-    } else if (c.text.includes('\n') && /\(\s*\n\s*ВЫБРАТЬ(?![\p{L}\p{N}_])|\(ВЫБРАТЬ/u.test(c.text)) {
+    } else if (!conjunctIsCase && c.text.includes('\n') && /\(\s*\n\s*ВЫБРАТЬ(?![\p{L}\p{N}_])|\(ВЫБРАТЬ/u.test(c.text)) {
       const r = reindentLeafSubquery(c.text, base + 2).split('\n');
       r[0] = '\t'.repeat(ind) + prefix + r[0].replace(/^\t+/u, '');
+      // Разделитель ОБЪЕДИНИТЬ внутри подзапроса-операнда `В`, вложенного в параметр
+      // условия ВТ, оракул печатает на отступе БАЗЫ условия (`base`), а не относительно
+      // ключевого слова (как делает reindentLeafSubquery, kwInd−1). Перебиваем пустые
+      // строки-разделители, соседние с `ОБЪЕДИНИТЬ`, на `base` табов (фаза 6.16, MCP).
+      const isUKw = (s: string): boolean => /^\t*ОБЪЕДИНИТЬ(?:\s+ВСЕ)?\s*$/u.test(s);
+      for (let q = 0; q < r.length; q++) {
+        if (r[q].trim() !== '') continue;
+        const adj = (q > 0 && isUKw(r[q - 1])) || (q + 1 < r.length && isUKw(r[q + 1]));
+        if (adj) r[q] = '\t'.repeat(base);
+      }
       out.push(...r);
     } else if (c.text.includes('\n') && /(?:^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(c.text)) {
       // Конъюнкт-ВЫБОР: КОНЕЦ на base+1, КОГДА на base+2 (АБСОЛЮТНО относительно base,
@@ -834,7 +1003,14 @@ function hasTopLevelBooleanOp(expr: string): boolean {
  * из-за нерезолвимого псевдонима (фаза 6.12).
  */
 function isPlainFieldComparison(expr: string): boolean {
-  return /^[\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*\s*(?:<>|>=|<=|=|>|<)\s*[\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*$/u.test(expr.trim());
+  const m = /^([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)\s*(?:<>|>=|<=|=|>|<)\s*([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)$/u.exec(expr.trim());
+  if (!m) return false;
+  // Операнд-ЛИТЕРАЛ (`ИСТИНА`/`ЛОЖЬ`/`NULL`/`НЕОПРЕДЕЛЕНО`) — это НЕ сравнение двух полей:
+  // оракул `field = ЛОЖЬ` печатает В СКОБКАХ (а `field = field` — без), фаза корпус
+  // РаботаСПодарочнымиСертификатами (живой оракул `ПО (Т.Код = ЛОЖЬ)`).
+  const LIT = new Set(['ИСТИНА', 'ЛОЖЬ', 'NULL', 'НЕОПРЕДЕЛЕНО']);
+  if (LIT.has(m[1].toUpperCase()) || LIT.has(m[2].toUpperCase())) return false;
+  return true;
 }
 
 /**
@@ -1372,6 +1548,48 @@ function builderBlock(keyword: string, fields: BuilderField[]): string[] {
 }
 
 /**
+ * Нормализация дословного блока характеристик СКД `{ХАРАКТЕРИСТИКИ … }`: оракул
+ * сохраняет его геометрию байт-в-байт, КРОМЕ выражений полей подзапроса, разнесённых
+ * разработчиком по нескольким строкам — их он СКЛЕИВАЕТ в одну (как и любую арифметику/
+ * конкатенацию в списке выборки). Единственный наблюдаемый триггер (корпус
+ * РаботаСНоменклатуройПереопределяемый): строка-продолжение, у которой ПРЕДЫДУЩАЯ
+ * значимая строка оканчивается БИНАРНЫМ оператором `+ - * /` (перенос внутри выражения).
+ * Склеиваем такую пару: хвостовой пробел слева + одиночный пробел + строка справа без
+ * ведущих пробелов. Прочую геометрию (структурные строки подзапроса, ПОЛЕ-секции) не
+ * трогаем — узкий гейт по трейлинг-оператору исключает их (они оператором не кончаются).
+ */
+function reflowCharacteristics(text: string): string {
+  if (!text.includes('\n')) return text;
+  const lines = text.split('\n');
+  const out: string[] = [];
+  // Строка оканчивается бинарным оператором `+ - * /` (вне строкового литерала),
+  // т.е. это незавершённое выражение, перенесённое разработчиком на следующую строку.
+  const endsWithBinaryOp = (s: string): boolean => {
+    const t = s.replace(/\s+$/u, '');
+    if (!/[+\-*/]$/u.test(t)) return false;
+    // Звезда проекции `Поле.*` (точка перед `*`) — не оператор умножения.
+    if (/\.\*$/u.test(t)) return false;
+    // Оператор не должен быть внутри незакрытого строкового литерала.
+    let inStr = false;
+    for (let i = 0; i < t.length; i++) { if (t[i] === '"') inStr = !inStr; }
+    return !inStr;
+  };
+  for (const line of lines) {
+    if (out.length > 0 && line.trim() !== '' && endsWithBinaryOp(out[out.length - 1])) {
+      out[out.length - 1] = out[out.length - 1].replace(/\s+$/u, '') + ' ' + line.replace(/^[\t ]+/u, '');
+    } else {
+      out.push(line);
+    }
+  }
+  // Закрывающую `}` блока характеристик оракул отделяет от содержимого пробелом
+  // (`ПОЛЕЗНАЧЕНИЯ Значение }`), если разработчик прижал её к тексту (`Значение}`).
+  if (out.length > 0) {
+    out[out.length - 1] = out[out.length - 1].replace(/([^\s{])\}$/u, '$1 }');
+  }
+  return out.join('\n');
+}
+
+/**
  * Сборка блока одного запроса из ГОТОВЫХ строк полей (без хвостовых запятых).
  * Используется как обычным `generate`, так и генератором объединений
  * `generateDocument` (где список полей формируется из колонок объединения, а не
@@ -1439,8 +1657,10 @@ function buildQueryBlock(
     ...builderOrder,
     ...builderTotals,
     ...lockLines,
-    // Блок характеристик СКД `{ХАРАКТЕРИСТИКИ … }` — дословно (байт-в-байт), последним.
-    ...(model.characteristics ? model.characteristics.split('\n') : []),
+    // Блок характеристик СКД `{ХАРАКТЕРИСТИКИ … }` — почти дословно (байт-в-байт),
+    // последним; единственная нормализация — склейка арифметики/конкатенации поля
+    // подзапроса, разнесённой разработчиком по строкам (оракул печатает её одной строкой).
+    ...(model.characteristics ? reflowCharacteristics(model.characteristics).split('\n') : []),
   ].join('\n');
 }
 
@@ -1771,6 +1991,22 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
  * только нормализацию регистра/пробелов листа.
  */
 export function formatSelectExpression(expression: string): string {
+  // Поле выборки-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранное ИНЛАЙН (подзапрос на
+  // одной строке): конструктор 1С РАЗВОРАЧИВАЕТ его — `Поле В` на строке поля, `(ВЫБРАТЬ`
+  // на отступе 2, тело глубже, а часть `КАК Алиас` (её добавляет вызывающий) приклеивается
+  // к строке закрытия `)` (фаза 6.16, MCP: `Поле В (ВЫБРАТЬ … ИЗ …) КАК А` всегда
+  // раскрывается). reindentLeafSubquery инлайн не раскладывает. Через reflowInlineMembership-
+  // Subquery (поле на ind=0, `(ВЫБРАТЬ` на subBase=2) перепарсиваем подзапрос и рендерим
+  // канонически. Гейт узкий: `В (ВЫБРАТЬ` подряд, без верхнеуровневых OR/CASE (их ведёт
+  // formatExpression), хвоста после подзапроса нет (псевдоним отделён) — иначе прежний путь.
+  if (
+    !needsFormatting(expression) &&
+    !selectColumnNeedsBoolWrap(expression) &&
+    /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(expression.trim())
+  ) {
+    const reflowed = inlineSelectMembershipReflow(expression.trim());
+    if (reflowed) return appendIsNotNullTrailingSpace(reflowed.join('\n'));
+  }
   // Верхнеуровневая булева цепочка поля (`A И B КАК алиас`) переносится конструктором
   // даже без OR/CASE (фаза 6.16.71) — needsFormatting её не ловит, поэтому проверяем
   // отдельным select-предикатом. ОБА пути ведут в formatExpression('select').
@@ -2458,10 +2694,42 @@ function clusterGroupDuplicates(
   // Выражения — НЕПОДВИЖНЫЕ якоря: дубль простого поля, после которого (по индексу)
   // ещё есть выражение, конструктор 1С НЕ переносит в конец (он остаётся на месте);
   // переносятся лишь дубли из «хвостового» простого участка (после последнего ВЫБОР).
+  // ИСКЛЮЧЕНИЕ (фаза 6.16, корпус ОтчётКомиссионера_24): дубль простого поля,
+  // непосредственно за которым идёт ХВОСТОВОЙ блок выражений до конца списка (т.е.
+  // выражение(я) — последние элементы, и сам дубль НЕ дублируется вместе с ними как
+  // повторяющийся блок), конструктор переносит ЗА эти выражения. Точный триггер:
+  // дубль на позиции i, после которого до конца идут ТОЛЬКО выражения, КАЖДОЕ из
+  // которых уникально (не повтор более раннего) — тогда это «хвостовой» дубль перед
+  // финальным CASE, и он уезжает в самый конец (сверено живым оракулом: `Код, Код,
+  // ВЫБОР` → `Код, ВЫБОР, Код`). Повторяющийся блок `…, Код, Артикул, ВЫБОР` (где ВЫБОР —
+  // дубль) этим триггером НЕ затрагивается: его ВЫБОР не уникален.
   let lastExprIdx = -1;
   for (let i = 0; i < explicit.length; i++) {
     if (explicit[i].expression !== undefined) lastExprIdx = i;
   }
+  // Множество текстов выражений, встречающихся в явной части БОЛЕЕ ОДНОГО раза
+  // (повторяющиеся выражения — часть повторяющегося блока, не «финальный CASE»).
+  const exprCounts = new Map<string, number>();
+  for (const f of explicit) {
+    if (f.expression !== undefined) {
+      const k = fieldRefExpr(f, aliases);
+      exprCounts.set(k, (exprCounts.get(k) ?? 0) + 1);
+    }
+  }
+  // Признак: всё, что стоит ПОСЛЕ позиции i (до конца явной части), — только
+  // УНИКАЛЬНЫЕ выражения (финальный хвост из CASE без повторов). Для такого дубля
+  // действует ИСКЛЮЧЕНИЕ (перенос за выражения).
+  const tailIsUniqueExprsAfter = (i: number): boolean => {
+    let sawExpr = false;
+    for (let j = i + 1; j < explicit.length; j++) {
+      const f = explicit[j];
+      if (f.expression === undefined) return false; // ещё есть простое поле — не финальный хвост
+      if ((exprCounts.get(fieldRefExpr(f, aliases)) ?? 0) > 1) return false; // повторяющийся блок
+      sawExpr = true;
+    }
+    return sawExpr;
+  };
+  const movable = (i: number): boolean => i > lastExprIdx || tailIsUniqueExprsAfter(i);
   // Быстрый выход: в ЯВНОЙ части нет переносимых дублей и нет дописок → как раньше.
   if (appended.length === 0) {
     const seen = new Set<string>();
@@ -2470,13 +2738,14 @@ function clusterGroupDuplicates(
       const f = explicit[i];
       if (f.expression !== undefined) continue;
       const k = fieldRefExpr(f, aliases);
-      if (seen.has(k) && i > lastExprIdx) { hasMovableDup = true; break; }
+      if (seen.has(k) && movable(i)) { hasMovableDup = true; break; }
       seen.add(k);
     }
     if (!hasMovableDup) return fields;
   }
   // Стабильная дедупликация ЯВНОЙ части: различные поля → core; лишняя копия → tail
-  // ТОЛЬКО если после её позиции нет выражения-якоря, иначе остаётся на месте (core).
+  // ТОЛЬКО если она переносима (movable: после её позиции нет выражения-якоря ЛИБО
+  // дальше только уникальные хвостовые CASE), иначе остаётся на месте (core).
   const core: FieldRef[] = [];
   const tail: FieldRef[] = [];
   const seen = new Set<string>();
@@ -2485,7 +2754,7 @@ function clusterGroupDuplicates(
     if (f.expression !== undefined) { core.push(f); continue; }
     const k = fieldRefExpr(f, aliases);
     if (!seen.has(k)) { seen.add(k); core.push(f); }
-    else if (i > lastExprIdx) tail.push(f);
+    else if (movable(i)) tail.push(f);
     else core.push(f);
   }
   // Дописанные генератором поля встают в хвост явной части, примыкая к последней
@@ -2503,6 +2772,95 @@ function clusterGroupDuplicates(
 }
 
 /**
+ * Кратность НЕагрегатных ПРОСТЫХ полей ВЫБРАТЬ (голова + хвост), по
+ * отрендеренному тексту `Алиас.Путь`. Поле выборки с агрегатом (`func`) или
+ * произвольным выражением (`expression`) не учитывается — оно не порождает
+ * группировку. Дубли разных псевдонимов одного поля (`Т.Док КАК Документ,
+ * Т.Док КАК ДокументПродажи`) дают кратность 2.
+ */
+function selectFieldMultiplicity(
+  model: QueryModel,
+  aliases: Map<string, string>
+): Map<string, number> {
+  const m = new Map<string, number>();
+  const aggregated = new Set<string>();
+  for (const a of model.grouping?.aggregates ?? []) {
+    aggregated.add(`${a.tableId} ${a.path}`);
+  }
+  const candidates = [...model.fields, ...(model.trailingFields ?? [])];
+  for (const f of candidates) {
+    if (f.func !== undefined) continue;
+    if (f.expression !== undefined) {
+      // Произвольное выражение выборки (`ВЫБОР…КОНЕЦ`) тоже порождает кратность —
+      // его дубли в группировке урезаются до числа вхождений в ВЫБРАТЬ. Агрегатные
+      // выражения исключаем: они не группируются (свой ключ в группировку не идёт).
+      const info = analyzeGroupExpr(f.expression);
+      if (info && info.hasAgg) continue;
+      const key = fieldRefExpr({ tableId: '', path: '', expression: f.expression }, aliases);
+      m.set(key, (m.get(key) ?? 0) + 1);
+      continue;
+    }
+    if (f.tableId === '' || f.path === '') continue;
+    if (aggregated.has(`${f.tableId} ${f.path}`)) continue;
+    const key = fieldRefExpr({ tableId: f.tableId, path: f.path }, aliases);
+    m.set(key, (m.get(key) ?? 0) + 1);
+  }
+  return m;
+}
+
+/**
+ * Ограничение кратности ДУБЛЕЙ простого поля в ЯВНОМ списке группировки до числа
+ * его НЕагрегатных вхождений в ВЫБРАТЬ (сверено корпусом: исходный
+ * `СГРУППИРОВАТЬ ПО … Период … Период` при единственном `Период` в выборке
+ * конструктор 1С схлопывает до одного, тогда как `Документ` с двумя псевдонимами
+ * в выборке сохраняет обе копии). Удаляются ПОЗДНИЕ лишние копии (ранние позиции
+ * сохраняются). Капается ТОЛЬКО поле, присутствующее в выборке (кратность > 0):
+ * поля группировки, которых в выборке нет вовсе, не трогаем (отдельная семантика).
+ * Произвольные выражения и поля вне выборки — фиксированные точки.
+ * Возвращает новый список ИЛИ исходный (если ничего не урезано — байт-в-байт).
+ */
+function capGroupDuplicatesToSelect(
+  fields: FieldRef[],
+  explicitCount: number,
+  selectMult: Map<string, number>,
+  aggregatedTexts: Set<string>,
+  aliases: Map<string, string>
+): FieldRef[] {
+  const kept: FieldRef[] = [];   // явная часть (в исходном порядке)
+  const tail: FieldRef[] = [];   // автодописанное парсером (i >= explicitCount)
+  const seen = new Map<string, number>();
+  let changed = false;
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    if (i >= explicitCount) { tail.push(f); continue; }
+    const key = fieldRefExpr(f, aliases);
+    const cap = selectMult.get(key);
+    if (cap === undefined) {
+      // Произвольное выражение группировки, которого НЕТ отдельной колонкой выборки,
+      // конструктор 1С отбрасывает, если ВСЕ его полевые ссылки — АГРЕГИРУЕМЫЕ поля:
+      // такое выражение зависит лишь от агрегата и группой быть не может (сверено
+      // корпусом: трейлинг `ВЫБОР КОГДА …Количество > 0 …` при `СУММА(Количество)` в
+      // выборке отбрасывается). Прочие поля/выражения вне выборки оставляем как есть
+      // (попытки урезать/переставлять многосегментные пути и сами выражения по
+      // структуре давали регрессии — поведение конструктора зависит от метаданных).
+      if (f.expression !== undefined) {
+        const info = analyzeGroupExpr(f.expression);
+        if (info && !info.hasAgg && info.fields.length > 0
+            && info.fields.every(fld => aggregatedTexts.has(fld))) {
+          changed = true; continue;
+        }
+      }
+      kept.push(f); continue;
+    }
+    const cnt = (seen.get(key) ?? 0);
+    if (cnt >= cap) { changed = true; continue; } // лишняя копия — отбрасываем
+    seen.set(key, cnt + 1);
+    kept.push(f);
+  }
+  return changed ? [...kept, ...tail] : fields;
+}
+
+/**
  * Секция СГРУППИРОВАТЬ ПО (или ГРУППИРУЮЩИМ НАБОРАМ). Возвращает [] если
  * группировка не задана или неактивна — тогда вывод байт-в-байт как раньше.
  */
@@ -2517,7 +2875,37 @@ function renderGrouping(
     // Голый параметр `&Имя` в списке группировки конструктор 1С отбрасывает
     // (нельзя группировать по параметру) — фаза 6.15.11a, MCP. Удаляем такие
     // элементы; прочие выражения с параметром внутри (`ВЫРАЗИТЬ(… &Имя …)`) остаются.
-    const fields = grouping.groupFields.filter(f => !isConstGroupExpr(f.expression));
+    const fieldsRaw = grouping.groupFields.filter(f => !isConstGroupExpr(f.expression));
+    // Граница явной части: `explicitGroupCount` считался до фильтрации `isConstGroupExpr`,
+    // поэтому пересчитываем её относительно отфильтрованного списка.
+    const rawExplicitRaw = grouping.explicitGroupCount ?? grouping.groupFields.length;
+    const explicitCountRaw = grouping.groupFields
+      .slice(0, rawExplicitRaw)
+      .filter(f => !isConstGroupExpr(f.expression)).length;
+    // Урезание дублей простого поля в ЯВНОЙ части до кратности в ВЫБРАТЬ.
+    const selectMult = model ? selectFieldMultiplicity(model, aliases) : new Map<string, number>();
+    // Тексты агрегируемых полей (для отбрасывания выражений, зависящих лишь от
+    // агрегата). Берём из выборки (`func`) и из grouping.aggregates.
+    const aggregatedTexts = new Set<string>();
+    for (const f of (model?.fields ?? [])) {
+      if (f.func !== undefined && f.tableId && f.path) {
+        aggregatedTexts.add(fieldRefExpr({ tableId: f.tableId, path: f.path }, aliases));
+      }
+    }
+    for (const a of (model?.grouping?.aggregates ?? [])) {
+      aggregatedTexts.add(fieldRefExpr({ tableId: a.tableId, path: a.path }, aliases));
+    }
+    const fields = model
+      ? capGroupDuplicatesToSelect(fieldsRaw, explicitCountRaw, selectMult, aggregatedTexts, aliases)
+      : fieldsRaw;
+    // Пересчёт границы явной части после урезания: число элементов с индексом
+    // < explicitCountRaw, оставшихся в `fields` (выражения и неурезанные поля).
+    const explicitCount = fields.length === fieldsRaw.length
+      ? explicitCountRaw
+      : explicitCountRaw - (fieldsRaw.length - fields.length) >= 0
+        ? // все урезанные были в явной части (cap трогает только явную)
+          explicitCountRaw - (fieldsRaw.length - fields.length)
+        : 0;
     // Согласование СГРУППИРОВАТЬ ПО с НЕагрегатными полями ВЫБРАТЬ (фаза 6.16):
     // конструктор 1С дописывает в группировку каждое НЕагрегатное ПРОСТОЕ поле
     // выборки, которого в исходной группировке НЕ ХВАТАЕТ (по числу вхождений
@@ -2532,13 +2920,6 @@ function renderGrouping(
     // группировки): пустой список = группировки нет, и дописка не должна порождать
     // секцию СГРУППИРОВАТЬ ПО на ровном месте.
     const appended = model && fields.length > 0 ? appendMissingGroupRefs(model, fields, aliases) : [];
-    // Граница явной части: `explicitGroupCount` считался до фильтрации `isConstGroupExpr`,
-    // поэтому пересчитываем её относительно отфильтрованного `fields` (отброшенные
-    // голые параметры были в явной части).
-    const rawExplicit = grouping.explicitGroupCount ?? grouping.groupFields.length;
-    const explicitCount = grouping.groupFields
-      .slice(0, rawExplicit)
-      .filter(f => !isConstGroupExpr(f.expression)).length;
     const all = clusterGroupDuplicates(fields, explicitCount, appended, aliases);
     if (all.length === 0) return [];
     const lines = all.map((f, i) => {
@@ -2666,7 +3047,7 @@ function buildConditionStrings(
     if (c.leftExpr && c.subquery) {
       const subBase = (inConditionSubquery ? 2 : 3) + (c.negated ? 1 : 0);
       const negPrefix = c.negated ? 'НЕ ' : '';
-      conds.push(`${negPrefix}${normalizeLeafCase(c.leftExpr)} В\n${renderConditionSubquery(c.subquery, subBase)}`);
+      conds.push(`${negPrefix}${normalizeLeafCase(c.leftExpr)} В\n${renderConditionSubquery(c.subquery, subBase, c.negated)}`);
       continue;
     }
     if (!c.path) continue;
@@ -2684,7 +3065,7 @@ function buildConditionStrings(
       const opText = c.hierarchy ? `${op} ИЕРАРХИИ` : op;
       const negPrefix = c.negated ? 'НЕ ' : '';
       const subBase = (inConditionSubquery ? 2 : 3) + (c.negated ? 1 : 0);
-      conds.push(`${negPrefix}${alias}.${c.path} ${opText}\n${renderConditionSubquery(c.subquery, subBase)}`);
+      conds.push(`${negPrefix}${alias}.${c.path} ${opText}\n${renderConditionSubquery(c.subquery, subBase, c.negated)}`);
       continue;
     }
     const param = normalizeLeafCase(c.param ?? `&${c.path.split('.').pop()}`);
