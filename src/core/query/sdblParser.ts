@@ -4692,7 +4692,156 @@ export function parseBatch(text: string, resolver?: MetadataResolver): BatchDocu
     registerTempTables(doc, tempTables);
     return doc;
   });
-  return { members };
+
+  // Развёртка `*` / `Алиас.*` по НЕОПРЕДЕЛённой временной таблице (фаза 6.19): если
+  // источник секции ИЗ — односегментная ВТ, которую пакет НЕ создаёт `ПОМЕСТИТЬ` и
+  // которой нет в метаданных, конструктор 1С всё равно разворачивает по ней звезду,
+  // ВЫВОДЯ её колонки = множество односегментных ссылок `<алиас>.<кол>` на эту ВТ,
+  // собранных ПО ВСЕМУ ПАКЕТУ в порядке первого появления (дедуп). Состав звезды затем
+  // получает обычный дедуп-суффикс коллизий (сверено по живому оракулу). Первый проход
+  // выше уже определил источники/псевдонимы; собираем выведенные колонки и, если они
+  // есть, ПЕРЕразбираем пакет с синтетическими метаданными этих ВТ.
+  const inf = inferUndefinedTempTables(chunks, members, resolver);
+  if (inf.tables.size === 0) return { members };
+
+  const tempTables2 = new Map<string, MetaTable>();
+  const members2 = chunks.map((c, i) => {
+    // Выведенная ВТ доступна оператору ТОЛЬКО если на неё была ссылка в ПРЕДЫДУЩЕМ
+    // операторе пакета (сверено по оракулу: звезда в первом операторе, где ВТ ещё ни
+    // разу не упоминалась раньше, НЕ разворачивается). Состав колонок при этом —
+    // глобальный (по всему пакету); позиционна лишь сама доступность.
+    const visible = new Map<string, MetaTable>();
+    for (const [up, t] of inf.tables) {
+      const first = inf.firstRefChunk.get(up);
+      if (first !== undefined && first < i) visible.set(up, t);
+    }
+    const doc = parseDocument(
+      c,
+      augmentResolverWithTempTables(resolver, tempTables2, visible.size ? visible : undefined),
+    );
+    registerTempTables(doc, tempTables2);
+    return doc;
+  });
+  return { members: members2 };
+}
+
+/**
+ * Выводит синтетические метаданные НЕОПРЕДЕЛённых временных таблиц пакета (фаза 6.19).
+ * Возвращает карту `ИМЯ_ВТ(upper) → MetaTable` только для ВТ, которые:
+ *   - используются как источник секции ИЗ хотя бы одного оператора (односегментный
+ *     fullName, без подзапроса/виртуальных параметров);
+ *   - НЕ создаются в этом пакете `ПОМЕСТИТЬ` (нет в реестре `definedTemps`);
+ *   - НЕ разрешаются базовым резолвером (не реальная/виртуальная таблица метаданных);
+ *   - имеют хотя бы одну выведенную колонку (есть ссылки `<алиас>.<кол>`).
+ * Колонки = односегментные ссылки `<алиас>.<кол>` на псевдонимы такой ВТ, собранные по
+ * ВСЕМУ СЫРОМУ ТЕКСТУ пакета в порядке первого появления, дедуп без учёта регистра.
+ */
+function inferUndefinedTempTables(
+  chunks: string[],
+  members: QueryDocument[],
+  resolver: MetadataResolver | undefined,
+): { tables: Map<string, MetaTable>; firstRefChunk: Map<string, number> } {
+  // Индекс оператора `ПОМЕСТИТЬ <ВТ>` (когда ВТ ОПРЕДЕЛЯЕТСЯ). ВТ, ОПРЕДЕЛённая
+  // ПОЗЖЕ места использования (или вовсе не определённая в пакете), на момент
+  // оператора-источника ещё не существует → её колонки выводятся (фаза 6.19).
+  const defineChunk = new Map<string, number>(); // ИМЯ_ВТ(upper) → индекс ПОМЕСТИТЬ
+  members.forEach((doc, i) => {
+    const m0 = doc.members[0]?.model;
+    if (m0?.queryType === 'createTemp' && m0.tempTableName) {
+      const up = m0.tempTableName.toUpperCase();
+      if (!defineChunk.has(up)) defineChunk.set(up, i);
+    }
+  });
+
+  // Кандидаты: имена ВТ-источников, неопределённые НА МОМЕНТ использования и
+  // нерезолвимые. Собираем заодно карту псевдоним(upper) → ИМЯ_ВТ(upper) ПО
+  // ОПЕРАТОРАМ (псевдоним может отличаться).
+  const candidates = new Set<string>();
+  const aliasToTempPerChunk: Map<string, string>[] = members.map((doc, i) => {
+    const map = new Map<string, string>();
+    for (const m of doc.members) {
+      for (const t of m.model.tables) {
+        if (t.subquery || t.virtual || !t.fullName) continue;
+        if (t.fullName.includes('.')) continue; // не односегментная — не ВТ-имя
+        const up = t.fullName.toUpperCase();
+        const def = defineChunk.get(up);
+        if (def !== undefined && def <= i) continue; // уже создана ПОМЕСТИТЬ к этому моменту
+        if (resolver?.tableByFullName?.(t.fullName)) continue; // реальная таблица
+        if (resolver?.virtualTableByFullName?.(t.fullName)) continue; // виртуальная
+        const alias = (t.alias ?? t.fullName).toUpperCase();
+        map.set(alias, up);
+        candidates.add(up);
+      }
+    }
+    return map;
+  });
+  if (candidates.size === 0) return { tables: new Map(), firstRefChunk: new Map() };
+
+  // Колонки в порядке первого появления `<алиас>.<кол>` по всему пакету.
+  const cols = new Map<string, string[]>(); // ИМЯ_ВТ(upper) → колонки (как написаны)
+  const seen = new Map<string, Set<string>>(); // ИМЯ_ВТ(upper) → виденные (upper)
+  const firstRefChunk = new Map<string, number>(); // ИМЯ_ВТ(upper) → индекс первого оператора-ссылки
+  for (const c of candidates) { cols.set(c, []); seen.set(c, new Set()); }
+
+  const ref = /([A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*)\.([A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*)(\.)?/gu;
+  chunks.forEach((chunk, i) => {
+    const aliasMap = aliasToTempPerChunk[i];
+    if (aliasMap.size === 0) return;
+    let mt: RegExpExecArray | null;
+    ref.lastIndex = 0;
+    while ((mt = ref.exec(chunk)) !== null) {
+      const tempName = aliasMap.get(mt[1].toUpperCase());
+      if (!tempName) continue;
+      if (!firstRefChunk.has(tempName)) firstRefChunk.set(tempName, i);
+      if (mt[3]) continue; // `<алиас>.<кол>.<...>` — многосегментная, не колонка ВТ
+      const colUp = mt[2].toUpperCase();
+      const s = seen.get(tempName)!;
+      if (s.has(colUp)) continue;
+      s.add(colUp);
+      cols.get(tempName)!.push(mt[2]);
+    }
+  });
+
+  // Звёздные ВТ: только те, по которым в каком-либо операторе есть `*` / `Алиас.*`
+  // (иначе выведенные метаданные не нужны и лишь возмущают прочие проходы — агрегаты,
+  // канонизацию, квалификацию). `Алиас.*` атрибутируется своему псевдониму;
+  // голая `*` — всем ВТ-кандидатам-источникам своего оператора.
+  const starred = new Set<string>();
+  // Сырой токен звезды: голая `*` (поле выборки) или `<алиас>.*`. Перед `*` —
+  // граница (запятая/перенос/«ВЫБРАТЬ»/скобка), чтобы не путать с умножением.
+  const dotStar = /([A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*)\.\*/gu;
+  const bareStar = /(^|[,(\n\r\t ])\*(?=\s*(?:,|$|\r|\n))/gmu;
+  chunks.forEach((chunk, i) => {
+    const aliasMap = aliasToTempPerChunk[i];
+    if (aliasMap.size === 0) return;
+    let m: RegExpExecArray | null;
+    dotStar.lastIndex = 0;
+    while ((m = dotStar.exec(chunk)) !== null) {
+      const t = aliasMap.get(m[1].toUpperCase());
+      if (t) starred.add(t);
+    }
+    if (bareStar.test(chunk)) {
+      for (const t of aliasMap.values()) starred.add(t);
+    }
+  });
+
+  const out = new Map<string, MetaTable>();
+  for (const [up, columns] of cols) {
+    if (columns.length === 0) continue;
+    if (!starred.has(up)) continue; // нет звезды по этой ВТ — метаданные не выводим
+    // Каноническое имя ВТ — как написано в первом источнике (любой регистр сохраняем).
+    let name = up;
+    outer: for (const doc of members) {
+      for (const m of doc.members) {
+        for (const t of m.model.tables) {
+          if (t.fullName && t.fullName.toUpperCase() === up) { name = t.fullName; break outer; }
+        }
+      }
+    }
+    const fields: MetaField[] = columns.map((c) => ({ name: c, kind: 'attribute', types: [] }));
+    out.set(up, { kind: 'Справочник', name, fullName: name, fields });
+  }
+  return { tables: out, firstRefChunk };
 }
 
 /**
@@ -4761,11 +4910,19 @@ function registerTempTables(doc: QueryDocument, tempTables: Map<string, MetaTabl
 function augmentResolverWithTempTables(
   base: MetadataResolver | undefined,
   tempTables: Map<string, MetaTable>,
+  // Выведенные метаданные НЕОПРЕДЕЛённых ВТ пакета (фаза 6.19): резолвятся ниже
+  // реальных метаданных и ПОМЕСТИТЬ-реестра — только для имён, не определённых иначе.
+  inferred?: Map<string, MetaTable>,
 ): MetadataResolver | undefined {
-  if (tempTables.size === 0) return base;
+  if (tempTables.size === 0 && (!inferred || inferred.size === 0)) return base;
+  const lookup = (fullName: string): MetaTable | undefined => {
+    const up = fullName.toUpperCase();
+    return (
+      tempTables.get(up) ?? base?.tableByFullName(fullName) ?? inferred?.get(up)
+    );
+  };
   return {
-    tableByFullName: (fullName: string): MetaTable | undefined =>
-      tempTables.get(fullName.toUpperCase()) ?? base?.tableByFullName(fullName),
+    tableByFullName: lookup,
     // Виртуальный слой пробрасываем как есть — ВТ виртуальных таблиц не имеют.
     virtualTableByFullName: (fullName: string): MetaTable | undefined =>
       base?.virtualTableByFullName?.(fullName),
