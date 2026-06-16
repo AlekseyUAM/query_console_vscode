@@ -879,6 +879,29 @@ function parseSingleQuery(
     model.indexing = parseIndex(cur, sectionCtx);
   }
 
+  // Блок характеристик СКД `{ХАРАКТЕРИСТИКИ … }` в конце запроса. Конструктор
+  // сохраняет его ДОСЛОВНО — захватываем сырой срез исходника от `{` до парной `}`
+  // (учитывая вложенные скобки/фигурные скобки) и кладём в model.characteristics.
+  // `ХАРАКТЕРИСТИКИ` не входит в KEYWORDS → токен-идентификатор.
+  if (cur.isPunct('{') && cur.peek(1).type === 'ident' && cur.peek(1).value.toUpperCase() === 'ХАРАКТЕРИСТИКИ') {
+    const open = cur.peek();
+    let depth = 0;
+    let end = open.pos;
+    for (;;) {
+      const t = cur.peek();
+      if (t.type === 'eof') break;
+      if (t.type === 'punct' && t.value === '{') depth++;
+      else if (t.type === 'punct' && t.value === '}') {
+        depth--;
+        cur.next();
+        if (depth === 0) { end = t.pos + t.value.length; break; }
+        continue;
+      }
+      cur.next();
+    }
+    model.characteristics = cur.source.slice(open.pos, end);
+  }
+
   if (builder.fields.length || builder.conditions.length || builder.order.length || builder.totals.length) {
     model.builder = builder;
   }

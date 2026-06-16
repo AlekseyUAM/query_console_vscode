@@ -1258,6 +1258,8 @@ function buildQueryBlock(
     ...builderOrder,
     ...builderTotals,
     ...lockLines,
+    // Блок характеристик СКД `{ХАРАКТЕРИСТИКИ … }` — дословно (байт-в-байт), последним.
+    ...(model.characteristics ? model.characteristics.split('\n') : []),
   ].join('\n');
 }
 

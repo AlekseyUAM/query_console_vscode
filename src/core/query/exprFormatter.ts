@@ -3605,7 +3605,12 @@ function renderBool(
     }
     case 'and': {
       const lines: string[] = [];
-      node.operands.forEach((op, k) => {
+      node.operands.forEach((op0, k) => {
+        // Скобочная И-группа в позиции operand0 И-цепочки (`(A И B) И C`) — обёртка
+        // избыточна (И ассоциативен, левый conjunct сливается в родительскую цепочку),
+        // и оракул её снимает. Снимаем ТОЛЬКО на operand0 (`X И (A И B)` — НЕ operand0 —
+        // оракул скобки сохраняет, фаза). `group(or)` значим — не трогаем.
+        const op = k === 0 && op0.kind === 'group' && op0.child.kind === 'and' ? op0.child : op0;
         if (k === 0) {
           lines.push(...renderBool(op, ind, andCont, orLvl, ctx, caseE, subInd, leadParenBase));
         } else {
@@ -4309,8 +4314,16 @@ function renderSelectBool(node: Node, ind: number, andCont: number, orLvl: numbe
       // на той же строке) обрабатывается в ветках or/and явно (boolean=true).
       return renderCase(node, ind, ctx, false);
     case 'leaf':
+      // Избыточная обёртка операнда булевой цепочки поля выборки (`A И (B = 0)` →
+      // `A И B = 0`, как оракул): лист здесь — целый предикатный операнд (верхнеуровневые
+      // И/ИЛИ его уже расщепили), поэтому stripRedundantLeafParens безопасен — он
+      // отказывается от многострочного листа (подзапрос/CASE), В-списка/подзапроса и
+      // конструкций, где скобка меняет приоритет. Зеркало leaf-ветки renderBool.
       // Подзапрос поля выборки — на ind+1 (MCP, 6.15.9).
-      return [reindentLeafSubquery(node.text, subInd ?? ind + 1)];
+      // Голый операнд-приведение ВЫРАЗИТЬ(…) в сравнении конструктор оборачивает
+      // обратно (wrapBareCastOperand) — зеркало leaf-ветки renderBool, иначе снятая
+      // выше обёртка `(ВЫРАЗИТЬ(…)) <> …` потерялась бы.
+      return [reindentLeafSubquery(wrapBareCastOperand(stripRedundantLeafParens(node.text)), subInd ?? ind + 1)];
   }
 }
 
