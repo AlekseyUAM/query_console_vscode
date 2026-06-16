@@ -533,6 +533,65 @@ function reflowInlineMembershipSubquery(
 }
 
 /**
+ * Конъюнкт виртуальной таблицы — скобочная булева группа, набранная ИНЛАЙН
+ * (`(X ИЛИ Y)`, `(A И B ИЛИ C)`): ставит переносы перед каждым верхнеуровневым
+ * (внутри ведущей скобки, depth==1) оператором `И`/`ИЛИ`, превращая конъюнкт в
+ * многострочную группу. Дальше штатная ветка reindentVtCondition отобьёт отступы по
+ * приоритету И>ИЛИ. Возвращает исходный текст без изменений, если:
+ *   • текст не начинается с `(`;
+ *   • внутри есть подзапрос (`ВЫБРАТЬ`) или `ВЫБОР` (их раскладывают свои ветки);
+ *   • нет ни одного верхнеуровневого оператора группы.
+ * Хвост после закрывающей группу скобки (`) {…}`, `) КАК …`) остаётся на ПОСЛЕДНЕЙ
+ * строке (переносы ставятся только внутри группы). Фаза 6.16.
+ */
+function breakInlineParenGroup(text: string): string {
+  const t = text.trimStart();
+  if (!t.startsWith('(')) return text;
+  if (/(?:^|[^\p{L}\p{N}_])(?:ВЫБРАТЬ|ВЫБОР)(?:[^\p{L}\p{N}_]|$)/u.test(t)) return text;
+  const lead = text.slice(0, text.length - t.length);
+  let depth = 0;
+  let inStr = false;
+  let out = '';
+  let changed = false;
+  // Диапазонное `И` из `МЕЖДУ a И b` — не булев разделитель, перенос перед ним не ставим.
+  let betweenPending = 0;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) { out += ch; if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; out += ch; continue; }
+    if (ch === '(') { depth++; out += ch; continue; }
+    if (ch === ')') { depth--; out += ch; continue; }
+    // Слово `МЕЖДУ` на верхнем уровне группы — следующее `И` диапазонное.
+    if ((ch === 'М' || ch === 'м') && !/[\p{L}\p{N}_]/u.test(t[i - 1] ?? '')) {
+      const mm = /^МЕЖДУ(?![\p{L}\p{N}_])/iu.exec(t.slice(i));
+      if (mm) { betweenPending++; out += t.slice(i, i + mm[0].length); i += mm[0].length - 1; continue; }
+    }
+    // Верхнеуровневый (depth==1) оператор `И`/`ИЛИ` внутри ведущей скобки.
+    if (depth === 1 && (ch === 'И' || ch === 'и')) {
+      const prev = t[i - 1];
+      const m = /^(И|ИЛИ)(?![\p{L}\p{N}_])/u.exec(t.slice(i));
+      if (m && m[1] === 'И' && betweenPending > 0 && (prev === undefined || !/[\p{L}\p{N}_]/u.test(prev))) {
+        betweenPending--;
+        out += m[1];
+        i += m[1].length - 1;
+        continue;
+      }
+      if (m && (prev === undefined || !/[\p{L}\p{N}_]/u.test(prev))) {
+        // Срезаем уже накопленный пробел перед оператором, ставим перенос.
+        out = out.replace(/[ \t]+$/u, '') + '\n' + m[1] + ' ';
+        i += m[1].length;
+        // Пропускаем пробелы после оператора.
+        while (i + 1 < t.length && /[ \t]/u.test(t[i + 1])) i++;
+        changed = true;
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return changed ? lead + out : text;
+}
+
+/**
  * СОСТАВНОЕ условие виртуальной таблицы (И/ИЛИ) — фаза 6.16.4. Разбираем
  * поконъюнктно: конъюнкт 0 на base, каждый следующий `И`/`ИЛИ` на base+1. Случаи,
  * на которых пасуют reindentLeafBool (стоп по `ВЫБРАТЬ`) и reindentLeafSubquery
@@ -560,6 +619,17 @@ function reindentVtCondition(condition: string, base: number): string {
     // flattenMultilineLeaf не трогает конъюнкт с подзапросом (`В (ВЫБРАТЬ …)`) и ВЫБОР
     // — они раскладываются по строкам ниже своими ветками.
     if (c.text.includes('\n')) c = { ...c, text: flattenMultilineLeaf(c.text) };
+    // Конъюнкт — скобочная ИЛИ-группа, набранная разработчиком ИНЛАЙН (`И (X ИЛИ Y)`
+    // на одной строке): конструктор 1С разносит её по строкам (operand0 на строке `(`,
+    // каждый `ИЛИ`/`И` внутри группы — на новой строке +1). reindentVtCondition умеет
+    // раскладывать только УЖЕ многострочную группу (ветка ниже), поэтому ставим переносы
+    // перед верхнеуровневыми (depth-1) операторами ведущей скобки — дальше штатная ветка
+    // отобьёт отступы. Узкий гейт: конъюнкт начинается с `(`, без подзапроса/ВЫБОР внутри,
+    // и содержит верхнеуровневый оператор группы. Фаза 6.16.
+    if (!c.text.includes('\n')) {
+      const broken = breakInlineParenGroup(c.text);
+      if (broken !== c.text) c = { ...c, text: broken };
+    }
     // Конъюнкт-членство `Поле В (ВЫБРАТЬ … ИЗ …)`, набранный разработчиком ИНЛАЙН
     // (подзапрос целиком на одной строке): reindentLeafSubquery умеет лишь сдвигать
     // уже многострочное тело, инлайн он не раскладывает. Перепарсиваем внутренний

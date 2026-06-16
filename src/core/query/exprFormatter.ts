@@ -661,6 +661,29 @@ export function reindentLeafSubquery(text: string, base: number): string {
       if (indOf(l) <= srcInd) { joinExtra = 0; poExtra = 0; }
     }
   }
+  // Булев оператор `И`/`ИЛИ`, набранный разработчиком ОТДЕЛЬНОЙ строкой (`Поле = X\n\t\tИЛИ\n\t\t\tПоле = Y`):
+  // конструктор 1С склеивает оператор с его операндом в ОДНУ строку (как renderBool —
+  // `ИЛИ операнд`), а оператор-одиночку убирает. reindentLeafSubquery лишь равномерно
+  // сдвигает геометрию разработчика и сам по себе этот неканон не разнёс бы. Узкий гейт:
+  //   • строка тела подзапроса (i > start);
+  //   • строка — РОВНО `\t*(И|ИЛИ)` (оператор без операнда);
+  //   • следующая непустая строка строго ГЛУБЖЕ оператора (его операнд, набранный +1).
+  // Склеенная строка наследует ОТСТУП операнда (оракул держит `ИЛИ операнд` на уровне
+  // операнда, на +1 глубже строки операнда0). Прочие соседи (комментарии, скобки) не
+  // трогаются. Фаза 6.16.
+  for (let i = start + 1; i < lines.length - 1; i++) {
+    const opM = /^(\t*)(И|ИЛИ)$/u.exec(lines[i]);
+    if (!opM) continue;
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === '') j++;
+    if (j >= lines.length) continue;
+    const opInd = opM[1].length;
+    const operandInd = (lines[j].match(/^\t*/u) ?? [''])[0].length;
+    if (operandInd <= opInd) continue;
+    lines[j] = lines[j].replace(/^(\t*)/u, `$1${opM[2]} `);
+    lines.splice(i, 1);
+    i--; // строка сдвинулась
+  }
   // Внутри подзапроса-операнда условия `ПО` соединения печатается на отдельной
   // строке, а условие — НИЖЕ с отступом +1 (фаза 6.15.14, MCP). В сыром тексте
   // подзапроса (`В (ВЫБРАТЬ … СОЕДИНЕНИЕ … ПО <условие>)`) перекладываем строку
@@ -861,6 +884,57 @@ export function splitInlineLeafCase(text: string): string {
       if (!nx || !isW(nx, 'КОГДА')) return text;
     }
   }
+  // Предпроход: условие КОГДА, ЦЕЛИКОМ обёрнутое в ОДНУ скобочную пару (`КОГДА (НЕ A И НЕ
+  // B) ТОГДА …`), конструктор 1С печатает БЕЗ этих скобок (границы задаёт КОГДА…ТОГДА —
+  // зеркало структурного renderWhenCondition, где верхняя группа не оборачивается). Снимаем
+  // пару, чтобы её булевы операторы стали верхнеуровневыми конъюнктами условия (их разнесёт
+  // основной цикл ниже, как обычные `И`/`ИЛИ` на уровне CASE). Узкий гейт: первый токен
+  // условия — `(`, его пара — последний токен перед ТОГДА того же CASE, между ними есть
+  // верхнеуровневый (относительно этой пары) булев `И`/`ИЛИ` (без него скобку снимет
+  // stripRedundantCaseClauseParens на строке КОГДА — здесь не дублируем). Выполняется ДО
+  // основного цикла; при срабатывании текст перетокенизируется (рекурсивный вызов).
+  {
+    const caseDepth: number[] = [];
+    const dropPos: number[] = [];
+    for (let k = 0; k < sig.length; k++) {
+      const t = sig[k];
+      if (isW(t, 'ВЫБОР')) { caseDepth.push(depthBefore[k]); continue; }
+      const top = caseDepth[caseDepth.length - 1];
+      if (top === undefined) continue;
+      if (isW(t, 'КОНЕЦ') && depthBefore[k] === top) { caseDepth.pop(); continue; }
+      if (!isW(t, 'КОГДА') || depthBefore[k] !== top) continue;
+      // Первый токен условия — `(` на уровне top.
+      const open = sig[k + 1];
+      if (!open || !(open.type === 'punct' && open.value === '(') || depthBefore[k + 1] !== top) continue;
+      // Идём до ТОГДА того же CASE; пара `(` должна закрыться РОВНО перед ним.
+      let j = k + 2;
+      let closeIdx = -1;
+      let hasTopBool = false;
+      for (; j < sig.length; j++) {
+        const d = depthBefore[j];
+        if (d <= top) break; // вышли из открытой пары (её `)` уже учтён в depthBefore)
+        if (d === top + 1 && (isW(sig[j], 'И') || isW(sig[j], 'ИЛИ'))) hasTopBool = true;
+      }
+      // sig[j] — первый токен на глубине <= top после пары: это её `)` уже закрыт, значит
+      // closeIdx = j-1 (последний токен внутри/закрывающая `)`); требуем, чтобы это была `)`
+      // и следующий значимый токен — ТОГДА того же CASE.
+      const closeTok = sig[j - 1];
+      if (!closeTok || !(closeTok.type === 'punct' && closeTok.value === ')')) continue;
+      const next = sig[j];
+      if (!next || !isW(next, 'ТОГДА') || depthBefore[j] !== top) continue;
+      if (!hasTopBool) continue;
+      closeIdx = j - 1;
+      dropPos.push(open.pos, closeTok.pos);
+      void closeIdx;
+    }
+    if (dropPos.length > 0) {
+      const drop = new Set(dropPos);
+      let rebuilt = '';
+      for (let p = 0; p < text.length; p++) if (!drop.has(p)) rebuilt += text[p];
+      // Перетокенизируем и повторяем (теперь скобки сняты, операторы — верхнеуровневые).
+      return splitInlineLeafCase(rebuilt);
+    }
+  }
   // Стек глубин CASE: глубина скобок на уровне открывающего ВЫБОР. Структурную строку
   // начинаем перед КОГДА/ТОГДА/ИНАЧЕ/КОНЕЦ ТЕКУЩЕГО CASE (на его скобочной глубине) и
   // перед И/ИЛИ-продолжением условия (между КОГДА и ТОГДА того же CASE).
@@ -871,10 +945,29 @@ export function splitInlineLeafCase(text: string): string {
   // Сколько `И` принадлежат открытым `МЕЖДУ a И b` — их НЕ переносим (диапазонное И,
   // не булев конъюнкт). Без этого `КОГДА X МЕЖДУ &A И &B` ошибочно рвался на `И &B`.
   let betweenPending = 0;
+  // Стек «вида» открытых скобок: true — ГРУППИРУЮЩАЯ (`… И (X ИЛИ Y)`), её
+  // верхнеуровневые булевы операторы — часть условия и подлежат сплиту; false — скобка
+  // ВЫЗОВА-функции (`ЗНАЧЕНИЕ(…)`, `ВЫРАЗИТЬ(…)`) или иной не-булев контекст, внутрь не
+  // лезем. Группирующей считаем `(`, чей левый сосед НЕ идентификатор/слово-функция
+  // (т.е. оператор/`(`/`И`/`ИЛИ`/`НЕ`/`КОГДА`/начало).
+  const parenKind: boolean[] = [];
   const breakBefore = new Set<number>();
+  const gluedToPrevAt = (k: number): boolean => {
+    const p = sig[k - 1];
+    if (!p) return false;
+    const pEnd = p.pos + p.text.length;
+    return !text.slice(pEnd, sig[k].pos).includes('\n');
+  };
   for (let k = 0; k < sig.length; k++) {
     const t = sig[k];
     const dep = depthBefore[k];
+    if (t.type === 'punct' && t.value === '(') {
+      const prev = sig[k - 1];
+      const isCallOpen = !!prev && (prev.type === 'ident' || (prev.type === 'keyword' && !isW(prev, 'И') && !isW(prev, 'ИЛИ') && !isW(prev, 'НЕ') && !isW(prev, 'КОГДА') && !isW(prev, 'МЕЖДУ')));
+      parenKind.push(!isCallOpen);
+    } else if (t.type === 'punct' && t.value === ')') {
+      parenKind.pop();
+    }
     if (isW(t, 'ВЫБОР')) {
       caseStack.push(dep);
       inCondition = false;
@@ -882,17 +975,31 @@ export function splitInlineLeafCase(text: string): string {
     }
     const top = caseStack[caseStack.length - 1];
     if (top === undefined) continue;
+    // `МЕЖДУ` отслеживаем ВНУТРИ условия на ЛЮБОЙ глубине (`dep >= top`): его `И` —
+    // диапазонный, не булев разделитель, и его НЕ переносим ни на верхнем уровне, ни
+    // внутри группы `(X МЕЖДУ a И b)`. Считаем ДО обработчиков И/ИЛИ.
+    if (inCondition && dep >= top && isW(t, 'МЕЖДУ')) { betweenPending++; continue; }
+    // Операнд `ИЛИ`/`И` ровно на ОДИН уровень глубже текущего CASE (`dep === top+1`),
+    // принадлежащий ГРУППИРУЮЩЕЙ скобке условия КОГДА (`И (X ИЛИ Y)`): конструктор 1С
+    // тоже разносит его по строкам (оракул `И (X\n\t\tИЛИ Y)`). Узкий гейт: мы внутри
+    // условия, ведущая скобка — группирующая (parenKind top == true), оператор склеен с
+    // предыдущим и это не диапазонное `И` (`МЕЖДУ a И b` — betweenPending>0).
+    if (
+      inCondition &&
+      dep === top + 1 &&
+      parenKind[parenKind.length - 1] === true &&
+      (isW(t, 'И') || isW(t, 'ИЛИ'))
+    ) {
+      // Диапазонное `И` из `МЕЖДУ a И b` — не разрываем.
+      if (isW(t, 'И') && betweenPending > 0) { betweenPending--; continue; }
+      if (k > 0 && gluedToPrevAt(k)) breakBefore.add(k);
+      continue;
+    }
     if (dep !== top) continue; // не на уровне текущего CASE — внутренняя группа/вложение
-    if (inCondition && isW(t, 'МЕЖДУ')) { betweenPending++; continue; }
     // Перенос ставим ТОЛЬКО когда токен СКЛЕЕН с предыдущим в одну физическую строку
     // (в зазоре нет `\n`): инлайн-CASE мы разбиваем, а уже разложенные построчно
     // структурные строки НЕ трогаем — иначе сорвём их ведущий отступ (фаза 6.16.71).
-    const gluedToPrev = (): boolean => {
-      const p = sig[k - 1];
-      if (!p) return false;
-      const pEnd = p.pos + p.text.length;
-      return !text.slice(pEnd, t.pos).includes('\n');
-    };
+    const gluedToPrev = (): boolean => gluedToPrevAt(k);
     if (isW(t, 'КОГДА')) {
       if (k > 0 && gluedToPrev()) breakBefore.add(k);
       inCondition = true;
