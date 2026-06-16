@@ -240,6 +240,27 @@ function splitTopLevelBool(expr: string): string {
  * продолжениями условия на bodyTabs+3 (фаза 6.15.20, MCP). Простое (одночленное)
  * условие остаётся инлайн: `Имя(П1, условие)`.
  */
+/**
+ * DCS-параметр виртуальной таблицы в фигурных скобках (`{<выражение>}`) конструктор 1С
+ * печатает с обязательной ВНУТРЕННЕЙ парой скобок: `{&НачПериода}` → `{(&НачПериода)}`.
+ * Оборачиваем содержимое скобок в `(…)`, только когда оно — ОДИНОЧНОЕ ГОЛОЕ выражение-
+ * параметр (`&Имя`): без уже имеющейся охватывающей пары скобок, без верхнеуровневой
+ * запятой (не список полей DCS `{поле1, поле2}`) и без псевдонима `КАК`. Уже
+ * обёрнутое `{(…)}` (в т.ч. `{(…) КАК Поле2}`) не трогаем — синтез алиаса вне нашей
+ * задачи. Узкий гейт: содержимое начинается с `&`. Фаза 6.16.79.
+ */
+function wrapDcsBraceParam(text: string): string {
+  if (!text.includes('{')) return text;
+  return text.replace(/\{([^{}]*)\}/gu, (whole, inner: string) => {
+    const c = inner.trim();
+    if (!c.startsWith('&')) return whole;
+    if (c.startsWith('(')) return whole;
+    // Верхнеуровневая запятая или `КАК` → не одиночный параметр, не трогаем.
+    if (hasTopLevelComma(c) || /(^|[^\p{L}\p{N}_])КАК([^\p{L}\p{N}_]|$)/iu.test(c)) return whole;
+    return `{(${c})}`;
+  });
+}
+
 function renderVirtualParams(fullName: string, positions: string[], condition: string, bodyTabs: number): string {
   // Регистровая нормализация параметров виртуальной таблицы (период, условие):
   // конструктор приводит зарезервированные слова/функции/литералы к ВЕРХНЕМУ
@@ -247,8 +268,8 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // normalizeLeafCase не трогает сегменты `.`-пути и тело строковых литералов и
   // безопасен для многострочных условий-подзапросов (правит лишь промежутки без
   // переводов строк).
-  positions = positions.map(p => (p ? normalizeLeafCase(p) : p));
-  condition = condition ? normalizeLeafCase(condition) : condition;
+  positions = positions.map(p => (p ? wrapDcsBraceParam(normalizeLeafCase(p)) : p));
+  condition = condition ? wrapDcsBraceParam(normalizeLeafCase(condition)) : condition;
   // Сплющиваем «лишние» переносы разработчика внутри ПРОСТОГО условия-параметра
   // (`Валюта В (&А,\n  &Б)` → одна строка): конструктор печатает такой параметр ВТ
   // инлайн (фаза 6.16.72). flattenMultilineLeaf консервативен — НЕ трогает условие с
@@ -275,6 +296,23 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   const hasSubquery = !!condition && condition.includes('\n');
   if (!condition || (!hasBool && !hasSubquery)) {
     return `${fullName}(${positions.join(', ')})`;
+  }
+  // ВНУТРИ подзапроса-операнда членства (`… В (ВЫБРАТЬ … ИЗ Рег.X.Остатки(, Условие) …)`)
+  // конструктор 1С НЕ разносит позиции ВТ по отдельным строкам, а сохраняет вызов
+  // ИНЛАЙН: `Остатки(, <первый-конъюнкт>` остаётся на строке источника, а составное
+  // условие раскладывается по конъюнктам на отступе строки-источника+1 (как обычное
+  // условие, а не как параметр верхнего уровня). На ВЕРХНЕМ уровне (≈300 эталонных
+  // случаев) каждый параметр печатается на своей строке — туда эта ветка НЕ заходит
+  // (узкий гейт по inConditionSubquery + составному условию). Фаза 6.16.77.
+  if (inConditionSubquery && hasBool) {
+    // Конъюнкты составного условия идут на bodyTabs+1 (отступ строки источника +1).
+    // reindentVtCondition печатает конъюнкты k>0 на base+1 → base = bodyTabs.
+    const ibase = bodyTabs;
+    const condLines = reindentVtCondition(condition.trim(), ibase).split('\n');
+    // Первый конъюнкт (line 0) приклеиваем к `Имя(<предш.-позиции>, `.
+    const headInline = positions.slice(0, -1).join(', ');
+    condLines[0] = condLines[0].replace(/^\t+/u, '');
+    return `${fullName}(${headInline}, ${condLines.join('\n')})`;
   }
   const base = bodyTabs + 2;
   const pad = '\t'.repeat(base);
