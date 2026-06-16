@@ -56,6 +56,14 @@ const LITERAL_WORDS = new Set(['НЕОПРЕДЕЛЕНО', 'ИСТИНА', 'ЛО
 /** Агрегатные функции — вызов `ИМЯ(…)` без пробела перед скобкой. */
 const AGGREGATE_WORDS = new Set(['СУММА', 'КОЛИЧЕСТВО', 'МАКСИМУМ', 'МИНИМУМ', 'СРЕДНЕЕ']);
 
+/**
+ * Функции-вызовы, у которых конструктор 1С УБИРАЕТ пробел перед открывающей скобкой
+ * (`ЗНАЧЕНИЕ (…)` → `ЗНАЧЕНИЕ(…)`), в отличие от булевых/группирующих скобок (`И (…)`,
+ * `НЕ (a, b) В …`). `ЗНАЧЕНИЕ` — однозначно вызов перечислимого литерала, пробела
+ * перед скобкой у него не бывает (фаза 6.16).
+ */
+const CALL_NOSPACE_WORDS = new Set(['ЗНАЧЕНИЕ']);
+
 /** Примитивные типы: верхний регистр в позиции типа (ВЫРАЗИТЬ … КАК <Тип>, ТИП(<Тип>)). */
 const PRIMITIVE_TYPE_WORDS = new Set(['СТРОКА', 'ЧИСЛО', 'ДАТА', 'БУЛЕВО']);
 
@@ -557,7 +565,15 @@ export function reindentLeafSubquery(text: string, base: number): string {
     const delta = target - cur;
     if (delta !== 0) {
       for (let i = start; i < lines.length; i++) {
-        if (lines[i].trim() === '') continue; // пустые/разделительные строки не трогаем
+        // Пустые строки-разделители (вокруг `ОБЪЕДИНИТЬ ВСЕ`) НЕСУТ собственный значимый
+        // отступ (член−1 у подзапроса-источника, член−2 у В-операнда с ведущим `В`).
+        // Сдвигаем их на ту же `delta`, СОХРАНЯЯ относительную геометрию разработчика
+        // (нулевой отступ обрабатываем отдельным проходом ниже — там геометрии нет).
+        if (lines[i].trim() === '') {
+          const haveB = (lines[i].match(/^\t*/u) ?? [''])[0].length;
+          if (haveB > 0) lines[i] = TAB.repeat(Math.max(0, haveB + delta));
+          continue;
+        }
         if (delta > 0) {
           lines[i] = TAB.repeat(delta) + lines[i];
         } else {
@@ -568,6 +584,20 @@ export function reindentLeafSubquery(text: string, base: number): string {
       }
     }
   }
+  // Пустые строки-разделители, набранные разработчиком БЕЗ отступа (0 табов), своей
+  // геометрии не несут — конструктор ставит их на ОДИН таб мельче ключевого слова
+  // `ОБЪЕДИНИТЬ` (член−1). Переотрисовываем ТОЛЬКО такие нулевые разделители, соседние
+  // со строкой `ОБЪЕДИНИТЬ` (ненулевые сохраняют относительную геометрию выше; фаза 6.16).
+  const isUnionKw = (s: string): boolean => /^\t*ОБЪЕДИНИТЬ(?:\s+ВСЕ)?\s*$/u.test(s);
+  for (let i = start; i < lines.length; i++) {
+    if (lines[i] !== '') continue; // только строки БЕЗ отступа (ровно пустые)
+    const prevKw = i > 0 && isUnionKw(lines[i - 1]);
+    const nextKw = i + 1 < lines.length && isUnionKw(lines[i + 1]);
+    if (!prevKw && !nextKw) continue;
+    const kwLine = prevKw ? lines[i - 1] : lines[i + 1];
+    const kwInd = (kwLine.match(/^\t*/u) ?? [''])[0].length;
+    lines[i] = TAB.repeat(Math.max(0, kwInd - 1));
+  }
   // Хвостовые пробелы СОДЕРЖАТЕЛЬНЫХ строк подзапроса конструктор срезает
   // (`ИЗ ` → `ИЗ`). Не трогаем: строки со строковым литералом (там пробел может быть
   // значимым) и пустые/только-пробельные строки-разделители (конструктор сохраняет их
@@ -575,6 +605,52 @@ export function reindentLeafSubquery(text: string, base: number): string {
   for (let i = start; i < lines.length; i++) {
     if (lines[i].trim() === '') continue;
     if (!lines[i].includes('"')) lines[i] = lines[i].replace(/[ \t]+$/u, '');
+  }
+  // Структурный отступ СОЕДИНЕНИЙ внутри тела подзапроса: разработчик нередко набирает
+  // `ВНУТРЕННЕЕ СОЕДИНЕНИЕ`/`ПО` НА ОДНОМ уровне с источником (плоско), а конструктор 1С
+  // отбивает присоединяемый источник и `ПО` на ОДИН таб ГЛУБЖЕ источника (source+1), а
+  // условие `ПО` — ещё на +1. Равномерный сдвиг этого не делает. Поэтому, если строка
+  // СОЕДИНЕНИЯ стоит ВРОВЕНЬ с предшествующим источником (после `ИЗ`), углубляем её и
+  // относящиеся к ней `ПО`/конъюнкты на +1 (фаза 6.16). Узкий гейт: трогаем только
+  // плоскую геометрию (join-отступ == source-отступ) — корректно набранную не трогаем.
+  {
+    const JOIN_RE = /^(\t*)(?:ВНУТРЕННЕЕ|ЛЕВОЕ(?:\s+ВНЕШНЕЕ)?|ПРАВОЕ(?:\s+ВНЕШНЕЕ)?|ПОЛНОЕ(?:\s+ВНЕШНЕЕ)?)\s+СОЕДИНЕНИЕ(?:[^\p{L}\p{N}_]|$)/u;
+    const PO_RE = /^(\t*)ПО(?:[^\p{L}\p{N}_]|$)/u;
+    const indOf = (s: string): number => (s.match(/^\t*/u) ?? [''])[0].length;
+    let srcInd = -1; // отступ источника текущего блока ИЗ (строка сразу после `ИЗ`)
+    let expectSource = false;
+    let joinExtra = 0; // накопленный +1 для строк текущего соединения
+    let poExtra = 0; // признак активного плоского `ПО` (его конъюнкты углубляем на +2)
+    for (let i = start; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.trim() === '') continue;
+      if (/^\t*ИЗ\s*$/u.test(l)) { expectSource = true; joinExtra = 0; poExtra = 0; continue; }
+      if (expectSource) { srcInd = indOf(l); expectSource = false; continue; }
+      const jm = JOIN_RE.exec(l);
+      if (jm && srcInd >= 0 && jm[1].length === srcInd) {
+        // Плоское соединение: углубляем строку соединения на +1 (source+1).
+        lines[i] = TAB + l;
+        joinExtra = 1;
+        poExtra = 0;
+        continue;
+      }
+      const pm = PO_RE.exec(l);
+      if (pm && joinExtra > 0 && pm[1].length === srcInd) {
+        // `ПО` (и однострочное `ПО <условие>`) того же плоского соединения — на +1.
+        lines[i] = TAB + l;
+        poExtra = 1;
+        continue;
+      }
+      // Конъюнкты-продолжения `И`/`ИЛИ` условия `ПО` (`ПО a = b\n\tИ c = d`): условие
+      // конструктор отбивает на ПО+2 (само условие на ПО+1, его `И` — ещё на +1). При
+      // плоском соединении разработчик ставит их на source+1; углубляем на +2.
+      if (poExtra > 0 && /^\t*(?:И|ИЛИ)(?:[^\p{L}\p{N}_])/u.test(l) && indOf(l) <= srcInd + 1) {
+        lines[i] = TAB + TAB + l;
+        continue;
+      }
+      // Возврат к источнику/новой секции сбрасывает накопленное углубление.
+      if (indOf(l) <= srcInd) { joinExtra = 0; poExtra = 0; }
+    }
   }
   // Внутри подзапроса-операнда условия `ПО` соединения печатается на отдельной
   // строке, а условие — НИЖЕ с отступом +1 (фаза 6.15.14, MCP). В сыром тексте
@@ -1183,6 +1259,28 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
   // конструктор отступает на +1 глубже строк `ИЛИ` (приоритет И выше ИЛИ; фаза
   // 6.15.21, MCP). Чистая `И`-цепочка (без `ИЛИ` на уровне) сдвига НЕ получает.
   let condOrLevels = new Set<number>();
+  // Скобочные уровни условия КОГДА, ОТКРЫТЫЕ группой `НЕ(…)`. Содержимое такой группы
+  // отступается на +1 ГЛУБЖЕ (НЕ — отдельный уровень над скобкой; зеркало
+  // leading-`НЕ`-сдвига в reindentLeafSubquery). Кроме того, на НЕ-уровне НЕ применяем
+  // orShift приоритета И>ИЛИ: condOrLevels измеряет `ИЛИ` глобально по номеру уровня, а
+  // `ИЛИ` соседней группы того же уровня к содержимому НЕ-группы не относится (фаза 6.16).
+  let condNeLevels = new Set<number>();
+  // Открывает ли строка `s` группу `НЕ(…)` (слово `НЕ` вплотную/через пробел перед `(`)?
+  const neParenOpens = (s: string): number => {
+    let opens = 0;
+    let inS = false;
+    let word = '';
+    for (let c = 0; c < s.length; c++) {
+      const ch = s[c];
+      if (ch === '"') { inS = !inS; word = ''; continue; }
+      if (inS) continue;
+      if (/[\p{L}\p{N}_]/u.test(ch)) { word += ch; continue; }
+      if (ch === '(') { if (word.toUpperCase() === 'НЕ') opens++; word = ''; continue; }
+      if (ch === ' ' || ch === '\t') { if (word.toUpperCase() !== 'НЕ') word = ''; continue; }
+      word = '';
+    }
+    return opens;
+  };
   // Чистый баланс скобок строки (вне строковых литералов).
   const parenDelta = (s: string): number => {
     let d = 0;
@@ -1302,12 +1400,13 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
         // ветки внутренний ВЫБОР не отслеживался и стек опустошался раньше времени
         // → весь лист откатывался к исходному форматированию (фаза 6.16.65).
         stack.push(whenInd + 1);
-        curWhen = -1; valueAnchor = -1; condParen = 0; condOrLevels = new Set(); condShiftStack = [0];
+        curWhen = -1; valueAnchor = -1; condParen = 0; condOrLevels = new Set(); condShiftStack = [0]; condNeLevels = new Set();
       } else {
         curWhen = whenInd;
         valueAnchor = -1;
         condParen = 0;
         condShiftStack = [0];
+        condNeLevels = new Set();
         // Ведущая скобка-ГРУППА ПЕРВОГО конъюнкта (`КОГДА (X = … \n ИЛИ Y)`), не
         // снятая stripClause (она охватывает НЕСКОЛЬКО строк, поэтому не считается
         // охватывающей одну строку), уровня отступа продолжениям НЕ добавляет: оракул
@@ -1354,7 +1453,10 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       // текущем уровне есть верхнеуровневый `ИЛИ`, конъюнкт `И` идёт ещё на +1 глубже
       // (приоритет И>ИЛИ; фаза 6.15.21, MCP).
       if (curWhen < 0) return text;
-      const orShift = w === 'И' && condOrLevels.has(condParen) ? 1 : 0;
+      // На уровне-внутри-`НЕ(…)` приоритет И>ИЛИ НЕ применяем: condOrLevels измеряет
+      // `ИЛИ` глобально по номеру скобочного уровня, но `ИЛИ` СОСЕДНЕЙ группы того же
+      // уровня к содержимому НЕ-группы не относится (его +1 уже даёт сама НЕ-группа).
+      const orShift = w === 'И' && !condNeLevels.has(condParen) && condOrLevels.has(condParen) ? 1 : 0;
       // Накопленный сдвиг приоритета на ТЕКУЩЕМ уровне скобок: когда `И` со сдвигом
       // ИЛИ-приоритета ОТКРЫВАЕТ группу (`И (G ИЛИ H)`), содержимое этой группы
       // наследует тот же +1 (вложенный `ИЛИ H` встаёт глубже строки `И (G`, а не
@@ -1363,11 +1465,17 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
       const curShift = condShiftStack[condParen] ?? 0;
       lines[i] = reTab(raw, curWhen + 2 + condParen + curShift + orShift);
       // Открытие новых уровней скобок на этой строке наследует сдвиг текущей строки
-      // (curShift + orShift) — он действует на всё содержимое открытой группы.
+      // (curShift + orShift) — он действует на всё содержимое открытой группы. Группа
+      // `НЕ(…)` добавляет содержимому ЕЩЁ +1 (НЕ — отдельный уровень над скобкой) и
+      // помечает открытые уровни как НЕ-уровни (фаза 6.16, корпус ДанныеОКорректировке).
       const delta = parenDelta(raw);
       if (delta > 0) {
+        const neOpens = (w === 'И' || w === 'ИЛИ') ? neParenOpens(raw) : 0;
         const inherited = curShift + orShift;
-        for (let lv = condParen + 1; lv <= condParen + delta; lv++) condShiftStack[lv] = inherited;
+        for (let lv = condParen + 1; lv <= condParen + delta; lv++) {
+          condShiftStack[lv] = inherited + (neOpens > 0 ? 1 : 0);
+          if (neOpens > 0) condNeLevels.add(lv); else condNeLevels.delete(lv);
+        }
       }
       // Закрывающая скобка ВЕДУЩЕЙ группы первого конъюнкта (вычтенной из стартового
       // condParen) приходит на этой же строке-продолжении — клампим уровень снизу
@@ -1869,7 +1977,7 @@ export function normalizeLeafWhitespace(raw: string): string {
     if (b.type === 'punct' && b.value === '(' &&
         (a.type === 'ident' || a.type === 'keyword') && !gap.includes('\t')) {
       const aUp = (a.text ?? a.value).toUpperCase();
-      if (AGGREGATE_WORDS.has(aUp) && gap !== '') {
+      if ((AGGREGATE_WORDS.has(aUp) || CALL_NOSPACE_WORDS.has(aUp)) && gap !== '') {
         edits.push({ from: gapFrom, to: gapTo, text: '' });
         continue;
       }

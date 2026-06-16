@@ -1158,9 +1158,25 @@ function builderBlock(keyword: string, fields: BuilderField[]): string[] {
     // абсолютный отступ исходника (фаза 6.16.fmt, корпус СтатистикаЧековПоЧасам).
     const isMultilineCase = f.condition && f.ref.includes('\n') &&
       /(^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(f.ref);
+    // Многострочное БУЛЕВО условие построителя без ВЫБОР (`(A >= &X И (B ИЛИ C))`),
+    // набранное разработчиком плоско: конструктор раскладывает его по конъюнктам
+    // относительно позиции поля (поле на относительном табе 1 — база reindentLeafBool=1;
+    // вложенные группы И/ИЛИ отбиваются по глубине скобок). Гейт узкий: условие, есть
+    // перенос строки, есть верхнеуровневый булев оператор, нет ВЫБОР/подзапроса (фаза 6.16).
+    const isMultilineBool = !isMultilineCase && f.condition && f.ref.includes('\n') &&
+      hasTopLevelBooleanOp(f.ref) &&
+      !/(?:^|[^\p{L}\p{N}_])(?:ВЫБОР|ВЫБРАТЬ)(?:[^\p{L}\p{N}_]|$)/u.test(f.ref) &&
+      // Группа `НЕ(…)` несёт лишний +1 (НЕ — отдельный уровень), который reindentLeafBool
+      // НЕ учитывает; такие условия не реиндентируем (оставляем геометрию как есть).
+      !/(?:^|[^\p{L}\p{N}_])НЕ\s*\(/u.test(f.ref);
     const ref = isMultilineCase
       ? reindentLeafCase(normalizeLeafCase(f.ref), 2)
-      : normalizeLeafCase(f.ref);
+      : isMultilineBool
+        // Условие построителя оборачивается ещё одной парой `(…)` ниже (render), чья
+        // ведущая `(` стоит на строке поля (таб 1) и добавляет +1 уровень продолжениям:
+        // база reindentLeafBool = 2 (1 поле + 1 охватывающая скобка).
+        ? reindentLeafBool(normalizeLeafCase(f.ref), 2)
+        : normalizeLeafCase(f.ref);
     return f.condition
       ? `(${ref})` + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '')
       : ref + (f.child ? '.*' : '') + (f.alias ? ' КАК ' + f.alias : '');
