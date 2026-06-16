@@ -472,9 +472,16 @@ function reflowInlineMembershipSubquery(
       // строкой) reindentLeafSubquery сдвигает байт-в-байт (сохраняя геометрию пустых
       // строк-разделителей и скобок ПО, где канонический ре-рендер расходится с
       // оракулом) — такие подзапросы НЕ трогаем.
+      // Склеенное СОЕДИНЕНИЕ на строке источника (`ВТ КАК А ВНУТРЕННЕЕ СОЕДИНЕНИЕ Б
+      // КАК В`) — тоже неканон: reindentLeafSubquery его не разнесёт, а оракул печатает
+      // соединение отдельной строкой. Признак: в строке есть текст ПЕРЕД ключевым словом
+      // соединения (т.е. соединение не в начале строки).
+      const gluedJoin = /(?:^|[^\p{L}\p{N}_])\S[^\n]*?[ \t](?:ВНУТРЕННЕЕ|ЛЕВОЕ|ПРАВОЕ|ПОЛНОЕ)(?:[ \t]+ВНЕШНЕЕ)?[ \t]+СОЕДИНЕНИЕ(?:[^\p{L}\p{N}_]|$)/u
+        .test(innerText);
       const isCanonical =
         innerText.includes('\n') &&
-        !/(?:^|[^\p{L}\p{N}_])ИЗ[ \t]+\S/u.test(innerText);
+        !/(?:^|[^\p{L}\p{N}_])ИЗ[ \t]+\S/u.test(innerText) &&
+        !gluedJoin;
       if (isCanonical) return null;
       let doc: QueryDocument;
       try { doc = parseDocument(innerText); }
@@ -706,14 +713,18 @@ function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number, 
   // Сравнение с ОДИНОЧНЫМ многострочным CASE в правой части (`поле = ВЫБОР … КОНЕЦ`):
   // конструктор раскладывает CASE на отступе КОНКРЕТНОГО конъюнкта (КОНЕЦ на
   // отступе строки конъюнкта = caseEndBase, КОГДА на +1), а НЕ сохраняет табы
-  // ввода (фаза 6.16.53). Guard узкий: первая строка конъюнкта ОКАНЧИВАЕТСЯ словом
-  // ВЫБОР (CASE открыт сравнением `… = ВЫБОР`) и в теле РОВНО ОДИН КОНЕЦ — это
-  // исключает CASE-цепочки (`ВЫБОР…КОНЕЦ + ВЫБОР…КОНЕЦ`) и ВЫРАЗИТЬ-обёртки, чьё
-  // выравнивание КОНЕЦ задаётся иначе (прежний путь сохраняет табы ввода).
+  // ввода (фаза 6.16.53). Guard узкий: CASE открыт сравнением `… = ВЫБОР` (слово ВЫБОР
+  // в конце первой строки ЛИБО разработчик отбил его на следующую строку — `поле =\n
+  // ВЫБОР`, тогда reindentLeafCase сам сошьёт `= ВЫБОР`) и в теле РОВНО ОДИН КОНЕЦ —
+  // это исключает CASE-цепочки (`ВЫБОР…КОНЕЦ + ВЫБОР…КОНЕЦ`) и ВЫРАЗИТЬ-обёртки.
   if (caseEndBase !== undefined && body.includes('\n')) {
-    const firstLine = body.slice(0, body.indexOf('\n'));
+    const bodyLines = body.split('\n');
+    const firstLine = bodyLines[0];
+    const secondLine = (bodyLines.find((l, i) => i > 0 && l.trim() !== '') ?? '');
     const oneCase = (body.match(/(^|[^\p{L}\p{N}_])КОНЕЦ(?=[^\p{L}\p{N}_]|$)/gu) ?? []).length === 1;
-    if (oneCase && /(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(firstLine)) {
+    const opensCase = /(^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(firstLine) ||
+      (/[=<>]\s*$/u.test(firstLine) && /^[\t ]*ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(secondLine));
+    if (oneCase && opensCase) {
       body = reindentLeafCase(body, caseEndBase);
     }
   }
@@ -735,6 +746,13 @@ function renderArbitraryConjunct(expr: string, depth = 0, caseEndBase?: number, 
   // полученным расщеплением И-цепочки (fromAndSplit) — самостоятельный `ПО (a = b)`
   // оракул оставляет В СКОБКАХ (temp/builder-таблицы, корпус ВидыКонтактнойИнформации).
   if (fromAndSplit && !norm.includes('\n') && isPlainFieldComparison(norm)) {
+    return appendIsNotNullTrailingSpace(norm);
+  }
+  // Внутри ПОДЗАПРОСА-ОПЕРАНДА условия (`В (ВЫБРАТЬ … СОЕДИНЕНИЕ … ПО a = b)`) одиночный
+  // конъюнкт ПО — ПРОСТОЕ сравнение двух ссылок на поля — оракул печатает БЕЗ обёртки
+  // `(…)` (в отличие от самостоятельного верхнеуровневого `ПО (a = b)` temp-таблицы).
+  // Узкий гейт: только в условном подзапросе и только голое сравнение полей.
+  if (inConditionSubquery && !norm.includes('\n') && isPlainFieldComparison(norm)) {
     return appendIsNotNullTrailingSpace(norm);
   }
   // Квирк `… ЕСТЬ НЕ NULL )` (один пробел перед закрывающей скобкой группы) — после
@@ -856,9 +874,12 @@ function renderJoinConjuncts(conditions: NonNullable<Join['conditions']>, aliase
     } else {
       // Для продолжающего конъюнкта (`И …`) известен отступ его строки (cont):
       // многострочный CASE в правой части сравнения раскладываем на нём (КОНЕЦ=cont).
-      // Первый конъюнкт (k===0) стоит после `ПО ` / на 3+depth — там CASE-конъюнктов
-      // в корпусе нет, поведение не трогаем.
-      sub = [renderArbitraryConjunct(c.expression ?? '', depth, k > 0 ? cont : undefined, !!(c as { __fromAndSplit?: boolean }).__fromAndSplit)];
+      // Первый конъюнкт (k===0) на верхнем уровне стоит ИНЛАЙН после `ПО ` (отступ
+      // 2+depth); обёртка конъюнкта `(…)` добавляет +1 уровня, поэтому КОНЕЦ его
+      // RHS-CASE — на 3+depth (КОГДА на +1). При poOwnLine конъюнкт стоит на 3+depth →
+      // КОНЕЦ на 4+depth. Гейт раскладки узкий (CASE-на-RHS, ровно один КОНЕЦ).
+      const caseBase = k > 0 ? cont : (poOwnLine ? 4 + depth : 3 + depth);
+      sub = [renderArbitraryConjunct(c.expression ?? '', depth, caseBase, !!(c as { __fromAndSplit?: boolean }).__fromAndSplit)];
     }
     if (k > 0) sub[0] = `${'\t'.repeat(cont)}И ${sub[0]}`;
     else if (poOwnLine) sub[0] = `${'\t'.repeat(3 + depth)}${sub[0]}`;
@@ -1808,12 +1829,21 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
   // (func + operandAlias) печатается канонически ФУНКЦИЯ(<псевдонимКолонки>)
   // (операнд -> псевдоним, хвостовой КАК уже снят парсером). Прочие -- дословным
   // expression, либо СУММА(<псевдоним>) для legacy-формы без выражения.
-  const renderAgg = (f: typeof totals.totalFields[number]): string =>
-    f.func && f.operandAlias !== undefined
-      ? wrapAggregate(f.func, f.operandAlias)
-      : f.expression
-      ? normalizeLeafCase(f.expression)
-      : `СУММА(${selectAliasFor(model, f.tableId, f.path)})`;
+  const renderAgg = (f: typeof totals.totalFields[number]): string => {
+    if (f.func && f.operandAlias !== undefined) return wrapAggregate(f.func, f.operandAlias);
+    if (f.expression === undefined) return `СУММА(${selectAliasFor(model, f.tableId, f.path)})`;
+    // Многострочный ВЫБОР…КОНЕЦ в ИТОГИ (агрегат-в-CASE, напр. `ВЫБОР … ТОГДА
+    // МАКСИМУМ(…) ИНАЧЕ СУММА(…) КОНЕЦ КАК …`) конструктор раскладывает по канону
+    // относительно отступа агрегата (база 1; `withCommas` ниже добавляет ведущий таб
+    // первой строке, поэтому реиндентируем к базе 1 и СНИМАЕМ его — он вернётся при
+    // склейке). Иначе continuation-строки сохраняют исходный (пробельный) отступ
+    // разработчика. Гейт узкий: многострочное выражение, содержащее слово ВЫБОР.
+    if (f.expression.includes('\n') &&
+        /(?:^|[^\p{L}\p{N}_])ВЫБОР(?:[^\p{L}\p{N}_]|$)/u.test(f.expression)) {
+      return reindentLeafCase(normalizeLeafCase(f.expression), 1).replace(/^\t+/u, '');
+    }
+    return normalizeLeafCase(f.expression);
+  };
 
   // Конструктор 1С СОРТИРУЕТ список агрегатов по позиции колонки-операнда в выборке
   // (стабильно): агрегаты над колонкой выборки -- по её порядку; агрегат, операнд

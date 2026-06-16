@@ -424,10 +424,19 @@ function flattenInlineValueLists(text: string): string {
     const line = lines[i];
     // Открытие списка значений: строка кончается на `В (` / `В(` (вне строкового
     // литерала; кавычки в строке не учитываем — список значений их не содержит).
-    const opensList =
-      /(?:^|[^\p{L}\p{N}_])В\s*\($/u.test(line) &&
+    const opensInline =
+      /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\($/u.test(line) &&
       i + 1 < lines.length &&
       !/^[\t ]*ВЫБРАТЬ(?![\p{L}\p{N}_])/u.test(lines[i + 1]);
+    // Разработчик отбил скобку списка на СЛЕДУЮЩУЮ строку: строка кончается оператором
+    // `В`/`В ИЕРАРХИИ`, а список `(…)` открывается строкой ниже (`… В\n (a, b)`).
+    // Конструктор сшивает `В (a, b)` обратно на одну строку (как и инлайн-список).
+    const opensNextLine =
+      /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*$/u.test(line) &&
+      i + 1 < lines.length &&
+      /^[\t ]*\(/u.test(lines[i + 1]) &&
+      !/^[\t ]*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/u.test(lines[i + 1]);
+    const opensList = opensInline || opensNextLine;
     if (!opensList) { out.push(line); continue; }
     // Считаем баланс скобок начиная с этой строки, пока список не закроется.
     let depth = 0;
@@ -1581,7 +1590,10 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
     }
   }
   if (stack.length !== 0) return text; // не все ВЫБОР закрылись — нестандартно
-  return lines.join('\n');
+  // Хвостовой СПИСОК ЗНАЧЕНИЙ оператора `В` после КОНЕЦ (`КОНЕЦ В (\n a,\n b)`),
+  // разбитый разработчиком по строкам, конструктор печатает ИНЛАЙН на строке КОНЕЦ
+  // (как и прочие списки значений). Сплющиваем (подзапрос `В (ВЫБРАТЬ …)` не трогаем).
+  return flattenInlineValueLists(lines.join('\n'));
 }
 
 /**
@@ -4173,8 +4185,18 @@ export function formatExpression(raw: string, slot: ExprSlot, rootSubDelta?: num
 
   // Квирк `ЕСТЬ НЕ NULL` (хвостовой/двойной пробел) действует на КАЖДУЮ строку любого
   // структурного вывода (ВЫБОР-ветки, OR/AND-конъюнкты, КАК-псевдоним) — применяем
-  // построчно ко всему телу. Хвост (`tail`) — дословный, его не трогаем.
-  return appendIsNotNullTrailingSpace(body) + tail;
+  // построчно ко всему телу. Хвост (`tail`) — дословный.
+  let result = appendIsNotNullTrailingSpace(body) + tail;
+  // Хвост-СПИСОК ЗНАЧЕНИЙ оператора `В` после структурного CASE (`ВЫБОР…КОНЕЦ В (\n a,\n
+  // b)`): парсер кладёт `В (…)` в дословный tail, разбитый разработчиком по строкам.
+  // Конструктор печатает такой список ИНЛАЙН на строке КОНЕЦ — сплющиваем (подзапрос
+  // `В (ВЫБРАТЬ …)` flattenInlineValueLists не трогает). Гейт узкий: tail открывает
+  // список значений (` В (` с переносом, без ВЫБРАТЬ внутри).
+  if (/(?:^|[^\p{L}\p{N}_])В\s*\(\s*\n/u.test(tail) &&
+      !/(?:^|[^\p{L}\p{N}_])ВЫБРАТЬ(?![\p{L}\p{N}_])/u.test(tail)) {
+    result = flattenInlineValueLists(result);
+  }
+  return result;
 }
 
 /**
