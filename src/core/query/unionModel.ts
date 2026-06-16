@@ -111,6 +111,17 @@ export function unionHasTabSection(members: UnionMember[]): boolean {
   return members.some(m => (m.model.tabSectionFields?.length ?? 0) > 0);
 }
 
+/**
+ * Есть ли в каком-либо участнике объединения ХВОСТОВЫЕ поля (`trailingFields`):
+ * явные поля выборки, идущие ПОСЛЕ развёрнутой звезды `Алиас.*` (источник —
+ * табличная часть/таблица). Скалярный путь `deriveUnionColumns` учитывает только
+ * `model.fields` и такие хвостовые столбцы терял; при их наличии выравниваем по
+ * `orderedSelectElements` (как и при проекции ТЧ).
+ */
+export function unionHasTrailing(members: UnionMember[]): boolean {
+  return members.some(m => (m.model.trailingFields?.length ?? 0) > 0);
+}
+
 /** Псевдоним столбца-элемента участника-головы (поле → fieldAlias; ТЧ → её псевдоним). */
 export function elementAlias(el: SelectElement, model: QueryModel): string {
   if (el.kind === 'field') return fieldAlias(el.field, model);

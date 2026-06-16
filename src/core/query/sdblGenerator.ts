@@ -1,7 +1,7 @@
 import type { QueryModel, SelectedTable, SelectedField, SelectedTabSectionField, AggregateFunction, FieldRef, Condition, Join, Order, Totals, TotalKind, BuilderField, Indexing } from './queryModel';
 import { defaultTableAlias, accountingPositionKeys } from './queryModel';
 import type { QueryDocument } from './unionModel';
-import { deriveUnionColumns, unionHasTabSection, orderedSelectElements, elementAlias, type UnionMember } from './unionModel';
+import { deriveUnionColumns, unionHasTabSection, unionHasTrailing, orderedSelectElements, elementAlias, type UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
 import { parseDocument } from './sdblParser';
 import { needsFormatting, selectColumnNeedsBoolWrap, isRootNotGroup, formatExpression, formatJoinConjunct, normalizeLeafCase, stripNegatedFieldParens, stripNotFieldParens, stripRedundantLeafParens, appendIsNotNullTrailingSpace, renderOperatorRhs, flattenMultilineLeaf, reindentLeafSubquery, reindentLeafCase, reindentLeafBool, wrapBareCastOperand, reprintLeafArithmetic, canonicalizeComparisonOperands, setInlineSubqueryReflow, tightenLeafInOperator } from './exprFormatter';
@@ -2215,7 +2215,7 @@ export function generateDocument(doc: QueryDocument): string {
   // (скалярные поля + проекции ТЧ + хвостовые поля, в порядке selectOrder) — иначе
   // проекция ТЧ и всё после неё терялись (только `model.fields` шли в столбцы,
   // фаза 6.16). Скалярные объединения — прежним путём (deriveUnionColumns).
-  const blocks = unionHasTabSection(members)
+  const blocks = unionHasTabSection(members) || unionHasTrailing(members)
     ? buildUnionBlocksWithTabSection(members)
     : buildUnionBlocksScalar(members);
 
