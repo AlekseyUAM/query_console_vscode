@@ -1639,7 +1639,9 @@ describe('parseBatch — round-trip identity (generateBatch∘parseBatch∘gener
     const text = 'ВЫБРАТЬ "абв\n;\nгде" КАК Поле ИЗ Справочник.Валюты КАК Валюты';
     const batch = parseBatch(text);
     expect(batch.members.length).toBe(1);
-    expect(generateBatch(batch)).toContain('"абв\n;\nгде"');
+    // Конструктор 1С добавляет базовый отступ поля (+1 таб) каждой строке-продолжению
+    // многострочного строкового литерала (сверено живым оракулом validate_query).
+    expect(generateBatch(batch)).toContain('"абв\n\t;\n\tгде"');
   });
 
   it('6. `;` + слэши внутри литерала НЕ делят пакет, а настоящий разделитель ПОСЛЕ литерала делит', () => {
@@ -1649,7 +1651,8 @@ describe('parseBatch — round-trip identity (generateBatch∘parseBatch∘gener
       'ВЫБРАТЬ\n\tВалюты.Код КАК Код\nИЗ\n\tСправочник.Валюты КАК Валюты';
     const batch = parseBatch(text);
     expect(batch.members.length).toBe(2);
-    expect(generateBatch(batch)).toContain('"абв\n;\n////////\nгде"');
+    // +1 таб строкам-продолжениям литерала (как конструктор 1С; см. тест 5 выше).
+    expect(generateBatch(batch)).toContain('"абв\n\t;\n\t////////\n\tгде"');
   });
 });
 

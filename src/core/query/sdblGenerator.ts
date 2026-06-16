@@ -1984,6 +1984,37 @@ function buildFieldLines(model: QueryModel, aliases: Map<string, string>): strin
 }
 
 /**
+ * Конструктор 1С при печати МНОГОСТРОЧНОГО строкового литерала (перенос строки
+ * ВНУТРИ двойных кавычек) добавляет к каждой строке-продолжению базовый отступ
+ * поля выборки. На собственном уровне списка ВЫБРАТЬ это +1 таб (поле всегда на
+ * относительном табе 1); внешняя вложенность подзапроса сдвигает блок целиком и
+ * сохраняет относительный отступ. Сверено живым оракулом validate_query: лист
+ * `ЕСТЬNULL(Поле, "abc\n<N таб>def")` печатается как `…"abc\n<N+1 таб>def")`,
+ * причём прибавка равна базовому отступу поля (0→1, 1→2, 4→5 на верхнем уровне;
+ * 0→2 во вложенном подзапросе). Затрагиваем ТОЛЬКО переносы ВНУТРИ строкового
+ * литерала — структурные переносы (раскладка ВЫБОР/И-ИЛИ) не трогаем, поэтому
+ * скан учитывает кавычки и экранирование `""`.
+ */
+function indentStringLiteralNewlines(text: string, tabs: number): string {
+  if (tabs <= 0 || !text.includes('\n') || !text.includes('"')) return text;
+  const pad = '\t'.repeat(tabs);
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inStr && text[i + 1] === '"') { out += '""'; i++; continue; }
+      inStr = !inStr;
+      out += ch;
+      continue;
+    }
+    if (ch === '\n' && inStr) { out += '\n' + pad; continue; }
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * Каноническое выражение произвольного поля выборки (без части `КАК <псевдоним>`).
  * Единый источник правды для одиночного запроса (`buildFieldLines`) и для ячеек
  * колонок объединения (`fieldExpr`): структурные выражения (ВЫБОР/ИЛИ/И) проходят
@@ -2028,7 +2059,7 @@ export function formatSelectExpression(expression: string): string {
     // булев принтер её не трогает.
     // Избыточные скобки вокруг всего листового поля (`(Поле ЕСТЬ NULL) КАК Алиас` →
     // `Поле ЕСТЬ NULL КАК Алиас`, `(Поле)` → `Поле`) конструктор снимает — как оракул.
-    : appendIsNotNullTrailingSpace(normalizeLeafCase(reprintLeafArithmetic(reindentLeafBool(reindentLeafCase(reindentLeafSubquery(stripRedundantLeafParens(flattenMultilineLeaf(expression)), 2), 1, true), 1))));
+    : indentStringLiteralNewlines(appendIsNotNullTrailingSpace(normalizeLeafCase(reprintLeafArithmetic(reindentLeafBool(reindentLeafCase(reindentLeafSubquery(stripRedundantLeafParens(flattenMultilineLeaf(expression)), 2), 1, true), 1)))), 1);
 }
 
 /**
