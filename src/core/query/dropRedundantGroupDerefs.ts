@@ -2,8 +2,61 @@ import type { QueryModel, FieldRef, SelectedTable } from './queryModel';
 import { defaultTableAlias } from './queryModel';
 import type { MetadataResolver } from './metadataResolver';
 import type { MetaTable, MetaField } from '../metadata/types';
+import { tokenize } from './sdblLexer';
 
 const AGG_RE = /(?:^|[^\p{L}])(СУММА|КОЛИЧЕСТВО|МАКСИМУМ|МИНИМУМ|СРЕДНЕЕ|SUM|COUNT|MAX|MIN|AVG)\s*\(/iu;
+const MOVEMENT_RE = /ЗНАЧЕНИЕ\s*\(\s*ВИДДВИЖЕНИЯ(НАКОПЛЕНИЯ|БУХГАЛТЕРИИ)\s*\./iu;
+const META_FUNCS = new Set(['ЗНАЧЕНИЕ', 'ТИП', 'ПРЕДСТАВЛЕНИЕ', 'ПРЕДСТАВЛЕНИЕССЫЛКИ']);
+
+/**
+ * Извлекает множество ссылок-цепочек `Алиас.путь` (в исходном написании), реально
+ * читающих ДАННЫЕ, из произвольного выражения. НЕ считаются полями: содержимое
+ * мета-вызовов `ЗНАЧЕНИЕ/ТИП/ПРЕДСТАВЛЕНИЕ(…)`, имена функций (за идентификатором
+ * сразу `(`). Голова цепочки должна быть известным псевдонимом источника.
+ */
+function extractFieldRefs(expr: string, aliasUp: Set<string>): Set<string> {
+  let toks;
+  try { toks = tokenize(expr); } catch { return new Set(); }
+  const sig = toks.filter(t => t.type !== 'eof');
+  const refs = new Set<string>();
+  let depth = 0;
+  const metaDepths: number[] = [];
+  for (let i = 0; i < sig.length; i++) {
+    const t = sig[i];
+    if (t.type === 'punct' && t.value === '(') {
+      const head = sig[i - 1];
+      const hv = head ? (head.text ?? head.value).toUpperCase() : '';
+      depth++;
+      if (META_FUNCS.has(hv)) metaDepths.push(depth);
+      continue;
+    }
+    if (t.type === 'punct' && t.value === ')') {
+      if (metaDepths.length && metaDepths[metaDepths.length - 1] === depth) metaDepths.pop();
+      depth--;
+      continue;
+    }
+    if (metaDepths.length) continue; // внутри ЗНАЧЕНИЕ/ТИП/ПРЕДСТАВЛЕНИЕ — не поле
+    if (t.type === 'ident' || t.type === 'keyword') {
+      let j = i;
+      const parts = [sig[j].value];
+      while (
+        j + 2 < sig.length &&
+        sig[j + 1].type === 'punct' && sig[j + 1].value === '.' &&
+        (sig[j + 2].type === 'ident' || sig[j + 2].type === 'keyword')
+      ) {
+        parts.push(sig[j + 2].value);
+        j += 2;
+      }
+      const after = sig[j + 1];
+      const isCall = after && after.type === 'punct' && after.value === '(';
+      if (parts.length >= 2 && !isCall && aliasUp.has(parts[0].toUpperCase())) {
+        refs.add(parts.join('.'));
+      }
+      i = j;
+    }
+  }
+  return refs;
+}
 
 /**
  * Тихий дроп ИЗБЫТОЧНОЙ многосегментной ссылки `Алиас.A.B…` из СГРУППИРОВАТЬ ПО
@@ -51,8 +104,15 @@ export function dropRedundantGroupDerefs(model: QueryModel, resolver?: MetadataR
   }
   // Ключи простых НЕагрегатных полей ВЫБРАТЬ (выбранное поле сохраняется в группировке).
   const selectKeys = new Set<string>();
+  // Тексты НЕагрегатных выражений выборки: ссылка, чьё ЗНАЧЕНИЕ потребляется такой
+  // выборкой (стоит в РЕЗУЛЬТАТЕ ТОГДА/ИНАЧЕ), оракулом СОХРАНЯЕТСЯ (Взаимозачет bsl_21).
+  const nonAggSelectExprs: string[] = [];
   for (const f of [...model.fields, ...(model.trailingFields ?? [])]) {
-    if (f.expression !== undefined || f.func !== undefined) continue;
+    if (f.expression !== undefined) {
+      if (f.func === undefined && !AGG_RE.test(f.expression)) nonAggSelectExprs.push(f.expression);
+      continue;
+    }
+    if (f.func !== undefined) continue;
     if (!f.tableId || !f.path) continue;
     selectKeys.add(keyOf(f.tableId, f.path));
   }
@@ -64,6 +124,15 @@ export function dropRedundantGroupDerefs(model: QueryModel, resolver?: MetadataR
     if (selectKeys.has(keyOf(f.tableId, f.path))) continue; // выбранное поле — сохраняем
     const segs = f.path.split('.');
     if (segs.length < 2) continue; // не многосегментная навигация
+    // Ссылка, чьё ЗНАЧЕНИЕ стоит в РЕЗУЛЬТАТЕ (после ТОГДА/ИНАЧЕ) НЕагрегатного выражения
+    // выборки, потребляется им — оракул её НЕ дропает (validate_query: `ИНАЧЕ
+    // Алиас.Ссылка.ДокументРасчетов` в выборке сохраняет поле; та же ссылка ЛИШЬ в
+    // условии `КОГДА … = НЕОПРЕДЕЛЕНО` — дропается). Взаимозачет bsl_21.
+    {
+      const t = aliasToTable.get(f.tableId);
+      const rendered = (t ? defaultTableAlias(t) : f.tableId) + '.' + f.path;
+      if (nonAggSelectExprs.some(e => derefInResultPosition(e, rendered))) continue;
+    }
     // Ищем СОБСТВЕННЫЙ префикс пути среди ПРЕДШЕСТВУЮЩИХ элементов группировки.
     let prefixGrouped = '';
     for (let k = segs.length - 1; k >= 1; k--) {
@@ -289,6 +358,149 @@ export function substituteGroupFieldWithSelectExpr(model: QueryModel, resolver?:
     grouping.explicitGroupCount = already ? explicitCount - 1 : explicitCount;
     return; // ровно одна замена
   }
+}
+
+/**
+ * Ссылка `rendered` стоит в РЕЗУЛЬТАТЕ выражения: непосредственно после `ТОГДА`/`ИНАЧЕ`,
+ * как ЦЕЛАЯ токен-цепочка. Условие `КОГДА … rendered …` под предикат НЕ подпадает.
+ */
+function derefInResultPosition(expr: string, rendered: string): boolean {
+  const re = new RegExp(
+    '(?:^|[^\\p{L}\\p{N}_.])(?:ТОГДА|ИНАЧЕ)\\s+' +
+      rendered.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&') +
+      '(?![\\p{L}\\p{N}_.])',
+    'u'
+  );
+  return re.test(expr);
+}
+
+/**
+ * Минимизация GROUP BY конструктором 1С: НЕагрегатное выражение-CASE с результатом-
+ * ВИДОМ-ДВИЖЕНИЯ регистра (`ЗНАЧЕНИЕ(ВидДвиженияНакопления/Бухгалтерии.…)`), которое
+ * функционально определено остальными полями группировки, конструктор 1С ОТБРАСЫВАЕТ —
+ * НО только когда определимость НЕ опирается на сгруппированную САМУ ссылку (`Алиас.Ссылка`).
+ * Сверено живым оракулом validate_query на корпусе Взаимозачет bsl_21 (члены 185/729) и
+ * серии минимальных проб: при сгруппированной `Алиас.Ссылка` тот же CASE СОХРАНЯЕТСЯ
+ * (член-185), без неё — ДРОПАЕТСЯ (член-729, минимальные пробы).
+ *
+ * Условие дропа выражения E:
+ *   (a) КАЖДАЯ ссылка-поле внутри E присутствует ОТДЕЛЬНЫМ полем группировки;
+ *   (b) НИ ОДНА dereference `Алиас.A.B…` внутри E не навигирует через сгруппированный
+ *       префикс `Алиас.A` (если навигирует — определимость идёт через ссылку и E СОХРАНЯЕТСЯ).
+ * Ограничено выражениями-ВИДА-ДВИЖЕНИЯ (как существующий moveLeadingMovementCaseToEnd):
+ * `ВЫБОР` с результатом-`Перечисление.X`/булевым оракул сохраняет (член-729: ТипРасчетов).
+ * Без резолвера/при группировке-наборах правило не применяется.
+ */
+export function dropFunctionallyDeterminedMovementCase(model: QueryModel, resolver?: MetadataResolver): void {
+  if (!resolver) return;
+  const grouping = model.grouping;
+  if (!grouping || grouping.multiple) return;
+  const fields = grouping.groupFields;
+  if (fields.length < 2) return;
+  const explicitCount = grouping.explicitGroupCount ?? fields.length;
+
+  const aliasUp = new Set<string>();
+  for (const t of model.tables) aliasUp.add(defaultTableAlias(t).toUpperCase());
+
+  // Отрендеренные ключи (UPPER) простых полей группировки в ЯВНОЙ части.
+  const groupedUp = new Set<string>();
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    const f = fields[i];
+    if (f.expression !== undefined || !f.tableId || !f.path) continue;
+    const t = model.tables.find(tb => tb.id === f.tableId);
+    groupedUp.add(((t ? defaultTableAlias(t) : f.tableId) + '.' + f.path).toUpperCase());
+  }
+
+  const dropIdx = new Set<number>();
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    const f = fields[i];
+    if (f.expression === undefined) continue;
+    if (!MOVEMENT_RE.test(f.expression)) continue; // только вид-движения
+    const refs = extractFieldRefs(f.expression, aliasUp);
+    if (refs.size === 0) continue;
+    let allGrouped = true;
+    let navThroughGroupedRef = false;
+    for (const r of refs) {
+      if (!groupedUp.has(r.toUpperCase())) { allGrouped = false; break; }
+      const segs = r.split('.');
+      // префиксы длиной >= 2 сегментов и короче полного пути
+      for (let k = 2; k < segs.length; k++) {
+        if (groupedUp.has(segs.slice(0, k).join('.').toUpperCase())) { navThroughGroupedRef = true; break; }
+      }
+    }
+    if (allGrouped && !navThroughGroupedRef) dropIdx.add(i);
+  }
+  if (dropIdx.size === 0) return;
+
+  const kept: FieldRef[] = [];
+  let droppedBeforeExplicit = 0;
+  for (let i = 0; i < fields.length; i++) {
+    if (dropIdx.has(i)) { if (i < explicitCount) droppedBeforeExplicit++; continue; }
+    kept.push(fields[i]);
+  }
+  grouping.groupFields = kept;
+  grouping.explicitGroupCount = explicitCount - droppedBeforeExplicit;
+}
+
+/**
+ * Перенос в КОНЕЦ явной части GROUP BY СОХРАНённого выражения-CASE вида-движения и
+ * следующих за ним (в исходном порядке) СОХРАНённых ссылок-навигаций `Алиас.A.B`,
+ * чей префикс `Алиас.A` тоже сгруппирован (т.е. «избыточных, но потребляемых выборкой»
+ * ссылок — их не отбросил keep-guard dropRedundantGroupDerefs). Сверено живым оракулом
+ * (Взаимозачет bsl_21, член-185): хвост `… A, CASE-вид-движения, Ссылка.ДокументРасчетов,
+ * B → … A, B, CASE, Ссылка.ДокументРасчетов` (CASE и навигация уезжают в конец, голое
+ * поле остаётся). Применяется ПОСЛЕ dropFunctionallyDeterminedMovementCase.
+ */
+export function relocateKeptMovementCase(model: QueryModel, resolver?: MetadataResolver): void {
+  if (!resolver) return;
+  const grouping = model.grouping;
+  if (!grouping || grouping.multiple) return;
+  const fields = grouping.groupFields;
+  if (fields.length < 2) return;
+  const explicitCount = grouping.explicitGroupCount ?? fields.length;
+  if (explicitCount < 2) return;
+
+  // Префиксы-ссылки, сгруппированные отдельным полем (для «навигации через ссылку»).
+  const groupedUp = new Set<string>();
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    const f = fields[i];
+    if (f.expression !== undefined || !f.tableId || !f.path) continue;
+    const t = model.tables.find(tb => tb.id === f.tableId);
+    groupedUp.add(((t ? defaultTableAlias(t) : f.tableId) + '.' + f.path).toUpperCase());
+  }
+
+  // Индекс ПЕРВОГО сохранённого CASE-вида-движения в явной части.
+  let caseIdx = -1;
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    if (fields[i].expression !== undefined && MOVEMENT_RE.test(fields[i].expression!)) { caseIdx = i; break; }
+  }
+  if (caseIdx < 0) return;
+
+  // Собираем переносимые: сам CASE + последующие навигации `Алиас.A.B` (префикс сгруппирован).
+  const moveIdx: number[] = [caseIdx];
+  for (let i = caseIdx + 1; i < explicitCount && i < fields.length; i++) {
+    const f = fields[i];
+    if (f.expression !== undefined || !f.tableId || !f.path) continue;
+    const segs = f.path.split('.');
+    if (segs.length < 2) continue;
+    const t = model.tables.find(tb => tb.id === f.tableId);
+    const alias = t ? defaultTableAlias(t) : f.tableId;
+    let prefixGrouped = false;
+    for (let k = 1; k < segs.length; k++) {
+      if (groupedUp.has((alias + '.' + segs.slice(0, k).join('.')).toUpperCase())) { prefixGrouped = true; break; }
+    }
+    if (prefixGrouped) moveIdx.push(i);
+  }
+  if (moveIdx.length === 0) return;
+
+  const moveSet = new Set(moveIdx);
+  const explicit = fields.slice(0, explicitCount);
+  const rest = fields.slice(explicitCount);
+  const head = explicit.filter((_, i) => !moveSet.has(i));
+  const moved = moveIdx.map(i => explicit[i]);
+  // Перенос ВНУТРИ явной части — explicitGroupCount не меняется.
+  grouping.groupFields = [...head, ...moved, ...rest];
+  grouping.explicitGroupCount = explicitCount;
 }
 
 /** `expr` содержит ссылку `rendered` (`Алиас.Путь`) как ЦЕЛУЮ токен-цепочку. */
