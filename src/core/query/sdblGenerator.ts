@@ -294,7 +294,14 @@ function renderVirtualParams(fullName: string, positions: string[], condition: s
   // строке, а тело подзапроса перебазирует на base+1 (фаза 6.16, MCP). Признак —
   // многострочное условие (содержит перенос строки от тела `(ВЫБРАТЬ …)`).
   const hasSubquery = !!condition && condition.includes('\n');
-  if (!condition || (!hasBool && !hasSubquery)) {
+  // Условие-членство `Поле В (ВЫБРАТЬ …)`, набранное ИНЛАЙН (без переноса строки):
+  // конструктор 1С тоже разносит параметры ВТ по строкам и раскладывает подзапрос
+  // (корпус ОстаткиПартийЗЕРНО.Остатки(, Партия В (ВЫБРАТЬ …))). Без переноса строки
+  // hasSubquery его не ловит — детектируем по `В (ВЫБРАТЬ` (тот же гейт, что у inlineCond).
+  const hasInlineSubquery =
+    !!condition &&
+    /(?:^|[^\p{L}\p{N}_])В(?:\s+ИЕРАРХИИ)?\s*\(\s*ВЫБРАТЬ(?![\p{L}\p{N}_])/iu.test(condition);
+  if (!condition || (!hasBool && !hasSubquery && !hasInlineSubquery)) {
     return `${fullName}(${positions.join(', ')})`;
   }
   // ВНУТРИ подзапроса-операнда членства (`… В (ВЫБРАТЬ … ИЗ Рег.X.Остатки(, Условие) …)`)
@@ -2516,6 +2523,44 @@ function renderGrouping(
  * каждое последующее — с префиксом «И ».
  */
 /** Строки отдельных условий (без ключевого слова секции и префиксов `И`). */
+/**
+ * ИМЕЮЩИЕ: конъюнкт-условие, ЦЕЛИКОМ являющийся вызовом `МАКСИМУМ(X)`/`МИНИМУМ(X)`
+ * БЕЗ обрамляющего сравнения/арифметики (т.е. агрегат булева выражения используется
+ * как самостоятельное условие), конструктор 1С печатает БЕЗ агрегатной обёртки —
+ * как просто `X` (сверено живым оракулом validate_query: `МАКСИМУМ(Т.Флаг) И
+ * МИНИМУМ(Т.Флаг)` → `Т.Флаг И Т.Флаг`, тогда как `МАКСИМУМ(Т.Код) > 0` и
+ * `КОЛИЧЕСТВО(…) > 1` остаются как есть). СУММА/КОЛИЧЕСТВО/СРЕДНЕЕ не разворачиваем
+ * (для них голый булев результат недопустим). Возвращает аргумент агрегата либо
+ * исходный текст, если разворот не применим.
+ */
+function unwrapHavingMaxMin(expr: string): string {
+  const flat = expr.trim();
+  const m = /^(МАКСИМУМ|МИНИМУМ)\s*\(/iu.exec(flat);
+  if (!m) return expr;
+  let toks;
+  try { toks = tokenize(flat); } catch { return expr; }
+  const sig = toks.filter(t => t.type !== 'eof');
+  // Первый значимый токен — имя агрегата, второй — открывающая `(`.
+  if (sig.length < 3 || sig[1].type !== 'punct' || sig[1].value !== '(') return expr;
+  // Находим парную закрывающую скобку для `sig[1]`; она ДОЛЖНА быть последним токеном
+  // (иначе после агрегата идёт хвост — сравнение/оператор — и разворот неверен).
+  let depth = 0;
+  let closeIdx = -1;
+  for (let i = 1; i < sig.length; i++) {
+    if (sig[i].type === 'punct' && sig[i].value === '(') depth++;
+    else if (sig[i].type === 'punct' && sig[i].value === ')') {
+      depth--;
+      if (depth === 0) { closeIdx = i; break; }
+    }
+  }
+  if (closeIdx !== sig.length - 1) return expr;
+  // Аргумент — текст между внутренней частью скобок (исходные срезы, регистр позже
+  // нормализует normalizeLeafCase в общем тракте).
+  const innerStart = sig[1].pos + 1;
+  const innerEnd = sig[closeIdx].pos;
+  return flat.slice(innerStart, innerEnd).trim();
+}
+
 function buildConditionStrings(
   conditions: Condition[] | undefined,
   aliases: Map<string, string>,
@@ -2534,7 +2579,10 @@ function buildConditionStrings(
       // Ведущее `НЕ` подхватывает reindentLeafSubquery (+1 к отступу подзапроса) —
       // как у обычного `НЕ X В (…)`. Только для кортежа (скобка с верхнеуровневой
       // запятой); одиночный операнд `X НЕ В` сюда не попадает.
-      const expr = moveNotBeforeTuple((c.expression ?? '').trim());
+      let expr = moveNotBeforeTuple((c.expression ?? '').trim());
+      // ИМЕЮЩИЕ: голый агрегат МАКСИМУМ/МИНИМУМ булева выражения как самостоятельный
+      // конъюнкт конструктор печатает без обёртки (см. unwrapHavingMaxMin).
+      if (slot === 'having') expr = unwrapHavingMaxMin(expr);
       // ГДЕ/ИМЕЮЩИЕ: конструктор снимает скобки вокруг отрицания одиночного поля
       // (`(НЕ Алиас.Поле)` → `НЕ Алиас.Поле`); для остального — как раньше.
       // НЕ-блок (`НЕ (a И b)`) переотрисовывается даже без ИЛИ внутри (фаза 6.14).
