@@ -206,6 +206,104 @@ export function moveLeadingMovementCaseToEnd(model: QueryModel): void {
 }
 
 /**
+ * Замена ПРОСТОГО поля группировки `Алиас.Имя` на ВЫРАЖЕНИЕ выборки `… КАК Имя`
+ * (например `ВЫБОР … ИНАЧЕ Алиас.Имя КОНЕЦ`) с переносом этого выражения в КОНЕЦ
+ * явного списка СГРУППИРОВАТЬ ПО. Сверено живым оракулом (validate_query) и корпусом
+ * (ЗависшиеЗадачи): когда в выборке есть НЕагрегатное выражение с псевдонимом `Имя`,
+ * ВНУТРИ которого как лист встречается ровно `Алиас.Имя`, а в группировке стоит
+ * простое поле `Алиас.Имя` (НЕ выбранное отдельной колонкой) ПОСЛЕ хотя бы одного
+ * поля-якоря (поля, backs простую колонку результата), — конструктор 1С заменяет это
+ * простое поле самим выражением и ставит его ПОСЛЕДНИМ в группировке.
+ *
+ * Узкий гейт (нулевые регрессии): требуется СОВПАДЕНИЕ имени (`E.alias === Имя`),
+ * лист-вхождение (`E.expression` содержит токен-цепочку `Алиас.Имя`) и наличие
+ * поля-якоря РАНЬШЕ по списку. Поля, чьё имя НЕ совпадает с псевдонимом выражения
+ * (лист `ИсполнителиЗадач2.Исполнитель` выражения `ВЫБОР … КАК Координатор`),
+ * НЕ затрагиваются — оракул их сохраняет. Заменяется РОВНО ОДНО поле. Без резолвера
+ * правило не применяется (поведение webview/extension без метаданных прежнее).
+ *
+ * Применяется ПОСЛЕ dropRedundantGroupDerefs / moveBeforePrefixGroupDerefToEnd /
+ * moveLeadingMovementCaseToEnd.
+ */
+export function substituteGroupFieldWithSelectExpr(model: QueryModel, resolver?: MetadataResolver): void {
+  if (!resolver) return;
+  const grouping = model.grouping;
+  if (!grouping || grouping.multiple) return;
+  const fields = grouping.groupFields;
+  if (fields.length < 2) return;
+  const explicitCount = grouping.explicitGroupCount ?? fields.length;
+  if (explicitCount < 2) return;
+
+  const aliasToTable = new Map<string, SelectedTable>();
+  for (const t of model.tables) aliasToTable.set(t.id, t);
+
+  // Простые НЕагрегатные поля выборки (backs колонку) и НЕагрегатные выражения выборки.
+  const selectKeys = new Set<string>();
+  const exprCols: { alias: string; expression: string }[] = [];
+  for (const f of [...model.fields, ...(model.trailingFields ?? [])]) {
+    if (f.expression !== undefined) {
+      // Подстановку наблюдаем (сверено живым оракулом) для выражения-CASE `ВЫБОР…КОНЕЦ`;
+      // для функций-обёрток (`ЕСТЬNULL(Поле, …)`) поведение оракула контекстно-зависимо
+      // (в одних запросах подставляет, в других — сохраняет простое поле, корпус
+      // УправлениеКонтактнойИнформацией bsl_15). Узкий гейт по CASE — нулевые регрессии.
+      if (f.func === undefined && f.alias && /^ВЫБОР(?![\p{L}\p{N}_])/iu.test(f.expression.trim())) {
+        exprCols.push({ alias: f.alias, expression: f.expression });
+      }
+      continue;
+    }
+    if (f.func !== undefined || !f.tableId || !f.path) continue;
+    selectKeys.add(keyOf(f.tableId, f.path));
+  }
+  if (exprCols.length === 0) return;
+
+  // Для каждого индекса: встречалось ли РАНЬШЕ простое поле-якорь (backs колонку).
+  const anchorBefore: boolean[] = [];
+  let seenAnchor = false;
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    anchorBefore.push(seenAnchor);
+    const f = fields[i];
+    if (f.expression === undefined && f.tableId && f.path && selectKeys.has(keyOf(f.tableId, f.path))) {
+      seenAnchor = true;
+    }
+  }
+
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    const f = fields[i];
+    if (f.expression !== undefined || !f.tableId || !f.path) continue;
+    if (selectKeys.has(keyOf(f.tableId, f.path))) continue; // backs колонку — сохраняем
+    if (!anchorBefore[i]) continue;                          // нет поля-якоря раньше
+    const nameUp = f.path.toUpperCase();
+    const table = aliasToTable.get(f.tableId);
+    const alias = table ? defaultTableAlias(table) : f.tableId;
+    const rendered = alias + '.' + f.path;
+    const expr = exprCols.find(
+      e => e.alias.toUpperCase() === nameUp && containsFieldRef(e.expression, rendered)
+    );
+    if (!expr) continue;
+    const already = fields.some(g => g.expression !== undefined && g.expression === expr.expression);
+    const explicit = fields.slice(0, explicitCount);
+    const rest = fields.slice(explicitCount);
+    explicit.splice(i, 1);
+    if (!already) explicit.push({ tableId: '', path: '', expression: expr.expression });
+    grouping.groupFields = [...explicit, ...rest];
+    grouping.explicitGroupCount = already ? explicitCount - 1 : explicitCount;
+    return; // ровно одна замена
+  }
+}
+
+/** `expr` содержит ссылку `rendered` (`Алиас.Путь`) как ЦЕЛУЮ токен-цепочку. */
+function containsFieldRef(expr: string, rendered: string): boolean {
+  const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_.]/u.test(c);
+  let from = 0;
+  for (;;) {
+    const idx = expr.indexOf(rendered, from);
+    if (idx < 0) return false;
+    if (!isWordChar(expr[idx - 1]) && !isWordChar(expr[idx + rendered.length])) return true;
+    from = idx + rendered.length;
+  }
+}
+
+/**
  * Выражение — `ВЫБОР`, результат которого ссылается на системный вид движения
  * регистра (`ВидДвиженияНакопления`/`ВидДвиженияБухгалтерии`) через `ЗНАЧЕНИЕ(…)`.
  */
