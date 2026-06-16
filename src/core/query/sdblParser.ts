@@ -658,6 +658,27 @@ function parseSingleQuery(
     if (soleSource) return soleSource.id;
     const owners = fieldOwners.get(head.toUpperCase());
     if (owners && owners.size === 1) return owners.values().next().value;
+    // Текстовый скан не дал владельца (поле НИГДЕ во вводе не квалифицировано —
+    // встречается только голым). Падаем на МЕТАДАННЫЕ: голое поле принадлежит
+    // источнику, в схеме которого есть реквизит с этим именем, и таких источников
+    // РОВНО один (иначе неоднозначно — оставляем как раньше). Конструктор 1С
+    // резолвит по схеме, поэтому такое голое поле он печатает квалифицированно с
+    // автопсевдонимом-именем поля (`КлючСвязи` → `Запасы.КлючСвязи КАК КлючСвязи`),
+    // а не как выражение `Поле{n}`. Узко: только при пустом текстовом скане. (6.17)
+    if (sourceResolver && (!owners || owners.size === 0)) {
+      const up = head.toUpperCase();
+      let hit: string | undefined;
+      let count = 0;
+      for (const t of tables) {
+        if (t.subquery || !t.fullName || t.fullName.startsWith('&')) continue;
+        const meta = sourceResolver.tableByFullName(t.fullName);
+        if (meta && meta.fields.some(f => f.name.toUpperCase() === up)) {
+          count++;
+          hit = t.id;
+        }
+      }
+      if (count === 1) return hit;
+    }
     return undefined;
   };
   // Явные псевдонимы выборки из ВВОДА (`… КАК <имя>`): голое имя в секциях
@@ -3769,6 +3790,11 @@ function parseTotalGroupField(cur: Cursor, ctx: SectionResolveContext): TotalGro
 
   const field: TotalGroupField = { tableId: ref.tableId, path: ref.path, kind };
   if (ref.qualified) field.qualified = true;
+  // Голое имя, совпавшее с РЕАЛЬНЫМ псевдонимом выборки, запоминаем дословно:
+  // несколько колонок могут делить (tableId, path) под разными псевдонимами
+  // (`КАК Подразделение`/`КАК СсылкаПодразделение`) — иначе генератор подставит
+  // первый совпавший псевдоним вместо записанного (ИТОГИ ПО, аналогично 6.16.47).
+  if (segs.length === 1 && ctx.aliasMap.has(segs[0])) field.selectAlias = segs[0];
   if (periodBy) field.periodBy = periodBy;
   if (cur.matchKeyword('КАК')) {
     const a = cur.peek();

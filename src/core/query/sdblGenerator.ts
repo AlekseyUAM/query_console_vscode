@@ -1775,6 +1775,8 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
       : [];
     const alias = g.expression
       ? g.expression
+      : g.selectAlias !== undefined
+      ? g.selectAlias
       : qualifiedSelectMatches.length === 1
       ? qualifiedSelectMatches[0].alias!
       : g.qualified
@@ -1782,7 +1784,13 @@ export function renderTotals(totals: Totals | undefined, model: QueryModel): str
       : sectionFieldRefText(model, tableAliases, g.tableId, g.path);
     const as = g.alias ? ` КАК ${g.alias}` : '';
     const period = g.periodBy ? ` ${g.periodBy}` : '';
-    byList.push(`${alias}${period}${totalKindSuffix(g.kind)}${as}`);
+    // Модификатор ИЕРАРХИЯ/ТОЛЬКО ИЕРАРХИЯ конструктор отбрасывает, когда источник
+    // поля — таблица-ПАРАМЕТР (`&ИмяТаблицы`): схемы (иерархичности) у него нет, тот
+    // же критерий, что в УПОРЯДОЧИТЬ ПО (golden DROP на &параметре). Фаза 6.17.
+    const ownerTable = model.tables.find(t => t.id === g.tableId);
+    const paramTable = ownerTable !== undefined && ownerTable.fullName.startsWith('&');
+    const kind = paramTable ? 'elements' : g.kind;
+    byList.push(`${alias}${period}${totalKindSuffix(kind)}${as}`);
   }
 
   // Позиция колонки выборки в ИСХОДНОМ порядке (для сортировки агрегатов) по

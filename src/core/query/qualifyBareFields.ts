@@ -78,6 +78,8 @@ interface SourceInfo {
 
 interface OwnerContext {
   aliases: Set<string>; // ВСЕ псевдонимы источников (верхний регистр) — для распознавания уже квалифицированных
+  /** Карта ВЕРХНИЙ→объявленное написание псевдонима источника (нормализация регистра квалификатора). */
+  aliasSpelling: Map<string, string>;
   /** Псевдонимы источников ОБЪЕМЛЮЩИХ запросов (коррелированные ссылки в подзапросе). */
   outerAliases: Set<string>;
   /** Источники объемлющих запросов (для разрешения коррелированных голых полей). */
@@ -131,12 +133,13 @@ function buildContext(
 ): OwnerContext {
   const sources: SourceInfo[] = [];
   const aliases = new Set<string>();
+  const aliasSpelling = new Map<string, string>();
   // Те же псевдонимы, что печатает генератор (синтез по `defaultTableAlias` с
   // дедупликацией) — иначе квалификация навесит неверный префикс.
   const aliasMap = resolveAliases(model.tables);
   for (const t of model.tables) {
     const alias = aliasMap.get(t.id) ?? t.alias ?? t.fullName;
-    if (alias) aliases.add(up(alias));
+    if (alias) { aliases.add(up(alias)); aliasSpelling.set(up(alias), alias); }
     if (t.subquery) {
       const cols = subqueryColumns(t.subquery);
       sources.push({ alias, fields: cols.size > 0 ? cols : undefined, wildcard: cols.size === 0 });
@@ -156,12 +159,18 @@ function buildContext(
           : resolver.tableByFullName(lookupName))
       : undefined;
     if (meta) {
-      sources.push({ alias, fields: new Set(meta.fields.map(f => up(f.name))), wildcard: false });
+      // Состав «полей» источника для квалификации голов голых путей включает и
+      // ИМЕНА ТАБЛИЧНЫХ ЧАСТЕЙ: `Товары.Ссылка` при источнике-документе `Шапка`
+      // (где `Товары` — ТЧ) конструктор квалифицирует как `Шапка.Товары.Ссылка`
+      // (навигация документ→ТЧ→поле). Без них голова-ТЧ не находила владельца. (6.17)
+      const names = new Set(meta.fields.map(f => up(f.name)));
+      for (const ts of meta.tabularSections ?? []) names.add(up(ts.name));
+      sources.push({ alias, fields: names, wildcard: false });
     } else {
       sources.push({ alias, wildcard: true });
     }
   }
-  return { aliases, outerAliases, outerSources, sources, resolver, parseDoc: activeParseDoc };
+  return { aliases, aliasSpelling, outerAliases, outerSources, sources, resolver, parseDoc: activeParseDoc };
 }
 
 /**
@@ -311,6 +320,23 @@ function qualifyExpression(raw: string, ctx: OwnerContext): string {
     // Внутри аргументов ЗНАЧЕНИЕ(…)/ТИП(…) — имя типа метаданных, не поле.
     if (metaCallDepths.length > 0) continue;
     const word = up(t.text ?? t.value);
+    // Нормализация РЕГИСТРА квалификатора-псевдонима источника к объявленному
+    // написанию (`Итоги.Количество` при `… КАК ИТОГИ` → `ИТОГИ.Количество`). Делаем
+    // ДО STRUCTURAL-фильтра: имя источника может совпасть со структурным словом
+    // (`ИТОГИ`), но как ГОЛОВА квалифицированной ссылки (`.` следом, не продолжение
+    // пути) это псевдоним, а не ключевое слово. Только при отличии регистра. (6.17)
+    {
+      const prevTok = sig[i - 1];
+      const nextTok = sig[i + 1];
+      const isPathHead = !(prevTok && prevTok.type === 'punct' && prevTok.value === '.');
+      const hasDot = nextTok && nextTok.type === 'punct' && nextTok.value === '.';
+      const declared = ctx.aliasSpelling.get(word);
+      if (isPathHead && hasDot && (ctx.aliases.has(word) || ctx.outerAliases.has(word))
+          && declared !== undefined && declared !== (t.text ?? t.value)) {
+        edits.push({ start: t.pos, end: t.pos + (t.text ?? t.value).length, text: declared });
+        continue;
+      }
+    }
     if (STRUCTURAL.has(word) || LITERALS.has(word) || PERIOD_WORDS.has(word)) continue;
 
     const prev = sig[i - 1];
@@ -338,7 +364,7 @@ function qualifyExpression(raw: string, ctx: OwnerContext): string {
     if (nextV === '(') continue;
 
     // Псевдоним источника текущего ИЛИ объемлющего запроса (коррелированная ссылка) —
-    // уже квалифицировано; не трогаем.
+    // уже квалифицировано; не трогаем (нормализация регистра — выше, до STRUCTURAL).
     if (ctx.aliases.has(word) || ctx.outerAliases.has(word)) continue;
 
     // Голова `X.` — либо префикс типа метаданных (`Справочник.X`), либо голое
@@ -460,6 +486,30 @@ function processModel(
   }
 
   if (ctx.sources.length === 0) return;
+
+  // КОРРЕЛИРОВАННАЯ привязка колонки выборки подзапроса: парсер привязал голое поле к
+  // ЕДИНСТВЕННОМУ источнику подзапроса (soleSource), но по метаданным этого источника
+  // такого реквизита НЕТ, а у РОВНО ОДНОГО объемлющего источника он есть. Конструктор
+  // 1С трактует такую ссылку как коррелированную — `СоответствиеНоменклатуры.ПАТ`, а не
+  // `ИмпортируемаяПартияСАТУРН.ПАТ`. Перепривязываем поле к внешнему источнику-владельцу
+  // (помечаем qualified, чтобы генератор печатал `<внешнийАлиас>.<path>`). (6.17)
+  if (outerAliases.size > 0 && ctx.sources.length === 1 && ctx.sources[0].fields) {
+    const innerFields = ctx.sources[0].fields;
+    const rebind = (f: { tableId: string; path: string; expression?: string; qualified?: boolean }): void => {
+      if (f.expression !== undefined || f.qualified) return;
+      if (!f.tableId || !model.tables.some(t => t.id === f.tableId)) return;
+      const head = up(f.path.split('.')[0]);
+      if (innerFields.has(head)) return;
+      const owners = outerSources.filter(os => os.fields?.has(head));
+      if (owners.length !== 1) return;
+      f.tableId = '';
+      // Генератор печатает выражение-форму для коррелированной ссылки нельзя — оставляем
+      // как голое поле, но префиксуем псевдонимом внешнего источника через expression.
+      (f as { expression?: string }).expression = `${owners[0].alias}.${f.path}`;
+      f.path = '';
+    };
+    model.fields.forEach(rebind);
+  }
 
   const doField = (f: SelectedField): void => {
     if (f.expression !== undefined) f.expression = qualifyExpression(f.expression, ctx);
