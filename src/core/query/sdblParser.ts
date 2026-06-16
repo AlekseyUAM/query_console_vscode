@@ -245,6 +245,14 @@ interface RawTabSection {
   columns: RawTabColumn[];
   /** Явный псевдоним `… КАК <alias>` (если задан), иначе undefined. */
   alias?: string;
+  /**
+   * Голова проекции — выражение приведения `ВЫРАЗИТЬ(… КАК Тип)` (а не псевдоним
+   * таблицы): `ВЫРАЗИТЬ(Алиас.Источник КАК Документ.Событие).ДокументыОснования.(…)`.
+   * Хранит ТЕКСТ приведения дословно; генератор печатает его как префикс проекции
+   * (`<castPrefix>.<tsName>.(`), а колонки выводятся голыми (без переквалификации
+   * псевдонимом — приведение не даёт псевдонима источника). Фаза 6.16.
+   */
+  castPrefix?: string;
 }
 
 /** Один элемент списка выборки: обычное поле или табличная часть. */
@@ -999,6 +1007,76 @@ function parseFieldList(cur: Cursor): RawSelectItem[] {
 }
 
 /**
+ * Пытается разобрать проекцию ТЧ с головой-приведением:
+ *   `ВЫРАЗИТЬ(<выраж> КАК <Тип>).<ТЧ>.( <колонки> ) КАК <alias>`
+ * (сверено по оракулу: КонтактЦентр_5). Голова — выражение `ВЫРАЗИТЬ(…)` (с
+ * балансом скобок), затем `.<ТЧ>(.<ТЧ>)*.(`. Колонки печатаются ГОЛЫМИ (приведение
+ * не даёт псевдонима источника, переквалифицировать нечем). Возвращает undefined без
+ * сдвига курсора, если образца нет.
+ */
+function tryParseCastTabSection(cur: Cursor): RawTabSection | undefined {
+  const head = cur.peek(0);
+  // `ВЫРАЗИТЬ` — идентификатор-функция (не ключевое слово), сравниваем регистронезависимо.
+  if (head.type !== 'ident' || head.text.toUpperCase() !== 'ВЫРАЗИТЬ') return undefined;
+  if (!cur.isPunct('(', 1)) return undefined;
+  // Сканируем без сдвига: пропускаем сбалансированные скобки приведения, затем ждём
+  // `.` имя ( `.` имя )* `.` `(`.
+  let off = 1; // на `(`
+  let depth = 0;
+  for (;;) {
+    const t = cur.peek(off);
+    if (t.type === 'eof') return undefined;
+    if (t.type === 'punct' && t.value === '(') depth++;
+    else if (t.type === 'punct' && t.value === ')') { depth--; if (depth === 0) break; }
+    off++;
+  }
+  // off — индекс закрывающей `)` приведения. Дальше обязателен `.` имя … `.` `(`.
+  const castEndOff = off;
+  off++; // за `)`
+  if (!(cur.peek(off).type === 'punct' && cur.peek(off).value === '.')) return undefined;
+  off++;
+  let segCount = 0;
+  for (;;) {
+    const nameTok = cur.peek(off);
+    if (nameTok.type !== 'ident' && nameTok.type !== 'keyword') return undefined;
+    if (!(cur.peek(off + 1).type === 'punct' && cur.peek(off + 1).value === '.')) return undefined;
+    segCount++;
+    if (cur.peek(off + 2).type === 'punct' && cur.peek(off + 2).value === '(') break;
+    off += 2;
+  }
+  if (segCount < 1) return undefined;
+
+  // Образец подтверждён — поглощаем токены и строим текст приведения дословно.
+  const castStartTok = cur.peek(0);
+  const castEndTok = cur.peek(castEndOff);
+  const castPrefix = cur.source.slice(castStartTok.pos, castEndTok.pos + castEndTok.value.length);
+  // Поглощаем приведение целиком (до и включая закрывающую `)`).
+  for (let k = 0; k <= castEndOff; k++) cur.next();
+  cur.expectPunct('.');
+  const tsSegs: string[] = [];
+  for (;;) {
+    tsSegs.push(cur.next().text);
+    cur.expectPunct('.');
+    if (cur.isPunct('(')) break;
+  }
+  const tsName = tsSegs.join('.');
+  cur.expectPunct('(');
+  const columns: RawTabColumn[] = [];
+  for (;;) {
+    columns.push(parseTabColumn(cur, tsName, ''));
+    if (cur.matchPunct(',')) continue;
+    break;
+  }
+  cur.expectPunct(')');
+  let alias: string | undefined;
+  if (cur.matchKeyword('КАК')) {
+    const a = cur.peek();
+    if (a.type === 'ident' || a.type === 'keyword') { alias = a.text; cur.next(); }
+  }
+  return { tableAlias: '', tsName, columns, alias, castPrefix };
+}
+
+/**
  * Пытается разобрать табличную часть `<alias>.<tsName>.( <f> КАК <f>, … ) КАК <tsName>`.
  * Распознаётся по образцу `ident (. ident)+ . (` в начале элемента: голова —
  * `<alias>`, путь до проекции — `<seg>(.<seg>)*` (один сегмент = обычная ТЧ
@@ -1009,6 +1087,9 @@ function parseFieldList(cur: Cursor): RawSelectItem[] {
  * нет (тогда элемент — обычное поле), не сдвигая курсор.
  */
 function tryParseTabSection(cur: Cursor): RawTabSection | undefined {
+  // Голова-приведение `ВЫРАЗИТЬ(… КАК Тип).<ТЧ>.(…)` — отдельная ветка.
+  const cast = tryParseCastTabSection(cur);
+  if (cast) return cast;
   // Образец: ident '.' ident ('.' ident)* '.' '(' . Сканируем без сдвига курсора:
   // нужна цепочка из ≥2 имён через точки, после которой идёт `.(`.
   if (cur.peek(0).type !== 'ident' && cur.peek(0).type !== 'keyword') return undefined;
@@ -1246,6 +1327,19 @@ function resolveTabSection(
   const table = tables.find(t => t.id === tableId);
   // tsFullName косметический (генератор использует только tsName и fields).
   const tsFullName = table ? `${table.fullName}.${ts.tsName}` : ts.tsName;
+
+  // Проекция с головой-приведением (`ВЫРАЗИТЬ(…).<ТЧ>.(…)`): псевдонима таблицы нет,
+  // колонки печатаются голыми (как разобраны), переквалификация не применяется.
+  if (ts.castPrefix !== undefined) {
+    const fields = ts.columns.map(c => (c.kind === 'field' ? c.field : c.rawBody));
+    const fieldAliases = ts.columns.map(c => c.alias);
+    const fieldAliasExplicit = ts.columns.map(c => (c.kind === 'field' ? c.aliasExplicit === true : false));
+    return {
+      tableId, tsName: ts.tsName, tsFullName, fields, alias: ts.alias, castPrefix: ts.castPrefix,
+      ...(fieldAliases.some(a => a !== undefined) ? { fieldAliases } : {}),
+      ...(fieldAliasExplicit.some(Boolean) ? { fieldAliasExplicit } : {}),
+    };
+  }
 
   const hasExpr = ts.columns.some(c => c.kind === 'expr');
 

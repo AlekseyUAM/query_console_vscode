@@ -1468,7 +1468,10 @@ export function renderTabProjection(
       return `\t\t${normalizeLeafCase(f)}${tail}${i < tsf.fields.length - 1 ? ',' : ''}`;
     });
   }
-  const body = `\t${tableAlias}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t)`;
+  // Голова проекции: псевдоним таблицы (`Алиас.ТЧ`) либо выражение-приведение
+  // (`ВЫРАЗИТЬ(…).ТЧ`, фаза 6.16) — печатается дословно из castPrefix.
+  const head = tsf.castPrefix !== undefined ? tsf.castPrefix : tableAlias;
+  const body = `\t${head}.${tsf.tsName}.(\n${subLines.join('\n')}\n\t)`;
   if (opts.suppress) return body;
   const tsAlias = opts.outerAlias ? opts.outerAlias(tsf.tsName, tsf.alias) : (tsf.alias ?? tsf.tsName);
   return `${body} КАК ${tsAlias}`;

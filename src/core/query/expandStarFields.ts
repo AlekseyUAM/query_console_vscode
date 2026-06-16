@@ -64,8 +64,24 @@ export function expandStarFields(model: QueryModel, resolver?: MetadataResolver)
   const trailing: SelectedField[] = [];
   let sawExpandedStar = false;
 
+  // Конструктор 1С разворачивает голую `*` ПО ИСТОЧНИКАМ секции ИЗ, и колонки каждого
+  // источника идут единым блоком: основные поля → проекции табличных частей →
+  // завершающие стандартные, ПЕРЕД колонками следующего источника (сверено по
+  // оракулу: СотрудникиБазовый_21/22, ФизическиеЛица_1/2). Чтобы генератор сохранил
+  // это перемежение (а не «всплытие» всех ТЧ в общий блок ПОСЛЕ всех скалярных полей),
+  // присваиваем монотонный selectOrder всем элементам ПОСЛЕ первого блока основных
+  // полей: проекции ТЧ и завершающие поля первого источника, а также ВСЕ колонки
+  // (основные/ТЧ/завершающие) последующих источников отправляются в rest-бакеты
+  // (tabSections / trailingFields) с возрастающим selectOrder. Основные поля первого
+  // источника остаются в model.fields (генератор всегда печатает их первыми).
+  let order = 0;
+  // headOpen=true пока заполняем основные поля ПЕРВОГО развёрнутого источника
+  // (попадают в model.fields без selectOrder). После первой проекции ТЧ / завершающего
+  // поля / границы второго источника переключаемся на rest-бакеты с selectOrder.
+  let headOpen = true;
+
   const pushAfter = (f: SelectedField): void => {
-    if (sawExpandedStar) trailing.push(f);
+    if (sawExpandedStar) { trailing.push({ ...f, selectOrder: order++ }); headOpen = false; }
     else newFields.push(f);
   };
 
@@ -81,9 +97,23 @@ export function expandStarFields(model: QueryModel, resolver?: MetadataResolver)
       : undefined;
     if (!meta || tableId === undefined) return false;
     const expanded = buildSelectAllModel(meta);
-    for (const ef of expanded.fields) newFields.push(makeField(ef, tableId, reserved));
-    for (const ts of expanded.tabSectionFields ?? []) tabSections.push({ ...ts, tableId });
-    for (const ef of expanded.trailingFields ?? []) trailing.push(makeField(ef, tableId, reserved));
+    for (const ef of expanded.fields) {
+      const fld = makeField(ef, tableId, reserved);
+      // Основные поля первого развёрнутого источника — в head (генератор печатает их
+      // первыми); основные поля последующих источников — в rest c selectOrder, чтобы
+      // они шли ПОСЛЕ проекций ТЧ / завершающих полей предыдущих источников.
+      if (headOpen) newFields.push(fld);
+      else trailing.push({ ...fld, selectOrder: order++ });
+    }
+    for (const ts of expanded.tabSectionFields ?? []) {
+      tabSections.push({ ...ts, tableId, selectOrder: order++ });
+    }
+    for (const ef of expanded.trailingFields ?? []) {
+      trailing.push({ ...makeField(ef, tableId, reserved), selectOrder: order++ });
+    }
+    // Первый развёрнутый источник полностью обработан — head закрыт: все колонки
+    // последующих источников обязаны идти ПОСЛЕ него (перемежение по selectOrder).
+    headOpen = false;
     return true;
   };
 

@@ -181,6 +181,12 @@ export interface SelectedTabSectionField {
   alias?: string;
   /** Позиция в исходном списке выборки — см. SelectedField.selectOrder (фаза 6.15.20). */
   selectOrder?: number;
+  /**
+   * Голова проекции — выражение приведения `ВЫРАЗИТЬ(… КАК Тип)` вместо псевдонима
+   * таблицы. Генератор печатает `<castPrefix>.<tsName>.(` и НЕ квалифицирует колонки
+   * псевдонимом таблицы (приведение не даёт псевдонима источника). Фаза 6.16.
+   */
+  castPrefix?: string;
 }
 
 export type AggregateFunction =
