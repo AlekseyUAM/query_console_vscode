@@ -1209,6 +1209,94 @@ function stripMultilineWhenWrap(lines: string[]): void {
   }
 }
 
+/**
+ * Снимает ИЗБЫТОЧНУЮ группирующую `(…)`, обёрнутую разработчиком вокруг ЛЕВОГО
+ * операнда мультипликативной арифметики в значении ветки ТОГДА/ИНАЧЕ, когда внутри
+ * обёртки — вложенный `… / ВЫБОР … КОНЕЦ`, а сразу за её закрывающей `)` идёт `*`/`/`
+ * того же приоритета (`ТОГДА (A / ВЫБОР … КОНЕЦ) * (B / C)` → `ТОГДА A / ВЫБОР … КОНЕЦ
+ * * (B / C)`; фаза 6.16, корпус ФормаПодбораАвансовПокупателей). Скобка избыточна:
+ * `*`/`/` левоассоциативны и одного приоритета, поэтому `(a / b) * c == a / b * c`.
+ * Мутирует `lines` на месте. Узкий гейт: ведущая `(` сразу после ТОГДА/ИНАЧЕ;
+ * голова строки оканчивается словом ВЫБОР (открывает вложенный CASE); верхнеуровневый
+ * (внутри обёртки) оператор перед этим ВЫБОР — `/` или `*`; закрывающая `)` обёртки
+ * стоит на строке КОНЕЦ вложенного CASE и за ней СРАЗУ идёт `*`/`/`.
+ */
+function stripRedundantThenArithmeticWrap(lines: string[]): void {
+  const fw = (s: string): string => {
+    const m = /^[\t ]*([\p{L}]+)/u.exec(s);
+    return m ? m[1].toUpperCase() : '';
+  };
+  const parenDelta = (s: string): number => {
+    let d = 0, inS = false;
+    for (let c = 0; c < s.length; c++) {
+      const ch = s[c];
+      if (ch === '"') { inS = !inS; continue; }
+      if (inS) continue;
+      if (ch === '(') d++;
+      else if (ch === ')') d--;
+    }
+    return d;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const w = fw(lines[i]);
+    if (w !== 'ТОГДА' && w !== 'ИНАЧЕ') continue;
+    // Голова `ТОГДА (<тело> ВЫБОР` — ведущая `(` сразу после ключевого слова, строка
+    // оканчивается словом ВЫБОР (открывает вложенный CASE).
+    const m = new RegExp(`^([\\t ]*${w}[\\t ]+)\\((.*)$`, 'u').exec(lines[i]);
+    if (!m) continue;
+    if (!/(?:^|[^\p{L}\p{N}_])ВЫБОР\s*$/u.test(m[2])) continue;
+    const headBody = '(' + m[2];
+    if (parenDelta(headBody) < 1) continue; // ведущая `(` не охватывает продолжения
+    // Верхнеуровневый (внутри обёртки) оператор перед ВЫБОР: на глубине РОВНО 1
+    // относительно ведущей `(`. Ищем последний `*`/`/` на этой глубине в теле головы.
+    let d = 0, inS = false, topMulOp = false;
+    for (let c = 0; c < headBody.length; c++) {
+      const ch = headBody[c];
+      if (ch === '"') { inS = !inS; continue; }
+      if (inS) continue;
+      if (ch === '(') d++;
+      else if (ch === ')') d--;
+      else if (d === 1 && (ch === '*' || ch === '/')) topMulOp = true;
+    }
+    if (!topMulOp) continue;
+    // Идём по продолжениям, отслеживая глубину обёртки. Её закрытие (глубина → 0)
+    // должно прийти на строке КОНЕЦ вложенного CASE: либо за `)` СРАЗУ идёт `*`/`/`
+    // (приоритетная обёртка `(A / ВЫБОР…КОНЕЦ) * B`), либо `)` — конец значения ветки
+    // (полная обёртка `ИНАЧЕ (A / ВЫБОР…КОНЕЦ)`, следующая значимая строка —
+    // терминатор внешнего CASE: КОНЕЦ/ТОГДА/ИНАЧЕ/КОГДА).
+    let depth = parenDelta(headBody);
+    let closeLine = -1;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') continue;
+      const before = depth;
+      depth += parenDelta(lines[j]);
+      if (depth <= 0) {
+        if (before > 0 && fw(lines[j]) === 'КОНЕЦ') {
+          if (/^[\t ]*КОНЕЦ\)\s*[*/]\s/u.test(lines[j])) {
+            closeLine = j;
+          } else if (/^[\t ]*КОНЕЦ\)\s*$/u.test(lines[j])) {
+            // Полная обёртка значения: за `)` ничего нет, следующая значимая строка —
+            // терминатор внешнего CASE.
+            let nextW = '';
+            for (let k = j + 1; k < lines.length; k++) {
+              if (lines[k].trim() === '') continue;
+              nextW = fw(lines[k]); break;
+            }
+            if (nextW === 'КОНЕЦ' || nextW === 'ТОГДА' || nextW === 'ИНАЧЕ' || nextW === 'КОГДА') {
+              closeLine = j;
+            }
+          }
+        }
+        break;
+      }
+    }
+    if (closeLine < 0) continue;
+    // Снимаем ведущую `(` после ТОГДА/ИНАЧЕ и закрывающую `)` ПОСЛЕ слова КОНЕЦ.
+    lines[i] = m[1] + m[2];
+    lines[closeLine] = lines[closeLine].replace(/^([\t ]*КОНЕЦ)\)/u, '$1');
+  }
+}
+
 export function reindentLeafCase(text: string, base: number, funcParenDepth = false): string {
   // Снимаем избыточную группировку вокруг одиночного вызова (`ЕСТЬNULL((СУММА(…))`),
   // прежде чем считать геометрию CASE — иначе лишняя `(` сдвинула бы отступ (6.16.76).
@@ -1303,6 +1391,7 @@ export function reindentLeafCase(text: string, base: number, funcParenDepth = fa
   // здесь — только МНОГОСТРОЧНУЮ. Закрывающая `)` снимается с последней строки
   // условия (перед ТОГДА/КОНЕЦ/КОГДА/ИНАЧЕ).
   stripMultilineWhenWrap(lines);
+  stripRedundantThenArithmeticWrap(lines);
 
   // Баланс скобок от начала листа до слова ВЫБОР на строке openIdx. Параллельно
   // считаем «эффективную» глубину: подряд идущие открывающие скобки `((` конструктор
@@ -3260,9 +3349,17 @@ class Parser {
     return this.parseLeaf();
   }
 
-  /** Скобка структурна, если содержит верхнеур. И/ИЛИ или ВЫБОР. */
+  /**
+   * Скобка структурна, если содержит верхнеур. И/ИЛИ или ВЫБОР. Скобка с
+   * верхнеуровневой ЗАПЯТОЙ — это КОРТЕЖ-операнд (`(ВЫБОР…КОНЕЦ, ВЫБОР…КОНЕЦ) В (…)`,
+   * `(Поле1, Поле2) В (…)`), а НЕ группа вокруг одного выражения: его нельзя
+   * раскрывать в под-дерево group/case (иначе renderBool обернёт лишь ПЕРВЫЙ элемент,
+   * добавив избыточные `(`…`)` и лишний уровень отступа). Кортеж поглощается листом
+   * дословно (фаза 6.16, корпус ЗастрахованныеЛицаСЭДО/ОтчётКомиссионера).
+   */
   private parenIsStructuralGroup(open: number): boolean {
     let depth = 0;
+    let hasStructural = false;
     for (let k = open; k < this.toks.length; k++) {
       const t = this.toks[k];
       if (t.type === 'eof') break;
@@ -3275,9 +3372,11 @@ class Parser {
         if (depth === 0) break;
         continue;
       }
-      if (depth === 1 && (isAnd(t) || isOr(t) || isCase(t))) return true;
+      // Верхнеуровневая запятая → это КОРТЕЖ, а не группа вокруг одного выражения.
+      if (depth === 1 && t.type === 'punct' && t.value === ',') return false;
+      if (depth === 1 && (isAnd(t) || isOr(t) || isCase(t))) hasStructural = true;
     }
-    return false;
+    return hasStructural;
   }
 
   /**
