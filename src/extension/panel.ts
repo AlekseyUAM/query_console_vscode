@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { parseCf } from '../core/metadata/cfParser';
 import { buildCachePath, writeCache } from '../core/metadata/cacheBuilder';
 import { isCacheValid, readCache } from '../core/metadata/cacheLoader';
-import { loadMetadataFromYaml } from '../core/metadata/yamlLoader';
+import { loadMetadataCached } from '../core/metadata/modelCache';
 import { parseConfiguration } from '../core/metadata/parser/parseConfiguration';
 import { generate } from '../core/query/sdblGenerator';
 import { insertResult } from './insertResult';
@@ -62,8 +62,9 @@ async function loadMetadata(
 
   if (fs.existsSync(configYaml)) {
     channel.appendLine(`[1C Query] Loading metadata from YAML: ${cfYamlDir}`);
-    const model = loadMetadataFromYaml(cfYamlDir);
-    channel.appendLine(`[1C Query] YAML: loaded ${model.tables.length} tables`);
+    const t = Date.now();
+    const model = loadMetadataCached(cfYamlDir);
+    channel.appendLine(`[1C Query] metadata loaded in ${Date.now() - t}ms (${model.tables.length} tables)`);
     return model;
   }
 
