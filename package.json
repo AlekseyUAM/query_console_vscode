@@ -67,6 +67,9 @@
     "test:unit": "vitest run",
     "pretest:e2e": "npm run build:webview && cp out/webview/main.js test/e2e/harness/main.js",
     "test:e2e": "playwright test",
+    "real:setup": "npx playwright install chromium && npx playwright install-deps chromium",
+    "real:smoke": "esbuild tooling/real-constructor/smoke.ts --bundle --outfile=out/real-constructor/smoke.js --platform=node --format=cjs --packages=external && node out/real-constructor/smoke.js",
+    "real:inventory": "esbuild tooling/real-constructor/inventory.ts --bundle --outfile=out/real-constructor/inventory.js --platform=node --format=cjs --packages=external && node out/real-constructor/inventory.js",
     "test": "npm run test:unit",
     "dev": "npm run build && code --extensionDevelopmentPath=/workspaces/query_console_vscode"
   },
