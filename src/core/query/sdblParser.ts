@@ -64,7 +64,7 @@ import { dropUserIBConditions } from './dropUserIBConditions';
 import { dropUnlimitedStringConditions } from './dropUnlimitedStringConditions';
 import { qualifyBareFields, qualifyBareSectionFields, setSubqueryParser } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
-import { dropRedundantGroupDerefs, moveLeadingMovementCaseToEnd, moveBeforePrefixGroupDerefToEnd, substituteGroupFieldWithSelectExpr } from './dropRedundantGroupDerefs';
+import { dropRedundantGroupDerefs, moveLeadingMovementCaseToEnd, moveBeforePrefixGroupDerefToEnd, substituteGroupFieldWithSelectExpr, dropFunctionallyDeterminedMovementCase, relocateKeptMovementCase } from './dropRedundantGroupDerefs';
 import { canonicalizeFieldCasing } from './canonicalizeFieldCasing';
 
 // Инжектируем разборщик подзапросов в пасс квалификации голых полей (для подзапросов,
@@ -4414,6 +4414,10 @@ function parseDocumentInner(text: string, resolver?: MetadataResolver): QueryDoc
     // Перенос ведущего `ВЫБОР` с результатом-видом движения регистра в конец
     // СГРУППИРОВАТЬ ПО (фаза 6.18): конструктор 1С ставит такой элемент последним.
     moveLeadingMovementCaseToEnd(model);
+    // FD-минимизация GROUP BY: дроп/сохранение+перенос CASE-вида-движения (фаза 6.19,
+    // Взаимозачет). Только вид-движения; различитель keep/drop — сгруппирована ли голая ссылка.
+    dropFunctionallyDeterminedMovementCase(model, resolver);
+    relocateKeptMovementCase(model, resolver);
     // Замена простого поля группировки `Алиас.Имя` НЕагрегатным выражением-CASE выборки
     // `… КАК Имя`, ещё не присутствующим в группировке (фаза 6.19, ЗависшиеЗадачи).
     substituteGroupFieldWithSelectExpr(model, resolver, subquerySourceDepth > 0);
