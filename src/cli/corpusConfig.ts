@@ -18,7 +18,7 @@ export interface CorpusConfig {
 }
 
 /** Разобрать содержимое `.env`: пропустить пустые строки и `#`-комментарии, KEY=VALUE, снять кавычки. */
-function parseEnv(content: string): Record<string, string> {
+export function parseEnv(content: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const rawLine of content.split('\n')) {
     const line = rawLine.trim();
