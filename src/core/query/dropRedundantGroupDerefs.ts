@@ -176,6 +176,112 @@ function keyOf(tableId: string, path: string): string {
   return tableId + '' + path;
 }
 
+/** Нормализация выражения для сравнения «уже в группировке» (схлопывание пробелов). */
+function normExpr(s: string): string {
+  return s.replace(/\s+/gu, ' ').trim();
+}
+
+/** `expr` содержит ссылку `rendered` (`Алиас.Путь`) как ЦЕЛУЮ токен-цепочку. */
+function containsFieldRef(expr: string, rendered: string): boolean {
+  const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}_.]/u.test(c);
+  let from = 0;
+  for (;;) {
+    const idx = expr.indexOf(rendered, from);
+    if (idx < 0) return false;
+    if (!isWordChar(expr[idx - 1]) && !isWordChar(expr[idx + rendered.length])) return true;
+    from = idx + rendered.length;
+  }
+}
+
+/**
+ * Замена ПРОСТОГО поля группировки `Алиас.Имя` выражением-CASE выборки `ВЫБОР…КОНЕЦ
+ * КАК Имя` (с переносом в КОНЕЦ явной части СГРУППИРОВАТЬ ПО). Конструктор 1С требует,
+ * чтобы каждое НЕагрегатное выражение выборки присутствовало в группировке; когда
+ * разработчик сгруппировал по ЛИСТУ выражения (`Алиас.Имя`), а не по самому выражению,
+ * 1С заменяет лист выражением. Сверено живым оракулом (validate_query) и ПОЛНЫМ
+ * корпусом accept:oracle (17933).
+ *
+ * ГЛАВНЫЙ различитель (0 регрессий на полном корпусе 17933): ТОЛЬКО во ВЛОЖЕННОМ
+ * подзапросе-источнике `ИЗ (ВЫБРАТЬ …)` — ВЕРХНЕУРОВНЕВУЮ группировку конструктор 1С
+ * сохраняет дословно (top-level лист НЕ заменяется: ЗаполнениеОбъектов, РаспределениеЗатрат,
+ * АвансовыйОтчет — все сверены полным accept:oracle), а группировку подзапроса реконструирует
+ * из схемы. Доп. узкий гейт: E — `ВЫБОР…КОНЕЦ` БЕЗ агрегата (агрегатный `ВЫБОР…СУММА…` сохраняет
+ * лист, НаборыСервер bsl_5), псевдоним == пути поля, лист-вхождение `Алиас.Имя`, есть поле-якорь
+ * раньше, и E ЕЩЁ НЕ в группировке (дубль не плодим). Заменяется РОВНО ОДНО поле.
+ */
+export function substituteGroupFieldWithSelectExpr(model: QueryModel, resolver?: MetadataResolver, isSubquery = false): void {
+  if (!resolver) return;
+  // ТОЛЬКО во вложенном подзапросе-источнике: верхнеуровневую группировку конструктор
+  // 1С сохраняет дословно (ЗаполнениеОбъектов/РаспределениеЗатрат/АвансовыйОтчет —
+  // top-level, лист НЕ заменяется), а в подзапросе — реконструирует из схемы.
+  if (!isSubquery) return;
+  const grouping = model.grouping;
+  if (!grouping || grouping.multiple) return;
+  const fields = grouping.groupFields;
+  if (fields.length < 2) return;
+  const explicitCount = grouping.explicitGroupCount ?? fields.length;
+  if (explicitCount < 2) return;
+
+  const aliasToTable = new Map<string, SelectedTable>();
+  for (const t of model.tables) aliasToTable.set(t.id, t);
+
+  const selectKeys = new Set<string>();
+  const exprCols: { alias: string; expression: string }[] = [];
+  for (const f of [...model.fields, ...(model.trailingFields ?? [])]) {
+    if (f.expression !== undefined) {
+      if (
+        f.func === undefined && f.alias &&
+        /^ВЫБОР(?![\p{L}\p{N}_])/iu.test(f.expression.trim()) &&
+        !AGG_RE.test(f.expression)
+      ) {
+        exprCols.push({ alias: f.alias, expression: f.expression });
+      }
+      continue;
+    }
+    if (f.func !== undefined || !f.tableId || !f.path) continue;
+    selectKeys.add(keyOf(f.tableId, f.path));
+  }
+  if (exprCols.length === 0) return;
+
+  // Выражения, УЖЕ присутствующие в группировке (нормализованные) — лист не заменяем.
+  const groupedExprNorm = new Set<string>();
+  for (const g of fields) if (g.expression !== undefined) groupedExprNorm.add(normExpr(g.expression));
+
+  const anchorBefore: boolean[] = [];
+  let seenAnchor = false;
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    anchorBefore.push(seenAnchor);
+    const f = fields[i];
+    if (f.expression === undefined && f.tableId && f.path && selectKeys.has(keyOf(f.tableId, f.path))) {
+      seenAnchor = true;
+    }
+  }
+
+  for (let i = 0; i < explicitCount && i < fields.length; i++) {
+    const f = fields[i];
+    if (f.expression !== undefined || !f.tableId || !f.path) continue;
+    if (selectKeys.has(keyOf(f.tableId, f.path))) continue; // backs колонку — сохраняем
+    if (!anchorBefore[i]) continue;
+    const table = aliasToTable.get(f.tableId);
+    const nameUp = f.path.toUpperCase();
+    const alias = table ? defaultTableAlias(table) : f.tableId;
+    const rendered = alias + '.' + f.path;
+    const expr = exprCols.find(
+      e => e.alias.toUpperCase() === nameUp &&
+        containsFieldRef(e.expression, rendered) &&
+        !groupedExprNorm.has(normExpr(e.expression))
+    );
+    if (!expr) continue;
+    const explicit = fields.slice(0, explicitCount);
+    const rest = fields.slice(explicitCount);
+    explicit.splice(i, 1);
+    explicit.push({ tableId: '', path: '', expression: expr.expression });
+    grouping.groupFields = [...explicit, ...rest];
+    grouping.explicitGroupCount = explicitCount;
+    return; // ровно одна замена
+  }
+}
+
 /**
  * Перенос ВЕДУЩЕГО элемента группировки `ВЫБОР…КОНЕЦ` в КОНЕЦ списка, когда его
  * результат — системное перечисление вида движения регистра (`ЗНАЧЕНИЕ(

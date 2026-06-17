@@ -64,7 +64,7 @@ import { dropUserIBConditions } from './dropUserIBConditions';
 import { dropUnlimitedStringConditions } from './dropUnlimitedStringConditions';
 import { qualifyBareFields, qualifyBareSectionFields, setSubqueryParser } from './qualifyBareFields';
 import { resolveBuilderStar } from './resolveBuilderStar';
-import { dropRedundantGroupDerefs, moveLeadingMovementCaseToEnd, moveBeforePrefixGroupDerefToEnd } from './dropRedundantGroupDerefs';
+import { dropRedundantGroupDerefs, moveLeadingMovementCaseToEnd, moveBeforePrefixGroupDerefToEnd, substituteGroupFieldWithSelectExpr } from './dropRedundantGroupDerefs';
 import { canonicalizeFieldCasing } from './canonicalizeFieldCasing';
 
 // Инжектируем разборщик подзапросов в пасс квалификации голых полей (для подзапросов,
@@ -78,6 +78,11 @@ setSubqueryParser((text, r) => parseDocument(text, r));
  * Сохраняется/восстанавливается стеково на время `parseDocument` (фаза 6.16.70).
  */
 let sourceResolver: MetadataResolver | undefined;
+// Глубина вложенности подзапроса-источника `ИЗ (ВЫБРАТЬ …)`. >0 при разборе тела
+// такого подзапроса — конструктор 1С реконструирует его СГРУППИРОВАТЬ ПО из схемы
+// (подстановка листа выражением, фаза 6.19), тогда как ВЕРХНЕУРОВНЕВУЮ группировку
+// сохраняет дословно. Используется substituteGroupFieldWithSelectExpr.
+let subquerySourceDepth = 0;
 
 /** Обратная карта SDBL-функции агрегирования (инверсия `wrapAggregate`). */
 const AGG_KEYWORD_TO_FUNC: Record<string, AggregateFunction> = {
@@ -1776,7 +1781,10 @@ function parseTableSource(cur: Cursor, index: number): SelectedTable {
     // таблицам, вложенным в `ИЗ (ВЫБРАТЬ … ИЗ РегистрБухгалтерии.X.Обороты(…))`.
     // Без этого раскладка позиций РБ оставалась с захардкоженным субконто, и
     // условие могло потеряться/сместиться (фаза 6.16.70).
-    const subquery = parseDocument(innerText, sourceResolver);
+    subquerySourceDepth++;
+    let subquery: QueryDocument;
+    try { subquery = parseDocument(innerText, sourceResolver); }
+    finally { subquerySourceDepth--; }
     if (!cur.matchKeyword('КАК')) {
       throw cur.error('ожидалось КАК <псевдоним> после подзапроса в источнике ИЗ', cur.peek());
     }
@@ -4406,6 +4414,9 @@ function parseDocumentInner(text: string, resolver?: MetadataResolver): QueryDoc
     // Перенос ведущего `ВЫБОР` с результатом-видом движения регистра в конец
     // СГРУППИРОВАТЬ ПО (фаза 6.18): конструктор 1С ставит такой элемент последним.
     moveLeadingMovementCaseToEnd(model);
+    // Замена простого поля группировки `Алиас.Имя` НЕагрегатным выражением-CASE выборки
+    // `… КАК Имя`, ещё не присутствующим в группировке (фаза 6.19, ЗависшиеЗадачи).
+    substituteGroupFieldWithSelectExpr(model, resolver, subquerySourceDepth > 0);
     // Пометка иерархических источников (для суффикса ИЕРАРХИЯ в УПОРЯДОЧИТЬ ПО,
     // фаза 6.16.6). По метаданным; без резолвера флаг не ставится.
     if (resolver) {
