@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { createPanel } from './panel';
 import { resolveCfPath } from './resolveCfPath';
 import { registerParseCommand } from './parseCommand';
-import { findQueryAt } from './queryAtCursor';
+import { planQueryConstructor } from './queryConstructorPlan';
 
 let outputChannel: vscode.OutputChannel;
 
@@ -23,17 +23,7 @@ function resolveCfPathWithLogging(): string {
 export function activate(context: vscode.ExtensionContext): void {
   outputChannel = vscode.window.createOutputChannel('1C Query Constructor');
 
-  const cmd = vscode.commands.registerCommand('1c.queryConstructor', () => {
-    const activeEditor = vscode.window.activeTextEditor;
-    const savedEditor = activeEditor
-      ? { document: activeEditor.document, selection: activeEditor.selection }
-      : undefined;
-
-    const cfPath = resolveCfPathWithLogging();
-    createPanel(context, cfPath, outputChannel, savedEditor);
-  });
-
-  const cmdFromCursor = vscode.commands.registerCommand('1c.queryConstructorFromCursor', async () => {
+  const cmd = vscode.commands.registerCommand('1c.queryConstructor', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showWarningMessage('Откройте .bsl файл');
@@ -42,11 +32,11 @@ export function activate(context: vscode.ExtensionContext): void {
     const doc = editor.document;
     const offset = doc.offsetAt(editor.selection.active);
     const source = doc.getText();
-    const hit = findQueryAt(source, offset);
+    const plan = planQueryConstructor(source, offset);
 
     const cfPath = resolveCfPathWithLogging();
 
-    if (hit) {
+    if (plan.kind === 'open') {
       createPanel(
         context,
         cfPath,
@@ -54,10 +44,10 @@ export function activate(context: vscode.ExtensionContext): void {
         {
           document: doc,
           selection: editor.selection,
-          queryRange: { start: hit.start, end: hit.end },
+          queryRange: plan.queryRange,
           wrapAsBslString: true,
         },
-        hit.text
+        plan.queryText
       );
       return;
     }
@@ -77,7 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   });
 
-  context.subscriptions.push(cmd, cmdFromCursor, registerParseCommand(outputChannel), outputChannel);
+  context.subscriptions.push(cmd, registerParseCommand(outputChannel), outputChannel);
 }
 
 export function deactivate(): void {}

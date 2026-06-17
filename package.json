@@ -18,11 +18,6 @@
         "title": "1С: Конструктор запроса"
       },
       {
-        "command": "1c.queryConstructorFromCursor",
-        "title": "1С: Конструктор запроса (из позиции)",
-        "category": "1C"
-      },
-      {
         "command": "1c.parseMetadata",
         "title": "1С: Распарсить метаданные в YAML"
       }
@@ -33,11 +28,6 @@
           "command": "1c.queryConstructor",
           "when": "resourceExtname == .bsl",
           "group": "1_modification@100"
-        },
-        {
-          "command": "1c.queryConstructorFromCursor",
-          "when": "resourceExtname == .bsl",
-          "group": "1cquery"
         }
       ]
     },
