@@ -198,7 +198,7 @@ export function ConditionsTab(props: Props): React.ReactElement {
               />
               {!c.custom ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span title={labelFor(c)} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {labelFor(c)}
                   </span>
                   <select
@@ -218,6 +218,7 @@ export function ConditionsTab(props: Props): React.ReactElement {
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                   <span
+                    title={customText(c) || 'Произвольное условие…'}
                     style={{
                       flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       color: customText(c) ? 'inherit' : 'var(--vscode-descriptionForeground, #888)',

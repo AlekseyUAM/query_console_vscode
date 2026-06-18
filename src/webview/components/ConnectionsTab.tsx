@@ -231,6 +231,7 @@ export function ConnectionsTab(props: Props): React.ReactElement {
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                       <span
+                        title={c.expression || 'Произвольное условие…'}
                         style={{
                           flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           color: c.expression ? 'inherit' : 'var(--vscode-descriptionForeground, #888)',
