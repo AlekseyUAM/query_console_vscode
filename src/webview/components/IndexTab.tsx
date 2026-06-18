@@ -1,5 +1,6 @@
 import * as React from 'react';
 import type { SelectedField, Indexing, FieldRef } from '../../core/query/queryModel';
+import { distinctFieldRefs } from '../fieldSource';
 
 interface Props {
   selectedFields: SelectedField[];
@@ -78,7 +79,7 @@ export function IndexTab(props: Props): React.ReactElement {
   const currentIndex = currentIdx >= 0 ? indexes[currentIdx] : null;
 
   // Источник: обычные поля выборки (не выражения, не ТЧ).
-  const sourceFields = selectedFields.filter(f => !f.expression && f.path);
+  const sourceFields = distinctFieldRefs(selectedFields);
 
   // Псевдоним поля выборки: явный alias, иначе последний сегмент пути.
   function labelFor(tableId: string, path: string): string {
@@ -95,8 +96,8 @@ export function IndexTab(props: Props): React.ReactElement {
   // Поля, ещё не добавленные в текущий индекс.
   const availableFields: FieldRef[] = currentIndex
     ? sourceFields
-        .filter(f => !inCurrent(f.tableId, f.path))
-        .map(f => ({ tableId: f.tableId, path: f.path }))
+        .filter(f => !inCurrent(f.tableId, f.path!))
+        .map(f => ({ tableId: f.tableId, path: f.path! }))
     : [];
 
   function dragStart(e: React.DragEvent, tableId: string, path: string) {
@@ -197,12 +198,13 @@ export function IndexTab(props: Props): React.ReactElement {
         {/* Панель 2: Поля */}
         <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
           <div style={SECTION_HEADER}>Поля</div>
-          <div style={dropZone}>
+          <div style={dropZone} data-field-source="index-source">
             {currentIndex && availableFields.map(f => {
               const k = keyOf(f.tableId, f.path);
               return (
                 <div
                   key={k}
+                  data-field-item
                   draggable
                   onDragStart={e => dragStart(e, f.tableId, f.path)}
                   onClick={() => setMiddleSel(k)}

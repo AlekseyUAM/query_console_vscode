@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { MetaTable } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, Totals, TotalGroupField, TotalField, TotalKind } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
+import { distinctFieldRefs } from '../fieldSource';
 import { findMetaField, isNumericField, isRefField } from './GroupingTab';
 
 interface Props {
@@ -69,7 +70,7 @@ export function TotalsTab(props: Props): React.ReactElement {
   } = props;
 
   // Источник: обычные поля выборки (не выражения, не ТЧ).
-  const sourceFields = selectedFields.filter(f => !f.expression && f.path);
+  const sourceFields = distinctFieldRefs(selectedFields);
 
   function labelFor(tableId: string, path: string): string {
     const table = selectedTables.find(t => t.id === tableId);
@@ -115,15 +116,16 @@ export function TotalsTab(props: Props): React.ReactElement {
       {/* Левый список: Поля */}
       <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
         <div style={SECTION_HEADER}>Поля</div>
-        <div style={dropZone}>
+        <div style={dropZone} data-field-source="totals-source">
           {sourceFields.map((f, i) => (
             <div
               key={`${f.tableId}:${f.path}:${i}`}
+              data-field-item
               draggable
-              onDragStart={e => dragStart(e, f.tableId, f.path)}
+              onDragStart={e => dragStart(e, f.tableId, f.path!)}
               style={{ ...ROW, cursor: 'grab', justifyContent: 'flex-start' }}
             >
-              <span>{labelFor(f.tableId, f.path)}</span>
+              <span>{labelFor(f.tableId, f.path!)}</span>
             </div>
           ))}
           {sourceFields.length === 0 && (

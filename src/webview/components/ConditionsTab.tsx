@@ -140,13 +140,14 @@ export function ConditionsTab(props: Props): React.ReactElement {
             if (!meta) return null;
             const alias = defaultTableAlias(sel);
             return (
-              <div key={sel.id}>
+              <div key={sel.id} data-field-source={`conditions-source:${alias}`}>
                 <div style={{ ...ROW, fontWeight: 'bold', color: 'var(--vscode-descriptionForeground, #aaa)' }}>
                   {alias}
                 </div>
                 {tableFields(meta, sel).map((f: MetaField) => (
                   <div
                     key={`${sel.id}:${f.name}`}
+                    data-field-item
                     draggable
                     onDragStart={e => dragStart(e, sel.id, f.name)}
                     style={{ ...ROW, paddingLeft: 18, cursor: 'grab' }}
