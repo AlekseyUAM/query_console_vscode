@@ -17,6 +17,41 @@ cat > "${CLAUDE_DIR}/settings.json" <<'JSON'
 }
 JSON
 
+# Expose the bind-mounted host 1C `rac` on PATH for cluster session admin
+# (kill hung sessions via RAS on host.docker.internal:1545). The platform dir is
+# bind-mounted read-only from the host (see devcontainer.json "mounts").
+RAC_BIN="/opt/1cv8/x86_64/8.3.27.2130/rac"
+if [ -x "${RAC_BIN}" ]; then
+    sudo ln -sf "${RAC_BIN}" /usr/local/bin/rac
+    echo "[devcontainer] rac linked: /usr/local/bin/rac -> ${RAC_BIN}"
+else
+    echo "[devcontainer] WARN: ${RAC_BIN} not found (host 1C platform not mounted?)."
+fi
+
+# Microsoft Core Fonts (Times New Roman / Arial / Courier New / …). The 1C web
+# client renders tabular documents (Консоль запросов, Конструктор запроса) using
+# fonts available to the BROWSER; without these the web client shows a blocking
+# startup dialog «на сервере отсутствуют шрифты из состава Microsoft Core Fonts»,
+# which also wedges the Playwright recon driver (tooling/real-constructor/).
+# The package lives in Debian `contrib`; its EULA must be pre-accepted to install
+# non-interactively. Best-effort: never fail container create over fonts.
+if ! fc-list 2>/dev/null | grep -qi 'Times New Roman'; then
+    echo "[devcontainer] Installing Microsoft Core Fonts for the 1C web client…"
+    sudo sed -i '0,/^Components: main$/s//Components: main contrib/' \
+        /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
+    echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true \
+        | sudo debconf-set-selections
+    if sudo apt-get update -o Acquire::Check-Valid-Until=false \
+        && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ttf-mscorefonts-installer fontconfig; then
+        sudo fc-cache -f
+        echo "[devcontainer] MS Core Fonts installed."
+    else
+        echo "[devcontainer] WARN: MS Core Fonts install failed (web client may warn about fonts)."
+    fi
+fi
+
 echo "[devcontainer] Claude Code configured: bypassPermissions (container-only)."
 echo "[devcontainer] Sibling repos: ./tmp/tree-sitter-bsl, ./tmp/vscode-1c-platform-tools"
+echo "[devcontainer] RAS admin: rac cluster list host.docker.internal:1545"
 echo "[devcontainer] Start with:  claude"

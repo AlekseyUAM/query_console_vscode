@@ -10,6 +10,14 @@
   // (running on the host) are reachable from inside the container.
   "runArgs": ["--add-host=host.docker.internal:host-gateway"],
 
+  // Bind-mount the host 1C platform install (read-only) so `rac` is available
+  // inside the container for cluster session administration (kill hung sessions
+  // via RAS on host.docker.internal:1545). Mounted at the same path so rac's
+  // rpath to its sibling .so files (core83.so, etc.) resolves.
+  "mounts": [
+    "source=/opt/1cv8/x86_64/8.3.27.2130,target=/opt/1cv8/x86_64/8.3.27.2130,type=bind,readonly"
+  ],
+
   // Runs on the HOST before the container is created: copies the sibling repos
   // into ./tmp so they travel into the workspace (tmp/ is gitignored).
   "initializeCommand": "bash .devcontainer/copy-sibling-repos.sh",
