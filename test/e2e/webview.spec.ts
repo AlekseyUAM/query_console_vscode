@@ -162,12 +162,16 @@ test.describe('Query Constructor Webview', () => {
     await expect(sel).toHaveAttribute('title', /.+/); // непустой тултип полного имени
   });
 
-  test('боковой стрип пакета: контейнер скроллится по вертикали', async ({ page }) => {
+  test('боковой стрип пакета: появляется при >1 запросе и скроллится по вертикали', async ({ page }) => {
     await page.goto(BASE);
-    // Стрип появляется только при >1 запросе пакета; здесь проверяем, что КОГДА он есть,
-    // у него overflowY=auto. Если стрипа нет в стартовом состоянии — кейс пропускаем.
+    // Создаём пакет из >1 запроса через вкладку «Пакет запросов» (кнопка «Добавить»),
+    // тогда появляется боковой вертикальный стрип имён запросов.
+    await page.locator('[data-testid="tabsbar"] [data-tab="Пакет запросов"]').click();
+    await page.locator('button[title="Добавить"]').click();
+    // Стрип виден только ВНЕ вкладки «Пакет запросов» — переключаемся на «Таблицы и поля».
+    await page.locator('[data-testid="tabsbar"] [data-tab="Таблицы и поля"]').click();
     const strip = page.locator('[data-testid="side-strip"]');
-    if (await strip.count() === 0) test.skip(true, 'стрип не виден без пакета');
+    await expect(strip).toBeVisible();
     const overflow = await strip.evaluate(el => getComputedStyle(el).overflowY);
     expect(overflow).toBe('auto');
   });
