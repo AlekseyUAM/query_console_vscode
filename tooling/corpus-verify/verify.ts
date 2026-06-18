@@ -73,8 +73,22 @@ async function main() {
     }
   }
   const classes = classifyCorpus(entries);
-  const sampledFull = sampleRepresentatives(classes, PER_CLASS);
-  const sampled = MAX_SAMPLE !== undefined ? sampledFull.slice(0, MAX_SAMPLE) : sampledFull;
+  // При ограничении MAX_SAMPLE берём представителей из САМЫХ КРУПНЫХ классов (наибольшее
+  // покрытие корпуса), т.к. `classes` отсортированы по размеру убыв.; иначе — полный
+  // детерминированный набор представителей (по одному+ на каждый класс).
+  let sampled: string[];
+  if (MAX_SAMPLE !== undefined) {
+    const picked: string[] = [];
+    outer: for (const c of classes) {
+      for (const m of c.members.slice(0, PER_CLASS)) {
+        picked.push(m);
+        if (picked.length >= MAX_SAMPLE) break outer;
+      }
+    }
+    sampled = picked;
+  } else {
+    sampled = sampleRepresentatives(classes, PER_CLASS);
+  }
   const fvByName = new Map(entries.map(e => [e.name, e.fv]));
   console.log(`Корпус: ${files.length}, классов: ${classes.length}, выборка: ${sampled.length}${MAX_SAMPLE !== undefined ? ` (ограничено MAX_SAMPLE=${MAX_SAMPLE})` : ''}, parse-fail: ${parseFailures.length}`);
 
@@ -86,17 +100,31 @@ async function main() {
     browser = await chromium.launch({ headless: true });
     const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
     const page = await ctx.newPage();
-    page.on('pageerror', e => results.push({ name: '(pageerror)', key: '', violations: [{ code: 'TABS', detail: `pageerror: ${e.message}` }] }));
-    await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => (window as any).__metaApplied === true, undefined, { timeout: 60_000 });
+    const url = `http://localhost:${PORT}/index.html`;
+    // Свежая страница на КАЖДЫЙ запрос — как боевой extension (createPanel создаёт новый
+    // webview и шлёт loadModel один раз). Многократный loadModel в одном долгоживущем
+    // webview накапливал состояние и после ~3 загрузок переставал отрисовывать панель
+    // «Таблицы» (артефакт harness, не баг для пользователя: panel.ts не переиспользует
+    // webview). Перезагрузка на каждый запрос устраняет накопление.
+    let pageError: string | null = null;
+    page.on('pageerror', e => { pageError = e.message; });
     for (const name of sampled) {
       const text = fs.readFileSync(path.join(CORPUS_DIR, name), 'utf8');
       const fv = fvByName.get(name)!;
       try {
+        pageError = null;
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => (window as any).__metaApplied === true, undefined, { timeout: 60_000 });
         await page.evaluate(t => (window as any).__inv.loadQuery(t), text);
         await page.locator('[data-testid="tabsbar"] [data-tab]').first().waitFor({ timeout: 30_000 });
-        await page.waitForTimeout(400);
+        // Холодный рендер дерева «База данных» (6899 таблиц) + loadModel: даём устаканиться.
+        await page.waitForTimeout(1000);
         const snap = (await page.evaluate(`(${SNAPSHOT_FN})()`)) as UiSnapshot;
+        if (pageError) {
+          results.push({ name, key: '', violations: [{ code: 'TABS', detail: `pageerror: ${pageError}` }] });
+          await saveScreenshot(page, path.join(OUT_DIR, name.replace(/\.[^.]+$/, '')), 0, 'violation');
+          continue;
+        }
         const violations = checkInvariants(snap, fv);
         results.push({ name, key: '', violations });
         if (violations.length > 0) {
