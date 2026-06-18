@@ -137,22 +137,22 @@ export function App(): React.ReactElement {
 
   // Видимые вкладки: «Связи» — сразу после «Таблицы и поля» и только при > 1 таблице.
   // При типе dropTemp видны только «Дополнительно» и «Пакет запросов».
-  // «Индекс» — только для типа «Создание ВТ»; базовый список всегда без неё,
+  // «Индексы» — только для типа «Создание ВТ»; базовый список всегда без неё,
   // вставляем ниже в finalTabs сразу после «Дополнительно».
   const showIndexTab = state.queryType === 'createTemp';
   const showJoinsTab = state.selectedTables.length > 1;
-  const baseTabs = TABS.filter(t => t !== 'Индекс');
+  const baseTabs = TABS.filter(t => t !== 'Индексы');
   const visibleTabs = state.queryType === 'dropTemp'
     ? ['Дополнительно', 'Пакет запросов']
     : showJoinsTab
       ? [baseTabs[0], 'Связи', ...baseTabs.slice(1)]
       : baseTabs;
 
-  // Вставка вкладки «Индекс» сразу после «Дополнительно» при типе «Создание ВТ».
+  // Вставка вкладки «Индексы» сразу после «Дополнительно» при типе «Создание ВТ».
   let finalTabs = visibleTabs;
-  if (showIndexTab && finalTabs.includes('Дополнительно') && !finalTabs.includes('Индекс')) {
+  if (showIndexTab && finalTabs.includes('Дополнительно') && !finalTabs.includes('Индексы')) {
     const i = finalTabs.indexOf('Дополнительно');
-    finalTabs = [...finalTabs.slice(0, i + 1), 'Индекс', ...finalTabs.slice(i + 1)];
+    finalTabs = [...finalTabs.slice(0, i + 1), 'Индексы', ...finalTabs.slice(i + 1)];
   }
 
   // Если активная вкладка «Связи» скрылась (удалили таблицу) — вернуться к «Таблицы и поля».
@@ -162,9 +162,9 @@ export function App(): React.ReactElement {
     }
   }, [showJoinsTab, activeTab]);
 
-  // Если активная вкладка «Индекс» скрылась (сменили тип запроса) — на «Дополнительно».
+  // Если активная вкладка «Индексы» скрылась (сменили тип запроса) — на «Дополнительно».
   useEffect(() => {
-    if (!showIndexTab && activeTab === 'Индекс') {
+    if (!showIndexTab && activeTab === 'Индексы') {
       setActiveTab('Дополнительно');
     }
   }, [showIndexTab, activeTab]);
@@ -380,7 +380,7 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab === 'Индекс' && (
+      {activeTab === 'Индексы' && (
         <IndexTab
           selectedFields={state.selectedFields}
           indexing={state.indexing}
@@ -464,7 +464,7 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Индекс' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Построитель' && activeTab !== 'Пакет запросов' && (
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Индексы' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Построитель' && activeTab !== 'Пакет запросов' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
