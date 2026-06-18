@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { MetaTable, MetaField } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, Grouping, AggregateFunction, FieldRef, SummableField } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
+import { distinctFieldRefs } from '../fieldSource';
 
 const ALL_FUNCS: AggregateFunction[] = ['Сумма', 'Количество', 'КоличествоРазличных', 'Максимум', 'Минимум', 'Среднее'];
 const NON_NUMERIC_FUNCS: AggregateFunction[] = ['КоличествоРазличных', 'Количество', 'Максимум', 'Минимум'];
@@ -101,7 +102,7 @@ export function GroupingTab(props: Props): React.ReactElement {
   } = props;
 
   // Источник: обычные поля выборки (не выражения, не ТЧ).
-  const sourceFields = selectedFields.filter(f => !f.expression && f.path);
+  const sourceFields = distinctFieldRefs(selectedFields);
 
   function labelFor(tableId: string, path: string): string {
     const table = selectedTables.find(t => t.id === tableId);
@@ -147,15 +148,16 @@ export function GroupingTab(props: Props): React.ReactElement {
       {/* Левый список: Поля */}
       <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
         <div style={SECTION_HEADER}>Поля</div>
-        <div style={dropZone}>
+        <div style={dropZone} data-field-source="grouping-source">
           {sourceFields.map((f, i) => (
             <div
               key={`${f.tableId}:${f.path}:${i}`}
+              data-field-item
               draggable
-              onDragStart={e => dragStart(e, f.tableId, f.path)}
+              onDragStart={e => dragStart(e, f.tableId, f.path!)}
               style={{ ...ROW, cursor: 'grab', justifyContent: 'flex-start' }}
             >
-              <span>{labelFor(f.tableId, f.path)}</span>
+              <span>{labelFor(f.tableId, f.path!)}</span>
             </div>
           ))}
           {sourceFields.length === 0 && (
