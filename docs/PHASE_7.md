@@ -116,8 +116,9 @@ Tooling-драйвер [`tooling/real-constructor/`](../tooling/real-constructor
 
 **Запуск:** `npm run real:setup` (Chromium), `npm run real:smoke` (эталон
 `ЗаказПокупателя` — приёмка выполнимости, 8 вкладок), `npm run real:inventory`
-(10 сложных запросов → скриншоты + опись). Скриншоты-референс — в
-`docs/phase7.3-real-constructor/<slug>/`, опись UI — `INVENTORY.md`.
+(10 сложных запросов → скриншоты + опись). Скриншоты-референс и опись UI пишутся в
+`tmp/phase7.3-real-constructor/<slug>/` (gitignored, не коммитятся) — регенерируются
+прогоном `real:inventory`.
 
 **Инфраструктура (этой же подфазы):** read-only bind-mount платформы 1С + `rac` в
 контейнере для снятия зомби-сессий через RAS (держат единственную лицензию —

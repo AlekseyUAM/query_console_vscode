@@ -19,7 +19,8 @@ const SAMPLE = path.join(
 
 async function main(): Promise<void> {
   const slug = path.basename(SAMPLE).replace(/\.[^.]+$/, '');
-  const dir = path.resolve('docs/phase7.3-real-constructor', slug);
+  // Скриншоты-референс пишем в tmp/ (gitignored) — в репозиторий не коммитим.
+  const dir = path.resolve('tmp/phase7.3-real-constructor', slug);
   const log = createLogger('tmp/real-constructor.log');
   const s = await launch();
   try {

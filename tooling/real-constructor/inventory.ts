@@ -37,7 +37,8 @@ async function main(): Promise<void> {
         continue;
       }
       const slug = name.replace(/\.[^.]+$/, '');
-      const dir = path.resolve('docs/phase7.3-real-constructor', slug);
+      // Скриншоты-референс пишем в tmp/ (gitignored) — в репозиторий не коммитим.
+      const dir = path.resolve('tmp/phase7.3-real-constructor', slug);
       try {
         await openQueryConsole(s);
         await loadQueryIntoConstructor(s, fs.readFileSync(file, 'utf8'));
