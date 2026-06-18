@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { launch, login, close } from './session';
 import { openQueryConsole } from './console';
-import { loadQueryIntoConstructor, walkTabs } from './constructor';
+import { loadQueryIntoConstructor, walkTabs, closeConstructor } from './constructor';
 import { saveScreenshot } from './screenshot';
 import { createLogger } from './logger';
 import { RecursionGuard } from './recursionGuard';
@@ -48,6 +48,9 @@ async function main(): Promise<void> {
       } catch (e) {
         log.warn(`${slug}: ${(e as Error).message}`);
         console.log(`${slug}: ОШИБКА — ${(e as Error).message}`);
+      } finally {
+        // Закрыть конструктор, чтобы следующий запрос стартовал с чистой консоли.
+        await closeConstructor(s).catch(() => {});
       }
     }
   } finally {

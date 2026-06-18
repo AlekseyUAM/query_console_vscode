@@ -82,6 +82,31 @@ export async function loadQueryIntoConstructor(s: Session, queryText: string): P
 }
 
 /**
+ * Закрыть открытое окно «Конструктор запроса», отменив изменения, чтобы следующий запрос
+ * стартовал с чистой «Консоли запросов». Без этого модальное окно конструктора от прошлого
+ * запроса перехватывает клики и ломает загрузку следующего (inventory-прогон).
+ */
+export async function closeConstructor(s: Session): Promise<void> {
+  const { page } = s;
+  // Кнопки конструктора («Запрос»/«ОК»/«Отмена») — это <span class="pressBox"> с обычным
+  // textContent (в отличие от вкладок на data-content). «Отмена» закрывает форму без записи.
+  const cancel = page.locator('span.pressBox', { hasText: 'Отмена' }).first();
+  if ((await cancel.count()) > 0) {
+    await cancel.click({ force: true }).catch(() => {});
+  } else {
+    await page.keyboard.press('Escape');
+  }
+  await page.waitForTimeout(800);
+  // Возможный вопрос «Сохранить изменения?» — отвечаем «Нет».
+  const no = page.locator('span.pressBox', { hasText: /^Нет$/ }).first();
+  if ((await no.count()) > 0) {
+    await no.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(400);
+  }
+  await dismissStartupDialog(s);
+}
+
+/**
  * Подписи вкладок конструктора рисуются CSS-ом из атрибута `data-content` на
  * `div.tabsItemTitle` (сам элемент текстового содержимого не имеет — поэтому
  * `getByText`/`textContent` их не находят). Локатор — по этому атрибуту.
