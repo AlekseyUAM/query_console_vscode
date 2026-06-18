@@ -14,6 +14,10 @@ interface Props {
   onFocusTable: (id: string) => void;
   onExpandRef: (ref: RefId) => void;
   onOpenVirtualParams: (tableId: string) => void;
+  /** 7.8.8: создать источник-вложенный запрос. */
+  onAddSubquery: () => void;
+  /** 7.8.9: создать описание временной таблицы. */
+  onAddTempTable: () => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -90,7 +94,7 @@ function FieldRow({ tableFullName, field, depth, expandedRefs, onExpandRef }: {
   );
 }
 
-export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams }: Props): React.ReactElement {
+export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable }: Props): React.ReactElement {
   const [expandedTableIds, setExpandedTableIds] = React.useState<Set<string>>(new Set());
   const [expandedTsSections, setExpandedTsSections] = React.useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -163,6 +167,22 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
         >
           ⚙
         </button>
+        <button
+          data-testid="add-subquery"
+          style={BTN}
+          title="Создать вложенный запрос"
+          onClick={onAddSubquery}
+        >
+          ⊂З
+        </button>
+        <button
+          data-testid="add-temp-table"
+          style={BTN}
+          title="Создать описание временной таблицы"
+          onClick={onAddTempTable}
+        >
+          ВТ
+        </button>
       </div>
       <div
         onDragOver={handleDragOver}
@@ -186,6 +206,12 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
             <div key={t.id}>
               <div
                 data-table-id={t.id}
+                draggable
+                onDragStart={e => {
+                  // 7.8.6: перетаскивание выбранной таблицы в список «Поля» → все её поля.
+                  e.dataTransfer.setData('text/plain', JSON.stringify({ kind: 'table', tableFullName: t.fullName }));
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
                 onClick={() => { onFocusTable(t.id); toggleExpand(t.id); }}
                 style={{
                   padding: '2px 6px',

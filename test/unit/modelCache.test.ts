@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { loadMetadataCached, modelCachePath, MODEL_CACHE_VERSION } from '../../src/core/metadata/modelCache';
+import { loadMetadataCached, rebuildModelCache, modelCachePath, MODEL_CACHE_VERSION } from '../../src/core/metadata/modelCache';
 
 const CONFIG_YAML = `version: 1
 objects:
@@ -90,5 +90,44 @@ describe('loadMetadataCached', () => {
     const model = loadMetadataCached(cfDir);
     expect(model.tables.some(t => t.fullName === 'Справочник.Валюты')).toBe(true);
     expect(model.tables.some(t => t.fullName === 'TAMPERED.Marker')).toBe(false);
+  });
+});
+
+describe('rebuildModelCache', () => {
+  it('writes the cache file with the current version and returns a model with tables', () => {
+    const cfDir = buildTmp();
+    const model = rebuildModelCache(cfDir);
+    expect(model.tables.some(t => t.fullName === 'Справочник.Валюты')).toBe(true);
+    const cachePath = modelCachePath(cfDir);
+    expect(fs.existsSync(cachePath)).toBe(true);
+    const onDisk = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    expect(onDisk.cacheVersion).toBe(MODEL_CACHE_VERSION);
+    expect(onDisk.model.tables.some((t: { fullName: string }) => t.fullName === 'Справочник.Валюты')).toBe(true);
+  });
+
+  it('leaves the cache fresh so a subsequent loadMetadataCached is a HIT', () => {
+    const cfDir = buildTmp();
+    const rebuilt = rebuildModelCache(cfDir);
+    const cachePath = modelCachePath(cfDir);
+    const mtimeAfterRebuild = fs.statSync(cachePath).mtimeMs;
+    const loaded = loadMetadataCached(cfDir);
+    // cache HIT: same model, and the cache file was not rewritten
+    expect(loaded).toEqual(rebuilt);
+    expect(fs.statSync(cachePath).mtimeMs).toBe(mtimeAfterRebuild);
+  });
+
+  it('overwrites a stale cache (old version / tiny model) with the full current model', () => {
+    const cfDir = buildTmp();
+    const cachePath = modelCachePath(cfDir);
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify({
+      cacheVersion: 0,
+      model: { version: 1, tables: [{ kind: 'Справочник', name: 'Marker', fullName: 'TAMPERED.Marker', fields: [] }] },
+    }));
+    rebuildModelCache(cfDir);
+    const onDisk = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    expect(onDisk.cacheVersion).toBe(MODEL_CACHE_VERSION);
+    expect(onDisk.model.tables.some((t: { fullName: string }) => t.fullName === 'Справочник.Валюты')).toBe(true);
+    expect(onDisk.model.tables.some((t: { fullName: string }) => t.fullName === 'TAMPERED.Marker')).toBe(false);
   });
 });

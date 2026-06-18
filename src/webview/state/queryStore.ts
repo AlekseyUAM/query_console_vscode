@@ -1,4 +1,4 @@
-import type { MetaTable } from '../../core/metadata/types';
+import type { MetaTable, MetaType } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, JoinCondition, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
@@ -101,6 +101,13 @@ export type QueryAction =
   | { type: 'REMOVE_TABLE'; tableId: string }
   | { type: 'ADD_FIELD'; tableId: string; fieldPath: string }
   | { type: 'ADD_FIELD_WITH_TABLE'; tableFullName: string; fieldPath: string }
+  // 7.8.6: перетаскивание таблицы в список «Поля» → все поля таблицы.
+  | { type: 'ADD_ALL_FIELDS_WITH_TABLE'; tableFullName: string; fieldPaths: string[] }
+  // 7.8.5: двойной клик по полю → правка как произвольного выражения (на месте).
+  | { type: 'SET_FIELD_EXPRESSION'; fieldIdx: number; expression: string }
+  // 7.8.8 / 7.8.9: источник-подзапрос / описание временной таблицы.
+  | { type: 'ADD_SUBQUERY_TABLE'; name: string; subquery: QueryDocument; columns: string[] }
+  | { type: 'ADD_TEMP_TABLE'; name: string; fields: { name: string; type: string }[] }
   | { type: 'REMOVE_FIELD'; fieldIdx: number }
   | { type: 'ADD_TAB_SECTION_WITH_TABLE'; parentTableFullName: string; tsName: string; tsFullName: string; tsFields: string[] }
   | { type: 'REMOVE_TAB_SECTION'; tableId: string; tsName: string }
@@ -219,6 +226,39 @@ export function initialState(): QueryState {
 }
 
 let _tableCounter = 0;
+
+/** Примитивные типы для описания полей временной таблицы (окно «Временная таблица»). */
+export const TEMP_TABLE_TYPES = ['Строка', 'Число', 'Дата', 'Булево'] as const;
+
+/** Текст типа из окна «Временная таблица» → MetaType[] (примитивы; иначе без типа). */
+function tempFieldTypes(type: string): MetaType[] {
+  const t = type.trim();
+  return (TEMP_TABLE_TYPES as readonly string[]).includes(t)
+    ? [{ primitive: t as MetaType['primitive'] }]
+    : [];
+}
+
+/**
+ * Синтетическая метатаблица для источника-подзапроса / временной таблицы. Вид
+ * `ТабличнаяЧасть` НЕ входит в группы дерева метаданных (`DbTreePanel`), поэтому
+ * такая таблица не засоряет левое дерево, но её колонки резолвятся по `fullName`
+ * в `TablesPanel`/`fieldsForTable` как у обычного источника.
+ */
+function syntheticSourceTable(fullName: string, fields: MetaField[]): MetaTable {
+  return { kind: 'ТабличнаяЧасть', name: fullName, fullName, fields };
+}
+
+/** Уникальное имя источника среди метатаблиц и уже выбранных таблиц (base, base2, …). */
+function uniqueSourceName(state: QueryState, base: string): string {
+  const taken = new Set<string>([
+    ...state.tables.map(t => t.fullName),
+    ...state.selectedTables.map(t => t.fullName),
+  ]);
+  if (!taken.has(base)) return base;
+  let i = 2;
+  while (taken.has(`${base}${i}`)) i++;
+  return `${base}${i}`;
+}
 
 // ============================================================================
 // Слой документа объединения: снимок/восстановление активного запроса.
@@ -624,6 +664,108 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         selectedTables: newSelectedTables,
         focusedSelectedTableId: newFocusedTableId,
         selectedFields: [...state.selectedFields, { tableId, path: action.fieldPath }],
+      };
+    }
+
+    case 'ADD_ALL_FIELDS_WITH_TABLE': {
+      const { tableFullName, fieldPaths } = action;
+      let tableId: string;
+      let newSelectedTables = state.selectedTables;
+      let newFocusedTableId = state.focusedSelectedTableId;
+
+      const existing = state.selectedTables.find(t => t.fullName === tableFullName);
+      if (existing) {
+        tableId = existing.id;
+      } else {
+        tableId = `t${++_tableCounter}`;
+        newSelectedTables = [...state.selectedTables, { id: tableId, fullName: tableFullName }];
+        newFocusedTableId = tableId;
+      }
+
+      const existingPaths = new Set(
+        state.selectedFields.filter(f => f.tableId === tableId).map(f => f.path)
+      );
+      const toAdd = fieldPaths
+        .filter(p => !existingPaths.has(p))
+        .map(p => ({ tableId, path: p }));
+
+      if (toAdd.length === 0 && newSelectedTables === state.selectedTables) return state;
+      return {
+        ...state,
+        selectedTables: newSelectedTables,
+        focusedSelectedTableId: newFocusedTableId,
+        selectedFields: [...state.selectedFields, ...toAdd],
+      };
+    }
+
+    case 'SET_FIELD_EXPRESSION': {
+      const cur = state.selectedFields[action.fieldIdx];
+      if (!cur) return state;
+      const next: SelectedField = { tableId: cur.tableId, path: '', expression: action.expression };
+      if (cur.alias) next.alias = cur.alias;
+      const selectedFields = state.selectedFields.map((f, i) => (i === action.fieldIdx ? next : f));
+      // Поле перестало быть простой колонкой (path → ''): убираем его ссылки из
+      // группировки/порядка/итогов/индексов (как REMOVE_FIELD), иначе генератор
+      // отрисовал бы устаревшую ссылку на старый путь.
+      if (cur.path === '') {
+        return { ...state, selectedFields };
+      }
+      const { tableId, path } = cur;
+      const grouping: Grouping = {
+        ...state.grouping,
+        groupFields: state.grouping.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        aggregates: state.grouping.aggregates.filter(a => !(a.tableId === tableId && a.path === path)),
+        groupSets: state.grouping.groupSets
+          .map(set => set.filter(f => !(f.tableId === tableId && f.path === path)))
+          .filter(set => set.length > 0),
+      };
+      const order: Order = {
+        ...state.order,
+        fields: state.order.fields.filter(f => !(f.tableId === tableId && f.path === path)),
+      };
+      const totals: Totals = {
+        ...state.totals,
+        groupFields: state.totals.groupFields.filter(f => !(f.tableId === tableId && f.path === path)),
+        totalFields: state.totals.totalFields.filter(f => !(f.tableId === tableId && f.path === path)),
+      };
+      const indexing: Indexing = {
+        ...state.indexing,
+        indexes: state.indexing.indexes.map(idx => ({
+          ...idx,
+          fields: idx.fields.filter(f => !(f.tableId === tableId && f.path === path)),
+        })),
+      };
+      return { ...state, selectedFields, grouping, order, totals, indexing };
+    }
+
+    case 'ADD_SUBQUERY_TABLE': {
+      const fullName = uniqueSourceName(state, action.name.trim() || 'ВложенныйЗапрос');
+      const fields: MetaField[] = action.columns.map(c => ({ name: c, kind: 'attribute', types: [] }));
+      const meta = syntheticSourceTable(fullName, fields);
+      const id = `t${++_tableCounter}`;
+      const sel: SelectedTable = { id, fullName, subquery: action.subquery };
+      return {
+        ...state,
+        tables: [...state.tables, meta],
+        selectedTables: [...state.selectedTables, sel],
+        focusedSelectedTableId: id,
+      };
+    }
+
+    case 'ADD_TEMP_TABLE': {
+      const name = action.name.trim();
+      if (!name) return state;
+      const fullName = uniqueSourceName(state, name);
+      const fields: MetaField[] = action.fields
+        .filter(f => f.name.trim())
+        .map(f => ({ name: f.name.trim(), kind: 'attribute', types: tempFieldTypes(f.type) }));
+      const meta = syntheticSourceTable(fullName, fields);
+      const id = `t${++_tableCounter}`;
+      return {
+        ...state,
+        tables: [...state.tables, meta],
+        selectedTables: [...state.selectedTables, { id, fullName }],
+        focusedSelectedTableId: id,
       };
     }
 

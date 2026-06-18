@@ -43,6 +43,11 @@
           "type": "string",
           "default": "tmp/parser_data",
           "description": "Каталог для результата парсинга метаданных (YAML). Относительный путь резолвится от корня workspace."
+        },
+        "queryConsole.openInNewWindow": {
+          "type": "boolean",
+          "default": true,
+          "description": "Открывать «Конструктор запроса» в отдельном окне (а не во вкладке-панели основного окна VS Code). Требует VS Code 1.85+."
         }
       }
     }

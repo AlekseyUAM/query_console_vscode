@@ -32,6 +32,16 @@ interface CacheFile {
   model: MetadataModel;
 }
 
+/** Best-effort write of the model cache file in the canonical CacheFile shape. */
+function writeModelCache(cachePath: string, model: MetadataModel): void {
+  try {
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify({ cacheVersion: MODEL_CACHE_VERSION, model } satisfies CacheFile));
+  } catch {
+    // best-effort: ignore write failures
+  }
+}
+
 /**
  * Loads the consolidated metadata model, using a single-JSON cache file when fresh.
  *
@@ -57,11 +67,23 @@ export function loadMetadataCached(cfYamlDir: string): MetadataModel {
   }
 
   const model = loadMetadataFromYaml(cfYamlDir);
-  try {
-    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-    fs.writeFileSync(cachePath, JSON.stringify({ cacheVersion: MODEL_CACHE_VERSION, model } satisfies CacheFile));
-  } catch {
-    // best-effort: ignore write failures
-  }
+  writeModelCache(cachePath, model);
+  return model;
+}
+
+/**
+ * Unconditionally rebuilds the consolidated metadata model from YAML and writes it
+ * to the JSON cache file (same shape/version as {@link loadMetadataCached}).
+ *
+ * Called right after the user clicks «Обновить кэш»: the host re-parses the
+ * configuration, which rewrites the YAML files with newer mtimes and would
+ * otherwise invalidate `model-cache.json`. By eagerly rebuilding here we keep the
+ * JSON model cache warm, so the next open is a fast cache HIT instead of a cold
+ * (~13s) rebuild. The write is best-effort; the freshly built model is returned
+ * even if the cache write fails.
+ */
+export function rebuildModelCache(cfYamlDir: string): MetadataModel {
+  const model = loadMetadataFromYaml(cfYamlDir);
+  writeModelCache(modelCachePath(cfYamlDir), model);
   return model;
 }

@@ -15,6 +15,10 @@ interface Props {
   onFocusField: (idx: number) => void;
   canAddExpression: boolean;
   onAddExpression: () => void;
+  /** 7.8.5: двойной клик по полю — правка как произвольного выражения. */
+  onEditField: (idx: number) => void;
+  /** 7.8.6: перетаскивание таблицы в список — добавить все её поля. */
+  onDropTable: (tableFullName: string) => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -41,7 +45,7 @@ const REMOVE_BTN: React.CSSProperties = {
 export function FieldsPanel({
   selectedTables, selectedFields, tabSectionFields, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
-  onFocusField, canAddExpression, onAddExpression,
+  onFocusField, canAddExpression, onAddExpression, onEditField, onDropTable,
 }: Props): React.ReactElement {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [expandedTs, setExpandedTs] = React.useState<Set<string>>(new Set(
@@ -87,6 +91,9 @@ export function FieldsPanel({
         onDropField(data.tableFullName, data.fieldPath);
       } else if (data.kind === 'tabularsection') {
         onDropTabSection(data.parentTableFullName, data.tsName, data.tsFullName, data.tsFields);
+      } else if (data.kind === 'table') {
+        // 7.8.6: таблица брошена в список «Поля» → добавить все её поля.
+        onDropTable(data.tableFullName);
       }
     } catch {
       // ignore malformed drag data
@@ -139,6 +146,8 @@ export function FieldsPanel({
               key={f.expression ? `${f.tableId}:expr:${i}` : `${f.tableId}:${f.path}`}
               data-field-idx={i}
               onClick={() => onFocusField(i)}
+              onDoubleClick={() => onEditField(i)}
+              title="Двойной клик — править как произвольное выражение"
               style={{
                 padding: '2px 6px',
                 cursor: 'default',

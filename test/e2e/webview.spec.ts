@@ -52,6 +52,23 @@ async function dragFieldToPanel(page: Page, tableFullName: string, fieldPath: st
   }, payload);
 }
 
+/** Drop an arbitrary drag payload onto the Fields panel drop zone (the 2nd dashed zone). */
+async function dropPayloadOnFieldsPanel(page: Page, payload: string): Promise<void> {
+  await page.evaluate((payload) => {
+    const allDivs = Array.from(document.querySelectorAll('div'));
+    const dropZones = allDivs.filter(d => {
+      const s = (d as HTMLElement).style;
+      return s.overflowY === 'auto' && s.minHeight === '40px' && s.border.includes('dashed');
+    }) as HTMLElement[];
+    const dropZone = dropZones[1];
+    if (!dropZone) throw new Error('Fields panel drop zone not found');
+    const dt = new DataTransfer();
+    dt.setData('text/plain', payload);
+    dropZone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    dropZone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, payload);
+}
+
 test.describe('Query Constructor Webview', () => {
   test('shows Справочники group in DB tree', async ({ page }) => {
     await page.goto(BASE);
@@ -160,6 +177,52 @@ test.describe('Query Constructor Webview', () => {
     await page.locator('button[title="Добавить связь"]').click();
     const sel = page.locator('select[title]').first();
     await expect(sel).toHaveAttribute('title', /.+/); // непустой тултип полного имени
+  });
+
+  // 7.8.4: кнопка «+» в списке «Поля» открывает «Произвольное выражение» и вставляет результат новым полем.
+  test('Поля: «+» открывает Произвольное выражение и добавляет новое поле', async ({ page }) => {
+    await page.goto(BASE);
+    await page.locator('text=Справочники').click();
+    await dragTableToPanel(page, 'Справочник.Валюты');
+    // «+» доступна, как только есть хотя бы одна таблица (фокус не обязателен).
+    await page.locator('button[title="Добавить поле (произвольное выражение)"]').click();
+    await expect(page.locator('text=Произвольное выражение')).toBeVisible();
+    await page.locator('textarea').fill('1 + 1');
+    await page.locator('[data-testid="expr-ok"]').click();
+    // Новое поле-выражение появилось в списке «Поля».
+    await expect(page.locator('[data-field-idx="0"]')).toBeVisible();
+    await expect(page.locator('[data-field-idx="0"]')).toContainText('1 + 1');
+  });
+
+  // 7.8.5: двойной клик по полю открывает «Произвольное выражение» для правки этого поля.
+  test('Поля: двойной клик открывает Произвольное выражение для правки поля', async ({ page }) => {
+    await page.goto(BASE);
+    await page.locator('text=Справочники').click();
+    await dragTableToPanel(page, 'Справочник.Валюты');
+    await dragFieldToPanel(page, 'Справочник.Валюты', 'Код');
+    await expect(page.locator('[data-field-idx="0"]')).toContainText('Валюты.Код');
+    await page.locator('[data-field-idx="0"]').dblclick();
+    await expect(page.locator('text=Произвольное выражение')).toBeVisible();
+    // Текст предзаполнен квалифицированным путём редактируемого поля.
+    await expect(page.locator('textarea')).toHaveValue('Валюты.Код');
+    await page.locator('textarea').fill('ВЫРАЗИТЬ(Валюты.Код КАК Строка(10))');
+    await page.locator('[data-testid="expr-ok"]').click();
+    // Поле обновлено на месте (не появилось второе поле).
+    await expect(page.locator('[data-field-idx="0"]')).toContainText('ВЫРАЗИТЬ(Валюты.Код КАК Строка(10))');
+    await expect(page.locator('[data-field-idx="1"]')).toHaveCount(0);
+  });
+
+  // 7.8.6: перетаскивание таблицы в список «Поля» добавляет ВСЕ её поля.
+  test('Поля: перетаскивание таблицы добавляет все её поля', async ({ page }) => {
+    await page.goto(BASE);
+    await page.locator('text=Справочники').click();
+    await dragTableToPanel(page, 'Справочник.Валюты');
+    // Бросаем саму таблицу в список «Поля» (а не отдельный реквизит).
+    await dropPayloadOnFieldsPanel(page, JSON.stringify({ kind: 'table', tableFullName: 'Справочник.Валюты' }));
+    // У Валюты в harness 4 поля → индексы 0..3.
+    await expect(page.locator('[data-field-idx="0"]')).toBeVisible();
+    await expect(page.locator('[data-field-idx="3"]')).toBeVisible();
+    await expect(page.locator('[data-field-idx="4"]')).toHaveCount(0);
   });
 
   test('боковой стрип пакета: появляется при >1 запросе и скроллится по вертикали', async ({ page }) => {

@@ -16,6 +16,8 @@ import { BuilderTab } from './components/BuilderTab';
 import { BatchTab } from './components/BatchTab';
 import { VirtualTableParamsDialog } from './components/VirtualTableParamsDialog';
 import { ExpressionBuilder } from './components/ExpressionBuilder';
+import { SubqueryDialog } from './components/SubqueryDialog';
+import { TempTableDialog } from './components/TempTableDialog';
 import type { VirtualParams } from '../core/query/queryModel';
 import { defaultTableAlias } from '../core/query/queryModel';
 import type { MetaField, MetaTable } from '../core/metadata/types';
@@ -49,17 +51,36 @@ export function App(): React.ReactElement {
     initial: string;
     onOk: (text: string) => void;
   }>(null);
+  // 7.8.2: пока не пришли метаданные (и модель запроса, если открываем существующий
+  // текст) — показываем индикатор загрузки, чтобы не мигать пустым конструктором.
+  const [loading, setLoading] = useState(true);
+  const expectModelRef = React.useRef(false);
+  // 7.8.8 / 7.8.9: модальные окна «Вложенный запрос» / «Временная таблица».
+  const [subqueryDialog, setSubqueryDialog] = useState<{ error: string | null } | null>(null);
+  const [tempTableOpen, setTempTableOpen] = useState(false);
 
   useEffect(() => {
     const unsub = onHostMessage(msg => {
-      if (msg.type === 'metadataTree') {
+      if (msg.type === 'init') {
+        expectModelRef.current = msg.hasInitialQuery;
+      } else if (msg.type === 'metadataTree') {
         dispatch({ type: 'SET_METADATA', tables: msg.tables });
+        // Нет входного запроса — конструктор готов сразу после метаданных.
+        if (!expectModelRef.current) setLoading(false);
       } else if (msg.type === 'refFields') {
         dispatch({ type: 'SET_REF_FIELDS', ref: msg.ref, fields: msg.fields });
       } else if (msg.type === 'refreshResult') {
         setRefreshState({ ok: msg.ok, message: msg.message });
       } else if (msg.type === 'loadModel') {
-        dispatch({ type: 'LOAD_BATCH', doc: parseBatch(msg.text) });
+        // Разбор реального текста под курсором может бросить — не оставляем оверлей
+        // загрузки навсегда поверх UI (7.8.2): в любом случае снимаем loading.
+        try {
+          dispatch({ type: 'LOAD_BATCH', doc: parseBatch(msg.text) });
+        } catch {
+          // не удалось разобрать — открываем пустой конструктор, не блокируем UI
+        } finally {
+          setLoading(false);
+        }
       }
     });
     postToHost({ type: 'ready' });
@@ -254,6 +275,8 @@ export function App(): React.ReactElement {
             onFocusTable={id => dispatch({ type: 'FOCUS_SELECTED_TABLE', id })}
             onExpandRef={ref => postToHost({ type: 'expandRef', ref })}
             onOpenVirtualParams={tableId => setVtDialogTableId(tableId)}
+            onAddSubquery={() => setSubqueryDialog({ error: null })}
+            onAddTempTable={() => setTempTableOpen(true)}
           />
         </div>
         <div style={panelStyle}>
@@ -272,18 +295,41 @@ export function App(): React.ReactElement {
               dispatch({ type: 'REMOVE_TAB_SECTION_SUB_FIELD', tableId, tsName, fieldName })
             }
             onFocusField={idx => dispatch({ type: 'FOCUS_SELECTED_FIELD', idx })}
-            canAddExpression={state.focusedSelectedTableId !== null}
+            canAddExpression={state.selectedTables.length > 0}
             onAddExpression={() => {
-              const tableId = state.focusedSelectedTableId;
+              // 7.8.4: «+» открывает «Произвольное выражение» с полями всех таблиц;
+              // результат — новое поле. Привязываем к фокусной (или первой) таблице.
+              const tableId = state.focusedSelectedTableId ?? state.selectedTables[0]?.id;
               if (!tableId) return;
               setExprBuilder({
-                fields: fieldsForTable(tableId, true),
+                fields: qualifiedFieldsAllTables(),
                 initial: '',
                 onOk: text => {
                   if (text.trim()) dispatch({ type: 'ADD_EXPRESSION_FIELD', tableId, expression: text.trim() });
                   setExprBuilder(null);
                 },
               });
+            }}
+            onEditField={idx => {
+              // 7.8.5: двойной клик — править поле как произвольное выражение.
+              const f = state.selectedFields[idx];
+              if (!f) return;
+              const table = state.selectedTables.find(t => t.id === f.tableId);
+              const initial = f.expression ?? (table ? `${defaultTableAlias(table)}.${f.path}` : f.path);
+              setExprBuilder({
+                fields: qualifiedFieldsAllTables(),
+                initial,
+                onOk: text => {
+                  if (text.trim()) dispatch({ type: 'SET_FIELD_EXPRESSION', fieldIdx: idx, expression: text.trim() });
+                  setExprBuilder(null);
+                },
+              });
+            }}
+            onDropTable={tableFullName => {
+              // 7.8.6: таблица брошена в «Поля» → добавить все её поля.
+              const meta = state.tables.find(m => m.fullName === tableFullName);
+              if (!meta) return;
+              dispatch({ type: 'ADD_ALL_FIELDS_WITH_TABLE', tableFullName, fieldPaths: meta.fields.map(f => f.name) });
             }}
           />
         </div>
@@ -509,6 +555,57 @@ export function App(): React.ReactElement {
           onOk={exprBuilder.onOk}
           onCancel={() => setExprBuilder(null)}
         />
+      )}
+
+      {/* 7.8.8: nested subquery dialog */}
+      {subqueryDialog && (
+        <SubqueryDialog
+          parseError={subqueryDialog.error}
+          onCancel={() => setSubqueryDialog(null)}
+          onOk={(name, text) => {
+            let doc;
+            try {
+              doc = parseBatch(text).members[0];
+            } catch (e) {
+              setSubqueryDialog({ error: `Не удалось разобрать запрос: ${(e as Error).message}` });
+              return;
+            }
+            if (!doc || doc.members.length === 0) {
+              setSubqueryDialog({ error: 'Пустой запрос' });
+              return;
+            }
+            const columns = deriveUnionColumns(doc.members).map(c => c.alias);
+            dispatch({ type: 'ADD_SUBQUERY_TABLE', name, subquery: doc, columns });
+            setSubqueryDialog(null);
+          }}
+        />
+      )}
+
+      {/* 7.8.9: temp table description dialog */}
+      {tempTableOpen && (
+        <TempTableDialog
+          onCancel={() => setTempTableOpen(false)}
+          onOk={(name, fields) => {
+            dispatch({ type: 'ADD_TEMP_TABLE', name, fields });
+            setTempTableOpen(false);
+          }}
+        />
+      )}
+
+      {/* 7.8.2: loading overlay — covers the constructor until it is fully populated */}
+      {loading && (
+        <div
+          data-testid="loading-overlay"
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'var(--vscode-editor-background, #1e1e1e)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 300,
+            color: 'var(--vscode-descriptionForeground, #888)', fontSize: 14,
+          }}
+        >
+          Загрузка конструктора…
+        </div>
       )}
 
       {/* Query preview modal */}

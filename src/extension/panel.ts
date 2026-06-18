@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { parseCf } from '../core/metadata/cfParser';
 import { buildCachePath, writeCache } from '../core/metadata/cacheBuilder';
 import { isCacheValid, readCache } from '../core/metadata/cacheLoader';
-import { loadMetadataCached } from '../core/metadata/modelCache';
+import { loadMetadataCached, rebuildModelCache } from '../core/metadata/modelCache';
 import { parseConfiguration } from '../core/metadata/parser/parseConfiguration';
 import { generate } from '../core/query/sdblGenerator';
 import { insertResult } from './insertResult';
@@ -128,6 +128,10 @@ export function createPanel(
 
   panel.webview.onDidReceiveMessage(async (msg: WebviewMsg) => {
     if (msg.type === 'ready') {
+      // 7.8.2: сразу сообщаем вебвью, ждать ли загрузку модели запроса, чтобы оно
+      // показало индикатор загрузки и не мигало пустым конструктором до заполнения.
+      const initMsg: HostMsg = { type: 'init', hasInitialQuery: !!initialQueryText };
+      panel.webview.postMessage(initMsg);
       await metadataReady;
       const reply: HostMsg = { type: 'metadataTree', tables: metadataModel.tables };
       panel.webview.postMessage(reply);
@@ -165,7 +169,16 @@ export function createPanel(
       }
       try {
         parseConfiguration(cfPath, outPath);
-        const reply: HostMsg = { type: 'refreshResult', ok: true, message: 'Кэш обновлён. Перезапустите конструктор для применения изменений.' };
+        // 7.8.1: повторный парсинг переписывает YAML (новый mtime) и инвалидирует
+        // model-cache.json. Сразу перестраиваем консолидированный JSON-кэш, чтобы
+        // следующее открытие конструктора было «тёплым» (быстрым), а не платило
+        // полный холодный разбор YAML (~13 с).
+        const cfYamlDir = path.join(outPath, 'cf');
+        const t = Date.now();
+        const rebuilt = rebuildModelCache(cfYamlDir);
+        channel.appendLine(`[1C Query] model-cache rebuilt in ${Date.now() - t}ms (${rebuilt.tables.length} tables)`);
+        metadataModel = rebuilt;
+        const reply: HostMsg = { type: 'refreshResult', ok: true, message: 'Кэш обновлён.' };
         panel.webview.postMessage(reply);
       } catch (e) {
         const reply: HostMsg = { type: 'refreshResult', ok: false, message: `Ошибка парсинга: ${e}` };
@@ -173,6 +186,18 @@ export function createPanel(
       }
     }
   });
+
+  // 7.8.3: по запросу открываем конструктор в ОТДЕЛЬНОМ окне (а не во вкладке-панели
+  // внутри основного окна VS Code). Свежесозданный webview становится активным
+  // редактором, поэтому штатная команда «Переместить редактор в новое окно»
+  // выносит его в плавающее окно. Фича доступна с VS Code 1.85; на платформах без
+  // поддержки команда просто игнорируется (ошибку гасим).
+  const cfg = vscode.workspace.getConfiguration('queryConsole');
+  if (cfg.get<boolean>('openInNewWindow') !== false) {
+    Promise.resolve(
+      vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow')
+    ).then(undefined, () => { /* команда недоступна — остаёмся во вкладке */ });
+  }
 
   return panel;
 }
