@@ -11,12 +11,13 @@ interface Props {
 
 export function TabsBar({ tabs, active, onSelect }: Props): React.ReactElement {
   return (
-    <div style={{ display: 'flex', borderBottom: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
+    <div data-testid="tabsbar" style={{ display: 'flex', borderBottom: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
       {tabs.map(tab => {
         const isActive = tab === active;
         return (
           <div
             key={tab}
+            data-tab={tab}
             onClick={() => onSelect(tab)}
             style={{
               padding: '6px 16px',

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Our Constructor Inventory Harness</title>
+  <style>
+    body { margin: 0; background: #1e1e1e; color: #ccc; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root" style="height:100vh;"></div>
+  <script>
+    // Опись нашего конструктора: мок хоста (acquireVsCodeApi) кормит webview реальными
+    // метаданными и отвечает на раскрытие ссылок — повторяет логику src/extension/panel.ts,
+    // но локально, без живого 1С. Должен быть определён ДО загрузки бандла.
+    window.__webviewMessages = [];
+    // Загруженные метаданные (model.tables) — для ответов на expandRef.
+    window.__metaTables = null;
+    // Флаг применённости metadataTree — драйвер ждёт его косвенно (по DOM).
+    window.__metaApplied = false;
+
+    function dispatchHost(data) {
+      window.dispatchEvent(new MessageEvent('message', { data: data }));
+    }
+
+    window.acquireVsCodeApi = function () {
+      return {
+        postMessage: function (msg) {
+          window.__webviewMessages.push(msg);
+          if (msg.type === 'ready') {
+            // На готовность webview — подгружаем реальные метаданные и шлём metadataTree.
+            fetch('./metadata.json')
+              .then(function (r) { return r.json(); })
+              .then(function (tables) {
+                window.__metaTables = tables;
+                dispatchHost({ type: 'metadataTree', tables: tables });
+                window.__metaApplied = true;
+              })
+              .catch(function (e) {
+                console.error('Не удалось загрузить metadata.json', e);
+              });
+          } else if (msg.type === 'expandRef') {
+            // Раскрытие ссылочного поля — ищем таблицу по kind+name (как panel.ts).
+            var ref = msg.ref;
+            var tables = window.__metaTables || [];
+            var table = null;
+            for (var i = 0; i < tables.length; i++) {
+              if (tables[i].kind === ref.kind && tables[i].name === ref.name) {
+                table = tables[i];
+                break;
+              }
+            }
+            dispatchHost({ type: 'refFields', ref: ref, fields: (table && table.fields) || [] });
+          } else if (msg.type === 'refreshCache') {
+            dispatchHost({ type: 'refreshResult', ok: true, message: 'OK (harness)' });
+          }
+          // generate/insertText/cancel — для описи не нужны.
+        }
+      };
+    };
+
+    // Драйвер вызывает это на каждый запрос: загрузить текст запроса в конструктор.
+    window.__inv = {
+      loadQuery: function (text) {
+        dispatchHost({ type: 'loadModel', text: text });
+      }
+    };
+  </script>
+  <script src="./main.js"></script>
+</body>
+</html>

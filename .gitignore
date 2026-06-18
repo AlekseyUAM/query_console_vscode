@@ -3,6 +3,8 @@ out/
 test-results/
 playwright-report/
 test/e2e/harness/main.js
+tooling/our-constructor/harness/main.js
+tooling/our-constructor/harness/metadata.json
 tmp/
 src/cf/
 .env
