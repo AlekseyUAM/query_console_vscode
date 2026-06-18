@@ -475,7 +475,7 @@ export function App(): React.ReactElement {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
         <button style={BTN} onClick={handleShowQuery}>Запрос</button>
         <div style={{ flex: 1 }} />
-        <button style={BTN} onClick={() => handleInsert(batchText)}>ОК</button>
+        <button style={{ ...BTN, opacity: batchText.trim() ? 1 : 0.5 }} disabled={!batchText.trim()} onClick={() => handleInsert(batchText)}>ОК</button>
         <button style={BTN} onClick={handleCancel}>Отмена</button>
       </div>
 

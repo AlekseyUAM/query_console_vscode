@@ -27,6 +27,31 @@ async function dragTableToPanel(page: Page, tableFullName: string): Promise<void
   }, payload);
 }
 
+/** Drag a field from the DB tree into the Fields panel drop zone.
+ *
+ * Fields are added via drag-and-drop. The payload shape matches DbTreePanel's
+ * handleDragStart: { kind: 'field', tableFullName, fieldPath }.
+ * The Fields panel drop zone has the same style signature as the Tables panel
+ * (overflowY=auto, minHeight=40px, border dashed) — it is the SECOND such div.
+ */
+async function dragFieldToPanel(page: Page, tableFullName: string, fieldPath: string): Promise<void> {
+  const payload = JSON.stringify({ kind: 'field', tableFullName, fieldPath });
+  await page.evaluate((payload) => {
+    const allDivs = Array.from(document.querySelectorAll('div'));
+    const dropZones = allDivs.filter(d => {
+      const s = (d as HTMLElement).style;
+      return s.overflowY === 'auto' && s.minHeight === '40px' && s.border.includes('dashed');
+    }) as HTMLElement[];
+    // Fields panel is the second drop zone (Tables panel is the first).
+    const dropZone = dropZones[1];
+    if (!dropZone) throw new Error('Fields panel drop zone not found (need at least 2 dashed drop zones)');
+    const dt = new DataTransfer();
+    dt.setData('text/plain', payload);
+    dropZone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    dropZone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, payload);
+}
+
 test.describe('Query Constructor Webview', () => {
   test('shows Справочники group in DB tree', async ({ page }) => {
     await page.goto(BASE);
@@ -61,12 +86,11 @@ test.describe('Query Constructor Webview', () => {
 
   test('adds field to Fields panel via > button after table selected', async ({ page }) => {
     await page.goto(BASE);
-    // Expand group, expand table, add it to query
+    // Expand group, add table to query via drag
     await page.locator('text=Справочники').click();
     await dragTableToPanel(page, 'Справочник.Валюты');
-    // Expand table in DB tree and click a field
-    await page.locator('[data-table-fullname="Справочник.Валюты"]').click();
-    await page.locator('[data-field-path="Код"]').click();
+    // Drag field from DB tree into Fields panel drop zone
+    await dragFieldToPanel(page, 'Справочник.Валюты', 'Код');
 
     await expect(page.locator('[data-field-idx="0"]')).toBeVisible();
     await expect(page.locator('text=Валюты.Код')).toBeVisible();
@@ -77,23 +101,27 @@ test.describe('Query Constructor Webview', () => {
     // Add table
     await page.locator('text=Справочники').click();
     await dragTableToPanel(page, 'Справочник.Валюты');
-    // Expand table in DB tree and click a field
-    await page.locator('[data-table-fullname="Справочник.Валюты"]').click();
-    await page.locator('[data-field-path="Код"]').click();
+    // Add field via drag
+    await dragFieldToPanel(page, 'Справочник.Валюты', 'Код');
 
     await page.locator('button:has-text("Запрос")').click();
 
-    // Verify the generate message was sent
-    const messages = await page.evaluate(() => (window as any).__webviewMessages);
-    const genMsg = messages.find((m: any) => m.type === 'generate');
-    expect(genMsg).toBeTruthy();
-    expect(genMsg.model.tables[0].fullName).toBe('Справочник.Валюты');
-    expect(genMsg.model.fields[0].path).toBe('Код');
+    // «Запрос» opens a preview modal — assert the modal is visible with generated SQL
+    await expect(page.locator('text=Текст запроса')).toBeVisible();
+    // The generated query must contain the SELECT keyword and reference the table/field
+    const previewText = page.locator('pre');
+    await expect(previewText).toContainText('ВЫБРАТЬ');
+    await expect(previewText).toContainText('Валюты');
   });
 
   test('нижняя панель: ОК постит insertText, Отмена постит cancel', async ({ page }) => {
     await page.goto(BASE);
     await expect(page.locator('button:has-text("Запрос")')).toBeVisible();
+    // ОК is disabled when the constructor is empty (guard against data loss).
+    // Add a table and field first so ОК is enabled.
+    await page.locator('text=Справочники').click();
+    await dragTableToPanel(page, 'Справочник.Валюты');
+    await dragFieldToPanel(page, 'Справочник.Валюты', 'Код');
     await page.locator('button:has-text("ОК")').click();
     await page.locator('button:has-text("Отмена")').click();
     const types = await page.evaluate(() => (window as any).__webviewMessages.map((m: any) => m.type));
