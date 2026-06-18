@@ -93,6 +93,44 @@ warm (чтение model-cache):     299 ms   ← ~45x
 [спек](superpowers/specs/2026-06-17-phase7.2-metadata-cache-design.md) ·
 [план](superpowers/plans/2026-06-17-phase7.2-metadata-cache.md). `test:unit` 1205/1205.
 
+## Подфаза 3. Разведка реального конструктора через Playwright — ✅ закрыто
+
+Tooling-драйвер [`tooling/real-constructor/`](../tooling/real-constructor) управляет
+**живым** веб-клиентом 1С (УНФ, публикация `host.docker.internal/smallb`) и собирает
+визуальный референс настоящего «Конструктора запроса». Это доказывает выполнимость
+автоматической сверки (оракул 7.4) и даёт вход для доработки нашего webview.
+
+**Поток (всё probe-verified на реальном клиенте):**
+
+1. `session.ts` — headless Chromium 1600×1000, автологин Администратора; опрос
+   `body.innerText` до маркера рабочего стола (long-poll веб-клиента вешает
+   `networkidle`); `dismissStartupDialog` гасит блокирующие стартовые модалки.
+2. `console.ts` — открытие обработки «Консоль запросов» штатным диалогом
+   **«Сервис и настройки» → «Перейти по ссылке…»** (`e1cib/app/Обработка.КонсольЗапросов`):
+   смена URL-хэша уже загруженный SPA не перезагружает.
+3. `constructor.ts` — текст вставляется в крупнейший `<textarea>` (`insertText`),
+   **«Конструктор запроса…» вызывается из контекстного меню поля (ПКМ)**; вкладки
+   обходятся по `[data-content]` (подписи рисуются CSS-ом, `textContent` пуст), набор
+   читается из DOM (динамический — «Связи» только при >1 таблице); `closeConstructor`
+   жмёт «Отмена» между запросами.
+
+**Запуск:** `npm run real:setup` (Chromium), `npm run real:smoke` (эталон
+`ЗаказПокупателя` — приёмка выполнимости, 8 вкладок), `npm run real:inventory`
+(10 сложных запросов → скриншоты + опись). Скриншоты-референс — в
+`docs/phase7.3-real-constructor/<slug>/`, опись UI — `INVENTORY.md`.
+
+**Инфраструктура (этой же подфазы):** read-only bind-mount платформы 1С + `rac` в
+контейнере для снятия зомби-сессий через RAS (держат единственную лицензию —
+[`docs/ras-sessions.md`](ras-sessions.md)); установка Microsoft Core Fonts в
+`post-create.sh` (без них веб-клиент показывает блокирующий диалог о шрифтах).
+
+Pure-логика (конфиг, страж рекурсии, имена скриншотов, логгер) — под vitest
+(`test:unit` 1219/1219); браузерный драйвер — приёмкой `real:smoke`. Спек+план:
+[спек](superpowers/specs/2026-06-17-phase7.3-real-constructor-recon-design.md) ·
+[план](superpowers/plans/2026-06-17-phase7.3-real-constructor-recon.md).
+
+Граница с Подфазой 4 (корпусной прогон, оракул = реальный конструктор) — в спеке.
+
 ---
 
 Спек и план подфазы — в `docs/superpowers/specs/` и `docs/superpowers/plans/` по мере
