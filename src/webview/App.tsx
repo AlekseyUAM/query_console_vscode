@@ -137,22 +137,22 @@ export function App(): React.ReactElement {
 
   // Видимые вкладки: «Связи» — сразу после «Таблицы и поля» и только при > 1 таблице.
   // При типе dropTemp видны только «Дополнительно» и «Пакет запросов».
-  // «Индекс» — только для типа «Создание ВТ»; базовый список всегда без неё,
+  // «Индексы» — только для типа «Создание ВТ»; базовый список всегда без неё,
   // вставляем ниже в finalTabs сразу после «Дополнительно».
   const showIndexTab = state.queryType === 'createTemp';
   const showJoinsTab = state.selectedTables.length > 1;
-  const baseTabs = TABS.filter(t => t !== 'Индекс');
+  const baseTabs = TABS.filter(t => t !== 'Индексы');
   const visibleTabs = state.queryType === 'dropTemp'
     ? ['Дополнительно', 'Пакет запросов']
     : showJoinsTab
       ? [baseTabs[0], 'Связи', ...baseTabs.slice(1)]
       : baseTabs;
 
-  // Вставка вкладки «Индекс» сразу после «Дополнительно» при типе «Создание ВТ».
+  // Вставка вкладки «Индексы» сразу после «Дополнительно» при типе «Создание ВТ».
   let finalTabs = visibleTabs;
-  if (showIndexTab && finalTabs.includes('Дополнительно') && !finalTabs.includes('Индекс')) {
+  if (showIndexTab && finalTabs.includes('Дополнительно') && !finalTabs.includes('Индексы')) {
     const i = finalTabs.indexOf('Дополнительно');
-    finalTabs = [...finalTabs.slice(0, i + 1), 'Индекс', ...finalTabs.slice(i + 1)];
+    finalTabs = [...finalTabs.slice(0, i + 1), 'Индексы', ...finalTabs.slice(i + 1)];
   }
 
   // Если активная вкладка «Связи» скрылась (удалили таблицу) — вернуться к «Таблицы и поля».
@@ -162,9 +162,9 @@ export function App(): React.ReactElement {
     }
   }, [showJoinsTab, activeTab]);
 
-  // Если активная вкладка «Индекс» скрылась (сменили тип запроса) — на «Дополнительно».
+  // Если активная вкладка «Индексы» скрылась (сменили тип запроса) — на «Дополнительно».
   useEffect(() => {
-    if (!showIndexTab && activeTab === 'Индекс') {
+    if (!showIndexTab && activeTab === 'Индексы') {
       setActiveTab('Дополнительно');
     }
   }, [showIndexTab, activeTab]);
@@ -180,7 +180,7 @@ export function App(): React.ReactElement {
   // пакета > 1 и активна не сама вкладка «Пакет запросов»).
   const showSideTabs = state.batchSaved.length > 1 && activeTab !== 'Пакет запросов';
   const sideTabsStrip = showSideTabs ? (
-    <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
+    <div data-testid="side-strip" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: '100%', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
       {state.batchSaved.map((_, i) => {
         const name = batchNames[i];
         const isActive = i === state.activeBatch;
@@ -191,6 +191,7 @@ export function App(): React.ReactElement {
             title={name}
             style={{
               writingMode: 'vertical-rl',
+              flexShrink: 0,
               padding: '12px 6px',
               cursor: 'pointer',
               borderLeft: isActive ? '2px solid var(--vscode-focusBorder, #007fd4)' : '2px solid transparent',
@@ -260,7 +261,6 @@ export function App(): React.ReactElement {
             selectedTables={state.selectedTables}
             selectedFields={state.selectedFields}
             tabSectionFields={state.tabSectionFields}
-            queryText={batchText}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -272,8 +272,6 @@ export function App(): React.ReactElement {
               dispatch({ type: 'REMOVE_TAB_SECTION_SUB_FIELD', tableId, tsName, fieldName })
             }
             onFocusField={idx => dispatch({ type: 'FOCUS_SELECTED_FIELD', idx })}
-            onInsert={handleInsert}
-            onCancel={handleCancel}
             canAddExpression={state.focusedSelectedTableId !== null}
             onAddExpression={() => {
               const tableId = state.focusedSelectedTableId;
@@ -380,7 +378,7 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab === 'Индекс' && (
+      {activeTab === 'Индексы' && (
         <IndexTab
           selectedFields={state.selectedFields}
           indexing={state.indexing}
@@ -464,7 +462,7 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Индекс' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Построитель' && activeTab !== 'Пакет запросов' && (
+      {activeTab !== 'Таблицы и поля' && activeTab !== 'Связи' && activeTab !== 'Группировка' && activeTab !== 'Условия' && activeTab !== 'Дополнительно' && activeTab !== 'Индексы' && activeTab !== 'Объединения/Псевдонимы' && activeTab !== 'Порядок' && activeTab !== 'Итоги' && activeTab !== 'Построитель' && activeTab !== 'Пакет запросов' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vscode-descriptionForeground, #888)', fontSize: 13 }}>
           Вкладка в разработке
         </div>
@@ -474,8 +472,11 @@ export function App(): React.ReactElement {
       </div>
 
       {/* Bottom bar */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
         <button style={BTN} onClick={handleShowQuery}>Запрос</button>
+        <div style={{ flex: 1 }} />
+        <button style={{ ...BTN, opacity: batchText.trim() ? 1 : 0.5 }} disabled={!batchText.trim()} onClick={() => handleInsert(batchText)}>ОК</button>
+        <button style={BTN} onClick={handleCancel}>Отмена</button>
       </div>
 
       {/* Virtual table params modal */}
