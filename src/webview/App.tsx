@@ -260,7 +260,6 @@ export function App(): React.ReactElement {
             selectedTables={state.selectedTables}
             selectedFields={state.selectedFields}
             tabSectionFields={state.tabSectionFields}
-            queryText={batchText}
             focusedSelectedFieldIdx={state.focusedSelectedFieldIdx}
             onDropField={(tableFullName, fieldPath) => dispatch({ type: 'ADD_FIELD_WITH_TABLE', tableFullName, fieldPath })}
             onDropTabSection={(parentTableFullName, tsName, tsFullName, tsFields) =>
@@ -272,8 +271,6 @@ export function App(): React.ReactElement {
               dispatch({ type: 'REMOVE_TAB_SECTION_SUB_FIELD', tableId, tsName, fieldName })
             }
             onFocusField={idx => dispatch({ type: 'FOCUS_SELECTED_FIELD', idx })}
-            onInsert={handleInsert}
-            onCancel={handleCancel}
             canAddExpression={state.focusedSelectedTableId !== null}
             onAddExpression={() => {
               const tableId = state.focusedSelectedTableId;
@@ -474,8 +471,11 @@ export function App(): React.ReactElement {
       </div>
 
       {/* Bottom bar */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
         <button style={BTN} onClick={handleShowQuery}>Запрос</button>
+        <div style={{ flex: 1 }} />
+        <button style={BTN} onClick={() => handleInsert(batchText)}>ОК</button>
+        <button style={BTN} onClick={handleCancel}>Отмена</button>
       </div>
 
       {/* Virtual table params modal */}

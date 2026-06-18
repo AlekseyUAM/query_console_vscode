@@ -91,6 +91,16 @@ test.describe('Query Constructor Webview', () => {
     expect(genMsg.model.fields[0].path).toBe('Код');
   });
 
+  test('нижняя панель: ОК постит insertText, Отмена постит cancel', async ({ page }) => {
+    await page.goto(BASE);
+    await expect(page.locator('button:has-text("Запрос")')).toBeVisible();
+    await page.locator('button:has-text("ОК")').click();
+    await page.locator('button:has-text("Отмена")').click();
+    const types = await page.evaluate(() => (window as any).__webviewMessages.map((m: any) => m.type));
+    expect(types).toContain('insertText');
+    expect(types).toContain('cancel');
+  });
+
   test('Связи: селект таблицы имеет title с полным псевдонимом (anti-clip)', async ({ page }) => {
     await page.goto(BASE);
     // Inject a second table into the metadata so we can add two distinct tables

@@ -1,14 +1,11 @@
 import * as React from 'react';
 import type { SelectedTable, SelectedField, SelectedTabSectionField } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
-import { formatAsBslString } from '../../core/query/sdblGenerator';
 
 interface Props {
   selectedTables: SelectedTable[];
   selectedFields: SelectedField[];
   tabSectionFields: SelectedTabSectionField[];
-  /** Готовый текст запроса (пакета) — источник вставки при нажатии ОК. */
-  queryText: string;
   focusedSelectedFieldIdx: number | null;
   onDropField: (tableFullName: string, fieldPath: string) => void;
   onDropTabSection: (parentTableFullName: string, tsName: string, tsFullName: string, tsFields: string[]) => void;
@@ -16,8 +13,6 @@ interface Props {
   onRemoveTabSection: (tableId: string, tsName: string) => void;
   onRemoveTabSectionSubField: (tableId: string, tsName: string, fieldName: string) => void;
   onFocusField: (idx: number) => void;
-  onInsert: (text: string) => void;
-  onCancel: () => void;
   canAddExpression: boolean;
   onAddExpression: () => void;
 }
@@ -44,9 +39,9 @@ const REMOVE_BTN: React.CSSProperties = {
 };
 
 export function FieldsPanel({
-  selectedTables, selectedFields, tabSectionFields, queryText, focusedSelectedFieldIdx,
+  selectedTables, selectedFields, tabSectionFields, focusedSelectedFieldIdx,
   onDropField, onDropTabSection, onRemoveField, onRemoveTabSection, onRemoveTabSectionSubField,
-  onFocusField, onInsert, onCancel, canAddExpression, onAddExpression,
+  onFocusField, canAddExpression, onAddExpression,
 }: Props): React.ReactElement {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [expandedTs, setExpandedTs] = React.useState<Set<string>>(new Set(
@@ -97,12 +92,6 @@ export function FieldsPanel({
       // ignore malformed drag data
     }
   }
-
-  function handleOk() {
-    if (queryText) onInsert(formatAsBslString(queryText));
-  }
-
-  const canInsert = selectedTables.length > 0 && (selectedFields.length > 0 || tabSectionFields.length > 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 4, gap: 4 }}>
@@ -230,23 +219,6 @@ export function FieldsPanel({
             </div>
           );
         })}
-      </div>
-      <div style={{ display: 'flex', gap: 4, alignSelf: 'flex-end', marginTop: 4 }}>
-        <button
-          data-testid="btn-ok"
-          style={{ ...BTN, padding: '6px 12px', background: 'var(--vscode-button-prominentBackground, #1177bb)', opacity: canInsert ? 1 : 0.5 }}
-          disabled={!canInsert}
-          onClick={handleOk}
-        >
-          ОК
-        </button>
-        <button
-          data-testid="btn-cancel"
-          style={{ ...BTN, padding: '6px 12px', background: 'var(--vscode-button-secondaryBackground, #3a3d41)' }}
-          onClick={onCancel}
-        >
-          Отмена
-        </button>
       </div>
     </div>
   );
