@@ -6,7 +6,7 @@ import { chromium, type Browser } from '@playwright/test';
 import { parseBatch } from '../../src/core/query/sdblParser';
 import { extractFeatures } from './features';
 import { classifyCorpus, sampleRepresentatives, type CorpusEntry } from './classes';
-import { checkInvariants, type UiSnapshot } from './invariants';
+import { checkStructure, checkContent, type UiSnapshot, type Violation } from './invariants';
 import { formatCoverageReport, type QueryResult } from './report';
 import { SNAPSHOT_FN } from './snapshot';
 import { saveScreenshot } from '../real-constructor/screenshot';
@@ -119,13 +119,34 @@ async function main() {
         await page.locator('[data-testid="tabsbar"] [data-tab]').first().waitFor({ timeout: 30_000 });
         // Холодный рендер дерева «База данных» (6899 таблиц) + loadModel: даём устаканиться.
         await page.waitForTimeout(1000);
-        const snap = (await page.evaluate(`(${SNAPSHOT_FN})()`)) as UiSnapshot;
+        const snap0 = (await page.evaluate(`(${SNAPSHOT_FN})()`)) as UiSnapshot;
         if (pageError) {
           results.push({ name, key: '', violations: [{ code: 'TABS', detail: `pageerror: ${pageError}` }] });
           await saveScreenshot(page, path.join(OUT_DIR, name.replace(/\.[^.]+$/, '')), 0, 'violation');
           continue;
         }
-        const violations = checkInvariants(snap, fv);
+        // Структурные инварианты (вкладки/число таблиц) — один раз на дефолтной вкладке.
+        // Контентные (дубли полей/обрезка) — на КАЖДОЙ видимой вкладке: обходим их,
+        // аккумулируя и дедуплицируя нарушения (с пометкой вкладки). Так инварианты
+        // DUP_FIELDS/CLIP реально срабатывают на «Порядок»/«Связи»/… а не только на старте.
+        const seen = new Set<string>();
+        const violations: Violation[] = [];
+        const add = (vs: Violation[], tab: string) => {
+          for (const v of vs) {
+            const k = `${v.code}|${v.detail}`;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            violations.push({ code: v.code, detail: `[${tab}] ${v.detail}` });
+          }
+        };
+        add(checkStructure(snap0, fv), 'Таблицы и поля');
+        add(checkContent(snap0), 'Таблицы и поля');
+        for (const tab of snap0.tabs) {
+          if (tab === 'Таблицы и поля') continue;
+          await page.locator(`[data-testid="tabsbar"] [data-tab="${tab}"]`).first().click();
+          await page.waitForTimeout(350);
+          add(checkContent((await page.evaluate(`(${SNAPSHOT_FN})()`)) as UiSnapshot), tab);
+        }
         results.push({ name, key: '', violations });
         if (violations.length > 0) {
           await saveScreenshot(page, path.join(OUT_DIR, name.replace(/\.[^.]+$/, '')), 0, 'violation');

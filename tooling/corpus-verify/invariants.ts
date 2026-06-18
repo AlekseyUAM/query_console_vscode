@@ -27,7 +27,12 @@ export interface Violation {
   detail: string;
 }
 
-export function checkInvariants(snap: UiSnapshot, fv: FeatureVector): Violation[] {
+/**
+ * Структурные инварианты (набор вкладок, число таблиц) — зависят от ВСЕГО окна и
+ * проверяются ОДИН раз на активной вкладке «Таблицы и поля» (где смонтирована панель
+ * таблиц). На снимке другой вкладки бессмысленны (там нет `[data-table-id]`).
+ */
+export function checkStructure(snap: UiSnapshot, fv: FeatureVector): Violation[] {
   const out: Violation[] = [];
   const exp = expectedTabs(fv.active);
   if (JSON.stringify(snap.tabs) !== JSON.stringify(exp)) {
@@ -36,6 +41,16 @@ export function checkInvariants(snap: UiSnapshot, fv: FeatureVector): Violation[
   if (fv.active.queryType !== 'dropTemp' && snap.tableLabels.length !== fv.active.tableCount) {
     out.push({ code: 'TABLE_COUNT', detail: `таблиц в панели ${snap.tableLabels.length}, в модели ${fv.active.tableCount}` });
   }
+  return out;
+}
+
+/**
+ * Контентные инварианты (дубли полей, обрезка текста) — относятся к содержимому
+ * КОНКРЕТНОЙ вкладки и запускаются на снимке КАЖДОЙ видимой вкладки при обходе
+ * (драйвер аккумулирует и дедуплицирует нарушения). От fv не зависят.
+ */
+export function checkContent(snap: UiSnapshot): Violation[] {
+  const out: Violation[] = [];
   for (const g of snap.fieldListGroups) {
     const seen = new Set<string>();
     for (const item of g.items) {
@@ -47,4 +62,9 @@ export function checkInvariants(snap: UiSnapshot, fv: FeatureVector): Violation[
     if (!c.hasTitle) out.push({ code: 'CLIP', detail: `обрезка без тултипа: «${c.text}»` });
   }
   return out;
+}
+
+/** Все инварианты по одному снимку (структура + контент). */
+export function checkInvariants(snap: UiSnapshot, fv: FeatureVector): Violation[] {
+  return [...checkStructure(snap, fv), ...checkContent(snap)];
 }
