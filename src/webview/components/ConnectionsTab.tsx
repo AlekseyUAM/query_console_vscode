@@ -101,7 +101,7 @@ const dropZone: React.CSSProperties = {
 
 // Ширины колонок (px), кроме «Условие связи» (flex).
 const W_NUM = 36;
-const W_TABLE = 150;
+const W_TABLE = 180;
 const W_ALL = 30;
 const W_CUSTOM = 24;
 
@@ -131,17 +131,22 @@ export function ConnectionsTab(props: Props): React.ReactElement {
     return tableFields(meta, sel).map(f => f.name);
   }
 
-  const tableSelect = (index: number, condIndex: number, side: 'left' | 'right', value: string) => (
-    <select
-      value={value}
-      onChange={e => onSetTable(index, side, e.target.value, condIndex)}
-      style={{ ...INPUT, width: W_TABLE, flexShrink: 0 }}
-    >
-      {selectedTables.map(t => (
-        <option key={t.id} value={t.id}>{defaultTableAlias(t)}</option>
-      ))}
-    </select>
-  );
+  const tableSelect = (index: number, condIndex: number, side: 'left' | 'right', value: string) => {
+    const sel = selectedTables.find(t => t.id === value);
+    const label = sel ? defaultTableAlias(sel) : '';
+    return (
+      <select
+        value={value}
+        title={label}
+        onChange={e => onSetTable(index, side, e.target.value, condIndex)}
+        style={{ ...INPUT, width: W_TABLE, flexShrink: 0 }}
+      >
+        {selectedTables.map(t => (
+          <option key={t.id} value={t.id}>{defaultTableAlias(t)}</option>
+        ))}
+      </select>
+    );
+  };
 
   const fieldSelect = (index: number, condIndex: number, side: 'left' | 'right', tableId: string, value: string) => (
     <select
