@@ -180,7 +180,7 @@ export function App(): React.ReactElement {
   // пакета > 1 и активна не сама вкладка «Пакет запросов»).
   const showSideTabs = state.batchSaved.length > 1 && activeTab !== 'Пакет запросов';
   const sideTabsStrip = showSideTabs ? (
-    <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
+    <div data-testid="side-strip" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: '100%', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
       {state.batchSaved.map((_, i) => {
         const name = batchNames[i];
         const isActive = i === state.activeBatch;
@@ -191,6 +191,7 @@ export function App(): React.ReactElement {
             title={name}
             style={{
               writingMode: 'vertical-rl',
+              flexShrink: 0,
               padding: '12px 6px',
               cursor: 'pointer',
               borderLeft: isActive ? '2px solid var(--vscode-focusBorder, #007fd4)' : '2px solid transparent',

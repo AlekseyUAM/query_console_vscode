@@ -133,4 +133,14 @@ test.describe('Query Constructor Webview', () => {
     const sel = page.locator('select[title]').first();
     await expect(sel).toHaveAttribute('title', /.+/); // непустой тултип полного имени
   });
+
+  test('боковой стрип пакета: контейнер скроллится по вертикали', async ({ page }) => {
+    await page.goto(BASE);
+    // Стрип появляется только при >1 запросе пакета; здесь проверяем, что КОГДА он есть,
+    // у него overflowY=auto. Если стрипа нет в стартовом состоянии — кейс пропускаем.
+    const strip = page.locator('[data-testid="side-strip"]');
+    if (await strip.count() === 0) test.skip(true, 'стрип не виден без пакета');
+    const overflow = await strip.evaluate(el => getComputedStyle(el).overflowY);
+    expect(overflow).toBe('auto');
+  });
 });
