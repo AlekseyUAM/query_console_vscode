@@ -5,6 +5,7 @@ import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer, assembleBatch, stripBatchComments } from './state/queryStore';
 import { generateBatch } from '../core/query/sdblGenerator';
 import { tryParseBatch, validateBatchText } from '../core/query/validateBatch';
+import { buildDiagram, type DiagramKind } from '../core/query/mermaidDiagram';
 
 const BTN: React.CSSProperties = {
   padding: '4px 12px',
@@ -16,11 +17,19 @@ const BTN: React.CSSProperties = {
   fontSize: 12,
 };
 
+const DIAGRAM_ITEMS: { kind: DiagramKind; label: string }[] = [
+  { kind: 'packageFlow', label: 'Поток пакета' },
+  { kind: 'joins', label: 'Схема соединений' },
+  { kind: 'unions', label: 'Объединения' },
+  { kind: 'fields', label: 'Поля/структура' },
+];
+
 type RefreshState = 'idle' | 'loading' | { ok: boolean; message: string };
 
 export function App(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
+  const [diagramOpen, setDiagramOpen] = useState(false);
   // 8.1: «Сохранять комментарии» — включено по умолчанию. Управляет и сбором
   // комментариев при открытии, и их печатью в итоговом тексте при сохранении.
   const [preserveComments, setPreserveComments] = useState(true);
@@ -74,6 +83,12 @@ export function App(): React.ReactElement {
     postToHost({ type: 'refreshCache' });
   }
 
+  function handleDiagram(kind: DiagramKind, label: string) {
+    setDiagramOpen(false);
+    const mermaid = buildDiagram(assembleBatch(state), kind, state.activeQuery);
+    postToHost({ type: 'showDiagram', kind, mermaid, title: `Диаграмма: ${label}` });
+  }
+
   // Готовый текст пакета запросов — для вставки и блокировки кнопки ОК.
   // 8.1: при снятой галочке «Сохранять комментарии» комментарии убираются из модели
   // перед генерацией (генератор печатает их только при наличии).
@@ -89,6 +104,36 @@ export function App(): React.ReactElement {
       >
         {refreshState === 'loading' ? 'Обновление...' : 'Обновить кэш'}
       </button>
+      <div style={{ position: 'relative' }}>
+        <button style={BTN} onClick={() => setDiagramOpen(o => !o)}>
+          Диаграмма ▾
+        </button>
+        {diagramOpen && (
+          <div
+            style={{
+              position: 'absolute', top: '100%', left: 0, zIndex: 50, marginTop: 2,
+              background: 'var(--vscode-menu-background, #252526)',
+              border: '1px solid var(--vscode-menu-border, #454545)', borderRadius: 2,
+              minWidth: 160,
+            }}
+          >
+            {DIAGRAM_ITEMS.map(item => (
+              <div
+                key={item.kind}
+                onClick={() => handleDiagram(item.kind, item.label)}
+                style={{
+                  padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+                  color: 'var(--vscode-menu-foreground, #ccc)', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--vscode-menu-selectionBackground, #094771)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                {item.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {typeof refreshState === 'object' && (
         <span style={{ fontSize: 12, color: refreshState.ok ? 'var(--vscode-terminal-ansiGreen, #4caf50)' : 'var(--vscode-errorForeground, #f44747)' }}>
           {refreshState.message}
