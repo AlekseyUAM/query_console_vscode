@@ -75,3 +75,21 @@ describe('joins', () => {
     expect(out).toContain('Пустой запрос');
   });
 });
+
+describe('unions', () => {
+  it('три участника ОБЪЕДИНИТЬ ВСЕ сходятся в результат', () => {
+    const doc = {
+      members: [
+        { name: 'Заказы', distinct: false, model: { tables: [], fields: [] } },
+        { name: 'Возвраты', distinct: false, model: { tables: [], fields: [] } },
+        { name: 'Списания', distinct: true, model: { tables: [], fields: [] } },
+      ],
+    };
+    const out = buildDiagram({ members: [doc] } as any, 'unions', 0);
+    expect(out.startsWith('graph TD')).toBe(true);
+    expect(out).toContain('u0 --> result');
+    expect(out).toContain('u1 -->|"ОБЪЕДИНИТЬ ВСЕ"| result');
+    expect(out).toContain('u2 -->|"ОБЪЕДИНИТЬ"| result');
+    expect(out).toContain('Результат');
+  });
+});

@@ -150,8 +150,20 @@ function joinsDiagram(model: QueryModel): string {
   return lines.join('\n');
 }
 
-function unionsDiagram(_doc: QueryDocument): string {
-  return placeholder();
+function unionsDiagram(doc: QueryDocument): string {
+  if (!doc.members.length) return placeholder();
+  const lines = ['graph TD'];
+  doc.members.forEach((um, i) => {
+    const nid = `u${i}`;
+    lines.push(node(nid, um.name || `Запрос ${i + 1}`));
+    if (i === 0) {
+      lines.push(edge(nid, 'result'));
+    } else {
+      lines.push(edge(nid, 'result', um.distinct ? 'ОБЪЕДИНИТЬ' : 'ОБЪЕДИНИТЬ ВСЕ'));
+    }
+  });
+  lines.push(node('result', 'Результат'));
+  return lines.join('\n');
 }
 
 function fieldsDiagram(_model: QueryModel): string {
