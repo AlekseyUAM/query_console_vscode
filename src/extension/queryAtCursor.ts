@@ -22,8 +22,28 @@ export interface QueryHit {
 
 const QUERY_KEYWORDS = ['ВЫБРАТЬ', 'УНИЧТОЖИТЬ'];
 
+/**
+ * Снимает ведущую «тривию» — пробелы (включая BOM) И строки-комментарии `//…` — до
+ * первого значимого токена. 1С открывает конструктором запрос, начинающийся с
+ * комментария (`// …` перед ВЫБРАТЬ), поэтому распознавание ключевого слова не должно
+ * спотыкаться о ведущие комментарии (фаза 8.1).
+ */
+function stripLeadingTrivia(text: string): string {
+  let s = text;
+  for (;;) {
+    const before = s;
+    s = s.replace(/^[\s﻿]+/, '');
+    if (s.startsWith('//')) {
+      const nl = s.indexOf('\n');
+      s = nl === -1 ? '' : s.slice(nl + 1);
+    }
+    if (s === before) break;
+  }
+  return s;
+}
+
 function startsWithQueryKeyword(text: string): boolean {
-  const trimmed = text.replace(/^[\s﻿]+/, '');
+  const trimmed = stripLeadingTrivia(text);
   const upper = trimmed.toUpperCase();
   return QUERY_KEYWORDS.some((kw) => {
     if (!upper.startsWith(kw)) return false;
