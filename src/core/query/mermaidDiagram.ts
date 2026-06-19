@@ -112,8 +112,42 @@ function packageFlowDiagram(batch: BatchDocument): string {
   return lines.join('\n');
 }
 
-function joinsDiagram(_model: QueryModel): string {
-  return placeholder();
+function tableLabel(t: SelectedTable): string {
+  if (t.alias && t.alias !== t.fullName) return `${t.fullName} (${t.alias})`;
+  return t.fullName || t.alias || 'Таблица';
+}
+
+function joinKindLabel(j: Join): string {
+  if (j.leftAll && j.rightAll) return 'ПОЛНОЕ';
+  if (j.leftAll) return 'ЛЕВОЕ';
+  if (j.rightAll) return 'ПРАВОЕ';
+  return 'ВНУТРЕННЕЕ';
+}
+
+function joinConditionText(j: Join): string {
+  if (j.expression) return j.expression;
+  if (j.leftPath && j.rightPath) return `${j.leftPath} ${j.operator ?? '='} ${j.rightPath}`;
+  return '';
+}
+
+function joinsDiagram(model: QueryModel): string {
+  if (!model.tables.length) return placeholder();
+  const lines = ['graph LR'];
+  const idOf = new Map<string, string>();
+  model.tables.forEach((t, i) => {
+    const nid = `t${i}`;
+    idOf.set(t.id, nid);
+    lines.push(node(nid, tableLabel(t)));
+  });
+  for (const j of model.joins ?? []) {
+    const l = idOf.get(j.leftTableId);
+    const r = idOf.get(j.rightTableId);
+    if (!l || !r) continue;
+    const cond = joinConditionText(j);
+    const label = cond ? `${joinKindLabel(j)}: ${cond}` : joinKindLabel(j);
+    lines.push(edge(l, r, label));
+  }
+  return lines.join('\n');
 }
 
 function unionsDiagram(_doc: QueryDocument): string {

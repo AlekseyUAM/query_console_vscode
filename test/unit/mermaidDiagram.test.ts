@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildDiagram } from '../../src/core/query/mermaidDiagram';
 import type { BatchDocument } from '../../src/core/query/batchModel';
-import type { QueryModel } from '../../src/core/query/queryModel';
+import type { QueryModel, Join, SelectedTable } from '../../src/core/query/queryModel';
 
 const emptyBatch: BatchDocument = { members: [] };
 
@@ -51,5 +51,27 @@ describe('packageFlow', () => {
     const out = buildDiagram(batch, 'packageFlow', 0);
     expect(out).toContain('УНИЧТОЖИТЬ ВТТовары');
     expect(out).not.toContain('-->');
+  });
+});
+
+describe('joins', () => {
+  it('ЛЕВОЕ соединение с простым условием', () => {
+    const tables: SelectedTable[] = [
+      { id: 'A', fullName: 'Справочник.Заказы', alias: 'Заказы' },
+      { id: 'B', fullName: 'Справочник.Контрагенты', alias: 'Контр' },
+    ];
+    const joins: Join[] = [{
+      leftTableId: 'A', rightTableId: 'B', leftAll: true, rightAll: false,
+      custom: false, leftPath: 'Контрагент', operator: '=', rightPath: 'Ссылка',
+    }];
+    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model: { tables, fields: [], joins } } ] }] } as any, 'joins', 0);
+    expect(out.startsWith('graph LR')).toBe(true);
+    expect(out).toContain('Справочник.Заказы');
+    expect(out).toContain('t0 -->|"ЛЕВОЕ: Контрагент = Ссылка"| t1');
+  });
+
+  it('нет таблиц → плейсхолдер', () => {
+    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model: { tables: [], fields: [] } }] }] } as any, 'joins', 0);
+    expect(out).toContain('Пустой запрос');
   });
 });
