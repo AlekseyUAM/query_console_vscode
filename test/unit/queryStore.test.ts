@@ -70,10 +70,12 @@ describe('queryStore reducer', () => {
     expect(state.focusedSelectedTableId).toBe(state.selectedTables[0].id);
   });
 
-  it('ADD_TABLE does not duplicate tables', () => {
+  it('ADD_TABLE allows duplicates with ordinal synonyms (7.8.13)', () => {
     let state = reducer(initialState(), { type: 'ADD_TABLE', table: mockTable });
     state = reducer(state, { type: 'ADD_TABLE', table: mockTable });
-    expect(state.selectedTables).toHaveLength(1);
+    expect(state.selectedTables).toHaveLength(2);
+    expect(state.selectedTables[0].alias).toBeUndefined();
+    expect(state.selectedTables[1].alias).toBeDefined();
   });
 
   it('REMOVE_TABLE removes the table and its fields', () => {

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { MetaTable, MetaField } from '../../core/metadata/types';
 import type { SelectedTable } from '../../core/query/queryModel';
+import { defaultTableAlias } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import { accumPeriodFields } from '../../core/query/accumVirtualFields';
 
@@ -18,6 +19,8 @@ interface Props {
   onAddSubquery: () => void;
   /** 7.8.9: создать описание временной таблицы. */
   onAddTempTable: () => void;
+  /** 7.8.16: двойной клик по строке таблицы → добавить все её поля в «Поля». */
+  onAddAllFields: (tableId: string) => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -94,7 +97,7 @@ function FieldRow({ tableFullName, field, depth, expandedRefs, onExpandRef }: {
   );
 }
 
-export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable }: Props): React.ReactElement {
+export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable, onAddAllFields }: Props): React.ReactElement {
   const [expandedTableIds, setExpandedTableIds] = React.useState<Set<string>>(new Set());
   const [expandedTsSections, setExpandedTsSections] = React.useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -206,6 +209,7 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
             <div key={t.id}>
               <div
                 data-table-id={t.id}
+                data-table-alias={defaultTableAlias(t)}
                 draggable
                 onDragStart={e => {
                   // 7.8.6: перетаскивание выбранной таблицы в список «Поля» → все её поля.
@@ -213,6 +217,7 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
                 onClick={() => { onFocusTable(t.id); toggleExpand(t.id); }}
+                onDoubleClick={() => onAddAllFields(t.id)}
                 style={{
                   padding: '2px 6px',
                   cursor: 'default',
@@ -225,7 +230,7 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
                 }}
               >
                 <span style={{ fontSize: 10 }}>{isExpanded ? '▼' : '▶'}</span>
-                <span>{t.fullName}</span>
+                <span title={t.fullName}>{defaultTableAlias(t)}</span>
               </div>
               {isExpanded && meta && (
                 <>

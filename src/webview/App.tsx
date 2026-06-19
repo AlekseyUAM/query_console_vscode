@@ -277,6 +277,7 @@ export function App(): React.ReactElement {
             onOpenVirtualParams={tableId => setVtDialogTableId(tableId)}
             onAddSubquery={() => setSubqueryDialog({ error: null })}
             onAddTempTable={() => setTempTableOpen(true)}
+            onAddAllFields={id => dispatch({ type: 'ADD_ALL_FIELDS_DUP', tableId: id })}
           />
         </div>
         <div style={panelStyle}>

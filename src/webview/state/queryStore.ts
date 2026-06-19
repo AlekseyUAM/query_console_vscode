@@ -1,5 +1,6 @@
 import type { MetaTable, MetaType } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, JoinCondition, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
+import { defaultTableAlias } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
 import { fieldAlias, type UnionMember, type QueryDocument } from '../../core/query/unionModel';
@@ -103,6 +104,8 @@ export type QueryAction =
   | { type: 'ADD_FIELD_WITH_TABLE'; tableFullName: string; fieldPath: string }
   // 7.8.6: перетаскивание таблицы в список «Поля» → все поля таблицы.
   | { type: 'ADD_ALL_FIELDS_WITH_TABLE'; tableFullName: string; fieldPaths: string[] }
+  // 7.8.16: двойной клик по выбранной таблице → все её поля (дубли разрешены).
+  | { type: 'ADD_ALL_FIELDS_DUP'; tableId: string }
   // 7.8.5: двойной клик по полю → правка как произвольного выражения (на месте).
   | { type: 'SET_FIELD_EXPRESSION'; fieldIdx: number; expression: string }
   // 7.8.8 / 7.8.9: источник-подзапрос / описание временной таблицы.
@@ -575,10 +578,18 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       return { ...state, focusedDbTableFullName: action.tableFullName, focusedDbFieldPath: action.fieldPath };
 
     case 'ADD_TABLE': {
-      const alreadyIn = state.selectedTables.some(t => t.fullName === action.table.fullName);
-      if (alreadyIn) return state;
+      // 7.8.13: дубли таблиц разрешены — всегда добавляем новую SelectedTable.
+      // Базовый псевдоним выводится из fullName; если он уже занят среди выбранных
+      // (по эффективному defaultTableAlias), назначаем ordinal-синоним base+k.
       const id = `t${++_tableCounter}`;
       const newTable: SelectedTable = { id, fullName: action.table.fullName };
+      const base = defaultTableAlias({ id: '', fullName: action.table.fullName });
+      const taken = new Set(state.selectedTables.map(t => defaultTableAlias(t)));
+      if (taken.has(base)) {
+        let k = 1;
+        while (taken.has(base + k)) k++;
+        newTable.alias = base + k;
+      }
       if (action.table.virtual) {
         newTable.virtual = action.table.virtual.correspondence !== undefined
           ? { correspondence: action.table.virtual.correspondence }
@@ -652,18 +663,17 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         newFocusedTableId = tableId;
       }
 
-      const alreadyIn = state.selectedFields.some(f => f.tableId === tableId && f.path === action.fieldPath);
-      if (alreadyIn) {
-        return newSelectedTables !== state.selectedTables
-          ? { ...state, selectedTables: newSelectedTables, focusedSelectedTableId: newFocusedTableId }
-          : state;
-      }
+      // 7.8.11: дубли полей через drag разрешены — каждому повтору ordinal-синоним.
+      const base = action.fieldPath.split('.').pop()!;
+      const n = state.selectedFields.filter(f => f.tableId === tableId && f.path === action.fieldPath).length;
+      const newField: SelectedField = { tableId, path: action.fieldPath };
+      if (n >= 1) newField.alias = base + n;
 
       return {
         ...state,
         selectedTables: newSelectedTables,
         focusedSelectedTableId: newFocusedTableId,
-        selectedFields: [...state.selectedFields, { tableId, path: action.fieldPath }],
+        selectedFields: [...state.selectedFields, newField],
       };
     }
 
@@ -696,6 +706,25 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
         focusedSelectedTableId: newFocusedTableId,
         selectedFields: [...state.selectedFields, ...toAdd],
       };
+    }
+
+    case 'ADD_ALL_FIELDS_DUP': {
+      // 7.8.16: двойной клик по выбранной таблице — добавить ВСЕ её поля в «Поля»,
+      // дубли разрешены (ordinal-синонимы по правилу 7.8.11).
+      const sel = state.selectedTables.find(t => t.id === action.tableId);
+      if (!sel) return state;
+      const meta = state.tables.find(m => m.fullName === sel.fullName);
+      if (!meta) return state;
+      const selectedFields = [...state.selectedFields];
+      for (const field of meta.fields) {
+        const path = field.name;
+        const base = path.split('.').pop()!;
+        const n = selectedFields.filter(f => f.tableId === sel.id && f.path === path).length;
+        const newField: SelectedField = { tableId: sel.id, path };
+        if (n >= 1) newField.alias = base + n;
+        selectedFields.push(newField);
+      }
+      return { ...state, selectedFields };
     }
 
     case 'SET_FIELD_EXPRESSION': {

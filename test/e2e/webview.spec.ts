@@ -98,7 +98,17 @@ test.describe('Query Constructor Webview', () => {
     // Add table via drag-and-drop (no "Добавить таблицу" button in current UI)
     await dragTableToPanel(page, 'Справочник.Валюты');
     await expect(page.locator('[data-table-id]')).toBeVisible();
-    await expect(page.locator('text=Справочник.Валюты')).toBeVisible();
+    // 7.8.12: строка таблицы показывает синоним, а не полное имя.
+    await expect(page.locator('[data-table-alias="Валюты"]')).toBeVisible();
+  });
+
+  test('7.8.16: двойной клик по таблице добавляет все поля', async ({ page }) => {
+    await page.goto(BASE);
+    await page.locator('text=Справочники').click();
+    await dragTableToPanel(page, 'Справочник.Валюты');
+    await page.locator('[data-table-id]').first().dblclick();
+    // Валюты имеет поля Код, Наименование, Ссылка и др. → минимум 3 строки полей.
+    await expect(page.locator('[data-field-idx]').nth(2)).toBeVisible();
   });
 
   test('adds field to Fields panel via > button after table selected', async ({ page }) => {
