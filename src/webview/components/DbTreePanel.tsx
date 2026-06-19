@@ -12,6 +12,8 @@ interface Props {
   onExpandRef: (ref: RefId) => void;
   onAddTable: (table: MetaTable) => void;
   onAddField: (tableFullName: string, fieldPath: string) => void;
+  /** 7.8.17: временные таблицы, доступные активному запросу пакета (отдельная группа). */
+  tempTables?: MetaTable[];
 }
 
 const GROUP_KINDS: TableKind[] = [
@@ -198,7 +200,7 @@ function TabularSectionNode({ ts, expandedRefs, collapsedRefs, onToggleCollapse,
   );
 }
 
-export function DbTreePanel({ tables, expandedRefs, focusedTableFullName, focusedFieldPath, onFocusTable, onFocusField, onExpandRef, onAddTable, onAddField }: Props): React.ReactElement {
+export function DbTreePanel({ tables, expandedRefs, focusedTableFullName, focusedFieldPath, onFocusTable, onFocusField, onExpandRef, onAddTable, onAddField, tempTables = [] }: Props): React.ReactElement {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<TableKind>>(new Set());
   const [expandedTables, setExpandedTables] = React.useState<Set<string>>(new Set());
   const [collapsedRefs, setCollapsedRefs] = React.useState<Set<string>>(new Set());
@@ -327,6 +329,53 @@ export function DbTreePanel({ tables, expandedRefs, focusedTableFullName, focuse
           </div>
         );
       })}
+
+      {/* 7.8.17: группа «Временные таблицы» — ВТ, созданные в предыдущих запросах пакета.
+          Перетаскивание строки добавляет источник-ВТ (`врем КАК врем`) через ADD_TEMP_TABLE. */}
+      {tempTables.length > 0 && (() => {
+        const isExpanded = expandedGroups.has('ВременнаяТаблица');
+        return (
+          <div>
+            <div
+              data-testid="temp-tables-group"
+              onClick={() => toggleGroup('ВременнаяТаблица')}
+              style={{ padding: '3px 8px', fontWeight: 'bold', cursor: 'default', display: 'flex', gap: 4, userSelect: 'none' }}
+            >
+              <span>{isExpanded ? '▼' : '▶'}</span>
+              <span>Временные таблицы</span>
+            </div>
+            {isExpanded && tempTables.map(table => {
+              const isTableExpanded = expandedTables.has(table.fullName);
+              return (
+                <div key={table.fullName}>
+                  <div
+                    data-temp-table={table.name}
+                    draggable
+                    onDragStart={e => {
+                      e.dataTransfer.setData('text/plain', JSON.stringify({
+                        kind: 'temptable',
+                        name: table.name,
+                        fields: table.fields.map(f => f.name),
+                      }));
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }}
+                    onClick={() => toggleTable(table.fullName)}
+                    style={{ paddingLeft: 24, paddingTop: 2, paddingBottom: 2, cursor: 'default', display: 'flex', gap: 4, userSelect: 'none' }}
+                  >
+                    <span>{isTableExpanded ? '▼' : '▶'}</span>
+                    <span>{table.name}</span>
+                  </div>
+                  {isTableExpanded && table.fields.map(field => (
+                    <div key={field.name} style={{ paddingLeft: 48, paddingTop: 2, paddingBottom: 2, userSelect: 'none' }}>
+                      {field.name}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }

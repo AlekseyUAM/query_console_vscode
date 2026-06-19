@@ -598,6 +598,46 @@ export function batchMemberName(state: QueryState, i: number): string {
   return `Запрос пакета ${i + 1}`;
 }
 
+/**
+ * 7.8.17 — доступные временные таблицы для активного запроса пакета: ВТ, созданные
+ * `ПОМЕСТИТЬ`/`ДОБАВИТЬ` в запросах СТРОГО ДО активного (в 1С ВТ доступна только после
+ * создания). Колонки — псевдонимы выборки запроса-создателя (как `registerTempTables`
+ * парсера). Дерево метаданных показывает их группой «Временные таблицы»; источник можно
+ * перетащить в поздний запрос пакета. Активный (и более поздние) запросы не включаются —
+ * сама создаваемая ВТ не доступна себе.
+ */
+export function availableTempTables(state: QueryState): MetaTable[] {
+  const out: MetaTable[] = [];
+  const seenNames = new Set<string>();
+  for (let i = 0; i < state.activeBatch; i++) {
+    const snap = state.batchSaved[i];
+    if (!snap) continue;
+    const model = buildModelFromFlat(snap.savedQueries[0]);
+    if (model.queryType !== 'createTemp' && model.queryType !== 'appendTemp') continue;
+    const name = model.tempTableName;
+    if (!name || seenNames.has(name.toUpperCase())) continue;
+    seenNames.add(name.toUpperCase());
+    const cols: string[] = [];
+    const seenCols = new Set<string>();
+    for (const f of model.fields) {
+      const a = fieldAlias(f, model);
+      if (!a || a === '*') continue;
+      let alias = a;
+      let n = 0;
+      while (seenCols.has(alias.toUpperCase())) alias = `${a}${++n}`;
+      seenCols.add(alias.toUpperCase());
+      cols.push(alias);
+    }
+    out.push({
+      kind: 'ВременнаяТаблица',
+      name,
+      fullName: name,
+      fields: cols.map(c => ({ name: c, kind: 'attribute', types: [] })),
+    });
+  }
+  return out;
+}
+
 /** Собрать документ пакета: активный запрос пакета — из live-состояния, остальные — из снимков. */
 export function assembleBatch(state: QueryState): BatchDocument {
   return {

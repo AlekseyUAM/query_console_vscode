@@ -7,6 +7,7 @@ import {
   assembleBatch,
   buildModelFromFlat,
   tempTableDialogInitial,
+  availableTempTables,
 } from '../../src/webview/state/queryStore';
 import { generateBatch } from '../../src/core/query/sdblGenerator';
 import { parseBatch } from '../../src/core/query/sdblParser';
@@ -304,6 +305,36 @@ describe('LOAD_BATCH temp-table reference (7.8.8-fix3)', () => {
     state = reducer(state, { type: 'UPDATE_TEMP_TABLE', tableId: vt.id, name: init!.name, fields: init!.fields });
     expect(state.selectedTables.find(t => t.id === vt.id)!.fullName).toBe('#ВТ');
     expect(generateBatch(assembleBatch(state))).toContain('#ВТ КАК ВТ');
+  });
+});
+
+// 7.8.17 — группа «Временные таблицы» в дереве метаданных: ВТ, созданные ПОМЕСТИТЬ/
+// ДОБАВИТЬ в запросах пакета СТРОГО ДО активного, доступны для перетаскивания.
+describe('availableTempTables (7.8.17)', () => {
+  const BATCH_TEMP =
+    'ВЫБРАТЬ\n' +
+    '	Валюты.Ссылка КАК Ссылка\n' +
+    'ПОМЕСТИТЬ врем\n' +
+    'ИЗ\n' +
+    '	Справочник.Валюты КАК Валюты' +
+    BATCH_SEP +
+    'ВЫБРАТЬ\n' +
+    '	Бригады.Ссылка КАК Ссылка\n' +
+    'ДОБАВИТЬ врем1\n' +
+    'ИЗ\n' +
+    '	Справочник.Бригады КАК Бригады';
+
+  it('is empty on the first batch query, lists `врем` on the second', () => {
+    let state = reducer(initialState(), { type: 'LOAD_BATCH', doc: parseBatch(BATCH_TEMP) });
+    // Активен запрос 0 (создаёт `врем`) — доступных ВТ ещё нет.
+    expect(availableTempTables(state)).toEqual([]);
+
+    // Переход на запрос 1 (`врем1`) — доступна `врем` с колонкой `Ссылка`.
+    state = reducer(state, { type: 'SET_ACTIVE_BATCH', index: 1 });
+    const tt = availableTempTables(state);
+    expect(tt.map(t => t.name)).toEqual(['врем']);
+    expect(tt[0].kind).toBe('ВременнаяТаблица');
+    expect(tt[0].fields.map(f => f.name)).toEqual(['Ссылка']);
   });
 });
 

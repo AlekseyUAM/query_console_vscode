@@ -439,6 +439,32 @@ golden/oracle-корпус не тронуты. Тесты — `queryStore.loadB
 конструктор, двойной клик добавляет поля подзапроса); тест `#ВТ` переведён на кнопку
 «Редактирование». `tsc` чист, `test:unit` 1276/1276, `test:e2e` 20/20.
 
+### 7.8.17. Группа «Временные таблицы» в дереве метаданных
+
+По запросу пользователя: при открытии пакета, создающего ВТ через `ПОМЕСТИТЬ`/`ДОБАВИТЬ`,
+дерево метаданных показывает группу «Временные таблицы» с ВТ, созданными в запросах пакета
+СТРОГО ДО активного (в 1С ВТ доступна только после создания); ВТ можно перетащить в
+поздний запрос пакета и использовать.
+
+- `availableTempTables(state)` (`queryStore.ts`): обходит запросы пакета `0..activeBatch-1`,
+  по `batchSaved[i].savedQueries[0]` (участник 0) при `queryType` createTemp/appendTemp +
+  `tempTableName` строит `MetaTable {kind:'ВременнаяТаблица', name, fullName:name, fields}`,
+  колонки — псевдонимы выборки запроса-создателя через `fieldAlias` (как `registerTempTables`
+  парсера). Дедуп по имени ВТ.
+- Новый `TableKind 'ВременнаяТаблица'` (`types.ts`).
+- `DbTreePanel` — новый проп `tempTables`; группа «Временные таблицы»
+  (`data-testid="temp-tables-group"`) рендерится ПОСЛЕ основного цикла групп и только при
+  непустом списке; строки ВТ перетаскиваемы с payload `{kind:'temptable', name, fields}`.
+- `TablesPanel.handleDrop` обрабатывает `kind:'temptable'` → новый проп
+  `onAddTempTableSource` → `ADD_TEMP_TABLE` (источник `врем КАК врем`, своя синтетическая
+  метатаблица). Список ВТ передаётся только в дерево, в `state.tables` не попадает.
+
+e2e-хелпер `loadModelText` ждёт снятия оверлея загрузки (метаданные пришли) ДО инъекции
+`loadModel` — иначе гонка с `SET_METADATA` (заменяет `state.tables`) затёрла бы синтетику
+(порядок хоста: metadataTree → loadModel). Тесты — `queryStore.loadBatch.test.ts` (+1 юнит
+на `availableTempTables`), e2e (+1: группа видна на `врем1`, `врем` перетаскивается).
+`tsc` чист, `test:unit` 1277/1277, `test:e2e` 21/21.
+
 ---
 
 Спек и план подфазы — в `docs/superpowers/specs/` и `docs/superpowers/plans/` по мере

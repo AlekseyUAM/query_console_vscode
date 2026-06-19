@@ -23,7 +23,7 @@ import type { MetaField, MetaTable } from '../../core/metadata/types';
 import type { RefId } from '../../shared/messages';
 import { accumPeriodFields } from '../../core/query/accumVirtualFields';
 import type { QueryState, QueryAction } from '../state/queryStore';
-import { assembleMembers, assembleBatch, batchMemberName, initialState, reducer, tempTableDialogInitial } from '../state/queryStore';
+import { assembleMembers, assembleBatch, batchMemberName, initialState, reducer, tempTableDialogInitial, availableTempTables } from '../state/queryStore';
 import { generateBatch } from '../../core/query/sdblGenerator';
 import { deriveUnionColumns } from '../../core/query/unionModel';
 import type { QueryDocument } from '../../core/query/unionModel';
@@ -214,6 +214,7 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
         <div style={panelStyle}>
           <DbTreePanel
             tables={state.tables}
+            tempTables={availableTempTables(state)}
             expandedRefs={state.expandedRefs}
             focusedTableFullName={state.focusedDbTableFullName}
             focusedFieldPath={state.focusedDbFieldPath}
@@ -237,6 +238,9 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
             onOpenVirtualParams={tableId => setVtDialogTableId(tableId)}
             onAddSubquery={() => setSubqueryEditor({ tableId: null })}
             onAddTempTable={() => setTempTableDialog({ tableId: null })}
+            onAddTempTableSource={(name, fields) =>
+              dispatch({ type: 'ADD_TEMP_TABLE', name, fields: fields.map(n => ({ name: n })) })
+            }
             onActivateTable={id => {
               // 7.8.14/7.8.15/7.8.16: двойной клик по ЛЮБОМУ источнику (обычная таблица,
               // ВТ, подзапрос) добавляет все его поля с дублями.

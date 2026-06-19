@@ -19,6 +19,8 @@ interface Props {
   onAddSubquery: () => void;
   /** 7.8.9: создать описание временной таблицы. */
   onAddTempTable: () => void;
+  /** 7.8.17: перетаскивание ВТ из группы «Временные таблицы» дерева → источник-ВТ. */
+  onAddTempTableSource: (name: string, fields: string[]) => void;
   /** 7.8.16: двойной клик по строке таблицы — добавить все её поля (любой источник). */
   onActivateTable: (tableId: string) => void;
   /** 7.8.14/7.8.15: «Редактирование» — открыть окно ВТ / вложенный конструктор для
@@ -100,7 +102,7 @@ function FieldRow({ tableFullName, field, depth, expandedRefs, onExpandRef }: {
   );
 }
 
-export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable, onActivateTable, onEditTable }: Props): React.ReactElement {
+export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable, onAddTempTableSource, onActivateTable, onEditTable }: Props): React.ReactElement {
   const [expandedTableIds, setExpandedTableIds] = React.useState<Set<string>>(new Set());
   const [expandedTsSections, setExpandedTsSections] = React.useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -143,6 +145,9 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
         // Add ТЧ as separate table
         const meta = metaTables.find(t => t.fullName === data.tsFullName);
         if (meta) onAddTable(meta);
+      } else if (data.kind === 'temptable') {
+        // 7.8.17: ВТ из группы «Временные таблицы» дерева → источник-ВТ (`врем КАК врем`).
+        if (typeof data.name === 'string') onAddTempTableSource(data.name, Array.isArray(data.fields) ? data.fields : []);
       }
     } catch {
       // ignore malformed drag data

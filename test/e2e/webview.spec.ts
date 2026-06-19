@@ -69,6 +69,19 @@ async function dropPayloadOnFieldsPanel(page: Page, payload: string): Promise<vo
   }, payload);
 }
 
+/** Inject a host→webview `loadModel` message AFTER metadata has loaded.
+ *
+ * The harness sends `metadataTree` asynchronously; the loading overlay clears once it
+ * arrives. Group headers render BEFORE metadata, so waiting on a group label would race
+ * `SET_METADATA` (which replaces state.tables and would wipe synthetic temp/subquery
+ * tables added by LOAD_BATCH). Mirrors the real host order: metadataTree → loadModel. */
+async function loadModelText(page: Page, text: string): Promise<void> {
+  await expect(page.locator('[data-testid="loading-overlay"]')).toBeHidden();
+  await page.evaluate((t) => {
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text: t } }));
+  }, text);
+}
+
 test.describe('Query Constructor Webview', () => {
   test('shows Справочники group in DB tree', async ({ page }) => {
     await page.goto(BASE);
@@ -147,14 +160,11 @@ test.describe('Query Constructor Webview', () => {
 
   test('7.8.15: «Редактирование» открывает вложенный конструктор; двойной клик добавляет поля', async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.locator('text=Справочники')).toBeVisible();
     const TEXT =
       'ВЫБРАТЬ\n\tВложенныйЗапрос.ВерсияДанных КАК ВерсияДанных\n' +
       'ИЗ\n\t(ВЫБРАТЬ\n\t\tАвансовыйОтчет.ВерсияДанных КАК ВерсияДанных\n\tИЗ\n' +
       '\t\tДокумент.АвансовыйОтчет КАК АвансовыйОтчет) КАК ВложенныйЗапрос';
-    await page.evaluate((text) => {
-      window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text } }));
-    }, TEXT);
+    await loadModelText(page, TEXT);
 
     // Выделение подзапроса активирует «Редактирование»; она открывает вложенный конструктор.
     await page.locator('[data-table-alias="ВложенныйЗапрос"]').click();
@@ -349,13 +359,10 @@ test.describe('Query Constructor Webview', () => {
 
   test('#ВТ: открытие из текста показывает имя с # в окне ВТ', async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.locator('text=Справочники')).toBeVisible(); // дождаться метаданных
     const TEXT =
       'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка,\n\tВТ.asdfa КАК asdfa\n' +
       'ИЗ\n\tСправочник.Валюты КАК Валюты,\n\t#ВТ КАК ВТ';
-    await page.evaluate((text) => {
-      window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text } }));
-    }, TEXT);
+    await loadModelText(page, TEXT);
     // Источник-ВТ появился (псевдоним ВТ); выделение + «Редактирование» открывает
     // окно с реальным именем `#ВТ`.
     await page.locator('[data-table-alias="ВТ"]').click();
@@ -363,15 +370,46 @@ test.describe('Query Constructor Webview', () => {
     await expect(page.locator('[data-testid="tt-name"]')).toHaveValue('#ВТ');
   });
 
+  test('7.8.17: группа «Временные таблицы» — врем доступна на запросе врем1 и перетаскивается', async ({ page }) => {
+    await page.goto(BASE);
+    const TEXT =
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\nПОМЕСТИТЬ врем\nИЗ\n\tСправочник.Валюты КАК Валюты' +
+      '\n;\n\n' + '/'.repeat(80) + '\n' +
+      'ВЫБРАТЬ\n\tБригады.Ссылка КАК Ссылка\nДОБАВИТЬ врем1\nИЗ\n\tСправочник.Бригады КАК Бригады';
+    await loadModelText(page, TEXT);
+
+    // На первом запросе (врем) группы «Временные таблицы» ещё нет.
+    await expect(page.locator('[data-testid="temp-tables-group"]')).toHaveCount(0);
+
+    // Переключаемся на запрос «врем1» (боковая полоса пакета).
+    await page.locator('[data-testid="side-strip"] >> text=врем1').click();
+
+    // Группа появилась; раскрываем — видна `врем`.
+    const group = page.locator('[data-testid="temp-tables-group"]');
+    await expect(group).toBeVisible();
+    await group.click();
+    await expect(page.locator('[data-temp-table="врем"]')).toBeVisible();
+
+    // Перетаскиваем `врем` в «Таблицы» → добавлен источник-ВТ с синонимом `врем`.
+    await page.evaluate(() => {
+      const dropZone = Array.from(document.querySelectorAll('div')).find(d => {
+        const s = (d as HTMLElement).style;
+        return s.overflowY === 'auto' && s.minHeight === '40px' && s.border.includes('dashed');
+      }) as HTMLElement;
+      const dt = new DataTransfer();
+      dt.setData('text/plain', JSON.stringify({ kind: 'temptable', name: 'врем', fields: ['Ссылка'] }));
+      dropZone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      dropZone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    });
+    await expect(page.locator('[data-table-alias="врем"]')).toBeVisible();
+  });
+
   test('некорректный текст: показывает синтаксическую ошибку, а не пустой конструктор', async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.locator('text=Справочники')).toBeVisible();
     const BAD =
       'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\n' +
       'ИЗ\n\tСправочник.Валюты КАК Валюты,\n\t?ВТ КАК ВТ';
-    await page.evaluate((text) => {
-      window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text } }));
-    }, BAD);
+    await loadModelText(page, BAD);
     const err = page.locator('[data-testid="load-error"]');
     await expect(err).toBeVisible();
     await expect(err).toContainText('Ошибка разбора 5:'); // строка с `?ВТ`
