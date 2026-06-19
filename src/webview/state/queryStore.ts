@@ -257,6 +257,29 @@ function uniqueSourceName(state: QueryState, base: string): string {
 }
 
 /**
+ * 7.8.8-fix2 — синхронизация счётчика id таблиц с распарсенным пакетом.
+ * Парсер нумерует таблицы позиционно (`t0`, `t1`, … в каждом запросе), а
+ * интерактивные добавления (`ADD_TABLE`/`ADD_TEMP_TABLE`/`ADD_SUBQUERY_TABLE`/
+ * произвольные поля) берут id из общего `_tableCounter`. После открытия текста
+ * счётчик должен стать больше любого загруженного индекса, иначе следующая
+ * добавленная таблица получит уже занятый id (например, `t1`) и склеится с
+ * загруженной: `resolveAliases` ключует псевдонимы по id — поздняя таблица затрёт
+ * псевдоним ранней (подзапрос печатался `КАК ВТ`, поля путались).
+ */
+function syncTableCounter(doc: BatchDocument): void {
+  let max = _tableCounter;
+  for (const query of doc.members) {
+    for (const member of query.members) {
+      for (const sel of member.model.tables) {
+        const m = /^t(\d+)$/.exec(sel.id);
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+    }
+  }
+  _tableCounter = max;
+}
+
+/**
  * 7.8.8-fix — синтез метатаблиц для источников-подзапросов при открытии из текста.
  * Парсер (`parseTableSource`) отдаёт источник `(ВЫБРАТЬ …) КАК Т` с пустым `fullName`
  * и без колонок: колонки подзапроса живут только в `subquery.members[].model.fields`.
@@ -1493,6 +1516,9 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
           focusedDbFieldPath: null,
         };
       }
+      // Счётчик id таблиц — за пределы загруженных позиционных id (t0, t1, …), чтобы
+      // следующая интерактивно добавленная таблица не получила уже занятый id.
+      syncTableCounter(action.doc);
       // Синтез метатаблиц источников-подзапросов ДО docToSnapshot (мутирует fullName
       // тех же объектов SelectedTable, которые попадут в снимок). Новый массив tables
       // создаём только при наличии подзапросов — иначе ссылка на tables сохраняется.
