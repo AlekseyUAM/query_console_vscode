@@ -53,6 +53,7 @@ import { renderOperatorRhs, needsFormatting, isRootNotGroup, normalizeLeafCase }
 import { tokenize } from './sdblLexer';
 import type { Token } from './sdblLexer';
 import { fieldAlias } from './unionModel';
+import { extractComments } from './commentBinder';
 import type { QueryDocument, UnionMember } from './unionModel';
 import type { BatchDocument } from './batchModel';
 import type { MetadataResolver } from './metadataResolver';
@@ -4389,11 +4390,34 @@ function splitUnionMembers(tokens: Token[], source: string): RawUnionMember[] {
  * (поле i-й колонки получает псевдоним i-й колонки участника 0), а поля-заглушки
  * `NULL` отбрасываются — у такого участника нет поля в этой колонке.
  */
-export function parseDocument(text: string, resolver?: MetadataResolver): QueryDocument {
+/**
+ * Фаза 8.1 — опции разбора. `preserveComments` включает сбор комментариев `//…` и их
+ * привязку к смысловым якорям модели (см. commentBinder). По умолчанию выключено →
+ * поведение и канонический вывод (золотой оракул, регрессия корпуса) не меняются.
+ */
+export interface ParseOptions {
+  preserveComments?: boolean;
+}
+
+export function parseDocument(
+  text: string,
+  resolver?: MetadataResolver,
+  opts?: ParseOptions,
+): QueryDocument {
   const prevSourceResolver = sourceResolver;
   sourceResolver = resolver;
   try {
-    return parseDocumentInner(text, resolver);
+    const doc = parseDocumentInner(text, resolver);
+    // 8.1: связывание комментариев — только для пакета из ОДНОГО участника
+    // (не-ОБЪЕДИНЕНИЕ); никогда не роняем разбор из-за извлечения комментариев.
+    if (opts?.preserveComments && doc.members.length === 1) {
+      try {
+        extractComments(text, doc.members[0].model);
+      } catch {
+        /* комментарии — лучшее усилие; ошибка извлечения не ломает разбор */
+      }
+    }
+    return doc;
   } finally {
     sourceResolver = prevSourceResolver;
   }
@@ -4732,7 +4756,29 @@ function splitBatchText(text: string): string[] {
  * разделителя и без объединения корректно даёт пакет из одного документа с одним
  * участником.
  */
-export function parseBatch(text: string, resolver?: MetadataResolver): BatchDocument {
+/**
+ * Фаза 8.1 — привязать комментарии к моделям пакета. Чанк `chunks[i]` — это сырой текст
+ * i-го оператора пакета (включая ведущий авто-разделитель `////…`, идущий после `;`).
+ * Связываем только для документов из ОДНОГО участника; ошибки извлечения проглатываем.
+ */
+function attachBatchComments(chunks: string[], members: QueryDocument[]): void {
+  if (chunks.length !== members.length) return;
+  members.forEach((doc, i) => {
+    if (doc.members.length === 1) {
+      try {
+        extractComments(chunks[i], doc.members[0].model);
+      } catch {
+        /* лучшее усилие */
+      }
+    }
+  });
+}
+
+export function parseBatch(
+  text: string,
+  resolver?: MetadataResolver,
+  opts?: ParseOptions,
+): BatchDocument {
   // Хвостовой разделитель пакета `;` (с возможными пробелами/переводами строк)
   // конструктор отбрасывает: `;` — концерн МЕЖДУ операторами, после последнего
   // оператора его нет. Снимаем до разбиения, чтобы он не попал в текст условия.
@@ -4766,7 +4812,10 @@ export function parseBatch(text: string, resolver?: MetadataResolver): BatchDocu
   // выше уже определил источники/псевдонимы; собираем выведенные колонки и, если они
   // есть, ПЕРЕразбираем пакет с синтетическими метаданными этих ВТ.
   const inf = inferUndefinedTempTables(chunks, members, resolver);
-  if (inf.tables.size === 0) return { members };
+  if (inf.tables.size === 0) {
+    if (opts?.preserveComments) attachBatchComments(chunks, members);
+    return { members };
+  }
 
   const tempTables2 = new Map<string, MetaTable>();
   const members2 = chunks.map((c, i) => {
@@ -4786,6 +4835,7 @@ export function parseBatch(text: string, resolver?: MetadataResolver): BatchDocu
     registerTempTables(doc, tempTables2);
     return doc;
   });
+  if (opts?.preserveComments) attachBatchComments(chunks, members2);
   return { members: members2 };
 }
 

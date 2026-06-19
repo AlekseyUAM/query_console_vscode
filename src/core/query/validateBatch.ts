@@ -9,6 +9,7 @@
  */
 
 import { parseBatch } from './sdblParser';
+import type { ParseOptions } from './sdblParser';
 import type { BatchDocument } from './batchModel';
 
 export type ParseAttempt = { ok: true; doc: BatchDocument } | { ok: false; error: string };
@@ -17,10 +18,14 @@ export type ParseAttempt = { ok: true; doc: BatchDocument } | { ok: false; error
  * Единый разбор текста пакета — общий источник правды для открытия из текста
  * (`App.loadModel`) и проверки при «ОК» (`validateBatchText`). Успех → разобранный
  * документ; исключение лексера/парсера → текст ошибки.
+ *
+ * Фаза 8.1: при открытии из текста передаётся `{ preserveComments: true }`, чтобы
+ * собрать комментарии `//…`. Для проверки при «ОК» опция не нужна (валидируется лишь
+ * разбираемость; сгенерированный текст с комментариями обязан парситься).
  */
-export function tryParseBatch(text: string): ParseAttempt {
+export function tryParseBatch(text: string, opts?: ParseOptions): ParseAttempt {
   try {
-    return { ok: true, doc: parseBatch(text) };
+    return { ok: true, doc: parseBatch(text, undefined, opts) };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

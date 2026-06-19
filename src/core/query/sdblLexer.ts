@@ -15,6 +15,7 @@ export type TokenType =
   | 'date'
   | 'param'
   | 'punct'
+  | 'comment'
   | 'eof';
 
 export interface Token {
@@ -122,7 +123,7 @@ function isDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9';
 }
 
-export function tokenize(text: string): Token[] {
+export function tokenize(text: string, opts?: { comments?: boolean }): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   let line = 1;
@@ -155,7 +156,14 @@ export function tokenize(text: string): Token[] {
 
     // Комментарий до конца строки.
     if (ch === '/' && text[i + 1] === '/') {
+      const startPos = i;
+      const startLine = line;
+      const startCol = col;
       while (i < text.length && text[i] !== '\n') advance();
+      if (opts?.comments) {
+        const value = text.slice(startPos, i);
+        push('comment', value, startPos, startLine, startCol);
+      }
       continue;
     }
 

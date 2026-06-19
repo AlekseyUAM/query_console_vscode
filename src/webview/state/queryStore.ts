@@ -1,5 +1,5 @@
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, JoinCondition, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, QueryComments, Join, JoinCondition, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
@@ -31,6 +31,8 @@ export interface SavedQuery {
   totals: Totals;
   builder: ReportBuilder;
   indexing: Indexing;
+  /** Фаза 8.1 — комментарии запроса уровня контейнера (beforeSelect/afterFrom). */
+  comments?: QueryComments;
 }
 
 /** Пустой построитель отчёта: все секции без строк. */
@@ -73,6 +75,8 @@ export interface QueryState {
   totals: Totals;
   builder: ReportBuilder;
   indexing: Indexing;
+  /** Фаза 8.1 — комментарии активного запроса уровня контейнера (beforeSelect/afterFrom). */
+  queryComments?: QueryComments;
   lockEnabled: boolean;
   expandedRefs: Map<string, MetaField[]>;
   focusedDbTableFullName: string | null;
@@ -218,6 +222,7 @@ export function initialState(): QueryState {
     totals: { groupFields: [], totalFields: [], grand: false },
     builder: emptyBuilder(),
     indexing: { indexes: [] },
+    queryComments: undefined,
     lockEnabled: false,
     expandedRefs: new Map(),
     focusedDbTableFullName: null,
@@ -416,6 +421,7 @@ export function snapshotActive(state: QueryState): SavedQuery {
     totals: state.totals,
     builder: state.builder,
     indexing: state.indexing,
+    comments: state.queryComments,
   };
 }
 
@@ -439,6 +445,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     totals: { groupFields: [], totalFields: [], grand: false } as Totals,
     builder: emptyBuilder(),
     indexing: { indexes: [] } as Indexing,
+    comments: undefined,
   };
   return {
     selectedTables: base.selectedTables,
@@ -455,6 +462,7 @@ export function restoreSaved(_state: QueryState, saved: SavedQuery | null): Part
     totals: base.totals,
     builder: base.builder,
     indexing: base.indexing,
+    queryComments: base.comments,
     lockEnabled: base.lockForUpdate.length > 0,
     focusedSelectedTableId: null,
     focusedSelectedFieldIdx: null,
@@ -478,6 +486,7 @@ export function buildModelFromFlat(flat: SavedQuery): QueryModel {
     totals: flat.totals,
     builder: flat.builder,
     indexing: flat.indexing,
+    comments: flat.comments,
   };
 }
 
@@ -502,6 +511,7 @@ export function modelToFlat(model: QueryModel): SavedQuery {
     totals: model.totals ?? { groupFields: [], totalFields: [], grand: false },
     builder: model.builder ?? emptyBuilder(),
     indexing: model.indexing ?? { indexes: [] },
+    comments: model.comments,
   };
 }
 
@@ -657,9 +667,50 @@ export function assembleBatch(state: QueryState): BatchDocument {
   };
 }
 
-/** Применить переименование псевдонима колонки к списку полей одного запроса. */
+/**
+ * Фаза 8.1 — вернуть копию пакета БЕЗ комментариев (для генерации при снятой галочке
+ * «Сохранять комментарии»): убираем `comments` у каждого QueryModel и
+ * `commentLeading`/`commentTrailing` у каждого поля. Генератор печатает комментарии
+ * только при их наличии, поэтому очищенный пакет даёт канонический текст без них.
+ */
+export function stripBatchComments(batch: BatchDocument): BatchDocument {
+  return {
+    members: batch.members.map(doc => ({
+      members: doc.members.map(m => {
+        const { comments: _drop, ...modelRest } = m.model;
+        void _drop;
+        return {
+          ...m,
+          model: { ...modelRest, fields: stripFieldComments(modelRest.fields) },
+        };
+      }),
+    })),
+  };
+}
+
+/**
+ * Фаза 8.1 — снять комментарии со ВСЕХ полей запроса (commentLeading/commentTrailing
+ * привязаны к синониму поля и контейнеру). Возвращает новые объекты без этих ключей.
+ */
+function stripFieldComments(fields: SelectedField[]): SelectedField[] {
+  return fields.map(f => {
+    if (f.commentLeading === undefined && f.commentTrailing === undefined) return f;
+    const { commentLeading, commentTrailing, ...rest } = f;
+    return rest;
+  });
+}
+
+/**
+ * Применить переименование псевдонима колонки к списку полей одного запроса.
+ * Фаза 8.1 — переименование синонима поля разрывает привязку его комментариев,
+ * поэтому у переименованного поля комментарии снимаются.
+ */
 function applyColumnAlias(fields: SelectedField[], alias: string, newAlias: string): SelectedField[] {
-  return fields.map(f => (fieldAlias(f) === alias ? { ...f, alias: newAlias } : f));
+  return fields.map(f =>
+    fieldAlias(f) === alias
+      ? (() => { const { commentLeading, commentTrailing, ...rest } = f; return { ...rest, alias: newAlias }; })()
+      : f
+  );
 }
 
 // ============================================================================
@@ -902,6 +953,8 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     case 'SET_FIELD_EXPRESSION': {
       const cur = state.selectedFields[action.fieldIdx];
       if (!cur) return state;
+      // Фаза 8.1 — правка поля как выражения меняет его синоним → комментарии поля
+      // не переносятся (next собирается заново, без commentLeading/commentTrailing).
       const next: SelectedField = { tableId: cur.tableId, path: '', expression: action.expression };
       if (cur.alias) next.alias = cur.alias;
       const selectedFields = state.selectedFields.map((f, i) => (i === action.fieldIdx ? next : f));
@@ -1435,10 +1488,23 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       return { ...state, selection: { ...state.selection, allowed: action.allowed } };
 
     case 'SET_QUERY_TYPE':
-      return { ...state, queryType: action.queryType };
+      // Фаза 8.1 — смена типа контейнера разрывает привязку его комментариев
+      // (уровня запроса и полей), поэтому они сбрасываются.
+      return {
+        ...state,
+        queryType: action.queryType,
+        queryComments: undefined,
+        selectedFields: stripFieldComments(state.selectedFields),
+      };
 
     case 'SET_TEMP_TABLE_NAME':
-      return { ...state, tempTableName: action.name };
+      // Фаза 8.1 — комментарии привязаны к контейнеру (имени ВТ); смена имени их сбрасывает.
+      return {
+        ...state,
+        tempTableName: action.name,
+        queryComments: undefined,
+        selectedFields: stripFieldComments(state.selectedFields),
+      };
 
     case 'SET_LOCK_ENABLED':
       return {
@@ -1532,6 +1598,7 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     case 'SET_COLUMN_ALIAS': {
       const { alias, newAlias } = action;
       // Активный запрос — в плоских полях; остальные — в snapshot'ах.
+      // Фаза 8.1 — applyColumnAlias снимает комментарии у переименованного поля.
       const selectedFields = applyColumnAlias(state.selectedFields, alias, newAlias);
       const savedQueries = state.savedQueries.map((sq, i) =>
         i === state.activeQuery || sq === null

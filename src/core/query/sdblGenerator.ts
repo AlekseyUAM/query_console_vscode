@@ -1603,12 +1603,29 @@ function buildQueryBlock(
   fieldLines: string[],
   aliases: Map<string, string>
 ): string {
-  const lines = fieldLines.map((l, i) => (i < fieldLines.length - 1 ? l + ',' : l));
+  // Фаза 8.1 (шаг 5) — восстановление комментариев запроса. Без данных о
+  // комментариях все вставки пусты → вывод байт-в-байт прежний.
+  // Вид 1 (commentTrailing) — после запятой на строке поля (с пробелом).
+  const linesBase = fieldLines.map((l, i) => {
+    const withComma = i < fieldLines.length - 1 ? l + ',' : l;
+    const trailing = i < model.fields.length ? model.fields[i]?.commentTrailing : undefined;
+    return trailing ? withComma + ' ' + trailing : withComma;
+  });
+  // Вид 2 (commentLeading) — отдельные строки с нулевым отступом ПЕРЕД полем.
+  const lines: string[] = [];
+  for (let i = 0; i < linesBase.length; i++) {
+    const leading = i < model.fields.length ? model.fields[i]?.commentLeading : undefined;
+    if (leading?.length) lines.push(...leading);
+    lines.push(linesBase[i]);
+  }
 
   // Запрос без источника (`ВЫБРАТЬ &Параметр КАК Поле [ПОМЕСТИТЬ ВТ]`) —
   // конструктор не выводит секцию `ИЗ`. Иначе обычный список таблиц.
+  // Вид 4 (afterFrom) — строки после `ИЗ`, перед телом источника.
   const hasFrom = model.tables.length > 0;
-  const fromLines = hasFrom ? ['ИЗ', ...renderFrom(model, aliases)] : [];
+  const fromLines = hasFrom
+    ? ['ИЗ', ...(model.comments?.afterFrom ?? []), ...renderFrom(model, aliases)]
+    : [];
 
   const conditionLines = renderConditions(model.conditions, aliases);
   // Конструктор 1С отделяет блок группировки пустой строкой (в отличие от ГДЕ).
@@ -1643,6 +1660,8 @@ function buildQueryBlock(
   const builderTotals = builderBlock('ИТОГИ ПО', model.builder?.totals ?? []);
 
   return [
+    // Вид 3 (beforeSelect) — строки перед `ВЫБРАТЬ`, нулевой отступ.
+    ...(model.comments?.beforeSelect ?? []),
     'ВЫБРАТЬ' + selectionModifiers(model.selection),
     ...lines,
     // {ВЫБРАТЬ …} конструктор печатает ПОСЛЕ ПОМЕСТИТЬ/ДОБАВИТЬ (если те есть),

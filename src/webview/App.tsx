@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useReducer, useEffect, useState } from 'react';
 import { ConstructorView } from './components/ConstructorView';
 import { postToHost, onHostMessage } from './bridge';
-import { initialState, reducer, assembleBatch } from './state/queryStore';
+import { initialState, reducer, assembleBatch, stripBatchComments } from './state/queryStore';
 import { generateBatch } from '../core/query/sdblGenerator';
 import { tryParseBatch, validateBatchText } from '../core/query/validateBatch';
 
@@ -21,6 +21,9 @@ type RefreshState = 'idle' | 'loading' | { ok: boolean; message: string };
 export function App(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
+  // 8.1: «Сохранять комментарии» — включено по умолчанию. Управляет и сбором
+  // комментариев при открытии, и их печатью в итоговом тексте при сохранении.
+  const [preserveComments, setPreserveComments] = useState(true);
   // 7.8.2: пока не пришли метаданные (и модель запроса, если открываем существующий
   // текст) — показываем индикатор загрузки, чтобы не мигать пустым конструктором.
   const [loading, setLoading] = useState(true);
@@ -48,7 +51,7 @@ export function App(): React.ReactElement {
         // `tryParseBatch`: текст разобрался — загружаем модель; иначе показываем
         // синтаксическую ошибку (с номером строки) вместо пустого конструктора. В
         // любом случае снимаем оверлей загрузки (7.8.2).
-        const r = tryParseBatch(msg.text);
+        const r = tryParseBatch(msg.text, { preserveComments: true });
         if (r.ok) { dispatch({ type: 'LOAD_BATCH', doc: r.doc }); setLoadError(null); }
         else setLoadError(r.error);
         setLoading(false);
@@ -72,7 +75,10 @@ export function App(): React.ReactElement {
   }
 
   // Готовый текст пакета запросов — для вставки и блокировки кнопки ОК.
-  const batchText = generateBatch(assembleBatch(state));
+  // 8.1: при снятой галочке «Сохранять комментарии» комментарии убираются из модели
+  // перед генерацией (генератор печатает их только при наличии).
+  const assembled = assembleBatch(state);
+  const batchText = generateBatch(preserveComments ? assembled : stripBatchComments(assembled));
 
   const cacheToolbar = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
@@ -88,6 +94,15 @@ export function App(): React.ReactElement {
           {refreshState.message}
         </span>
       )}
+      {/* 8.1: галочка «Сохранять комментарии» (включена по умолчанию). */}
+      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginLeft: 'auto' }}>
+        <input
+          type="checkbox"
+          checked={preserveComments}
+          onChange={e => setPreserveComments(e.target.checked)}
+        />
+        Сохранять комментарии
+      </label>
     </div>
   );
 
