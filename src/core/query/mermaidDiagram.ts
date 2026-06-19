@@ -65,7 +65,7 @@ export function buildDiagram(
   }
 }
 
-// --- генераторы (заглушки; реальные реализации — Tasks 2–5) ---
+// --- генераторы диаграмм ---
 
 function packageNodeLabel(doc: QueryDocument, i: number): string {
   const m = headModel(doc);

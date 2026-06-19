@@ -85,7 +85,7 @@ export function App(): React.ReactElement {
 
   function handleDiagram(kind: DiagramKind, label: string) {
     setDiagramOpen(false);
-    const mermaid = buildDiagram(assembleBatch(state), kind, state.activeQuery);
+    const mermaid = buildDiagram(assembleBatch(state), kind, state.activeBatch);
     postToHost({ type: 'showDiagram', kind, mermaid, title: `Диаграмма: ${label}` });
   }
 
