@@ -3,7 +3,7 @@ import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualPara
 import { defaultTableAlias } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
 import type { MetaField } from '../../core/metadata/types';
-import { fieldAlias, type UnionMember, type QueryDocument } from '../../core/query/unionModel';
+import { fieldAlias, deriveUnionColumns, type UnionMember, type QueryDocument } from '../../core/query/unionModel';
 import type { BatchDocument } from '../../core/query/batchModel';
 
 /** Метаданные одного запроса-участника объединения. */
@@ -254,6 +254,43 @@ function uniqueSourceName(state: QueryState, base: string): string {
   let i = 2;
   while (taken.has(`${base}${i}`)) i++;
   return `${base}${i}`;
+}
+
+/**
+ * 7.8.8-fix — синтез метатаблиц для источников-подзапросов при открытии из текста.
+ * Парсер (`parseTableSource`) отдаёт источник `(ВЫБРАТЬ …) КАК Т` с пустым `fullName`
+ * и без колонок: колонки подзапроса живут только в `subquery.members[].model.fields`.
+ * Интерактивная ветка `ADD_SUBQUERY_TABLE` создаёт синтетическую `ТабличнаяЧасть`
+ * (колонки резолвятся по `fullName` в `TablesPanel`/`fieldsForTable`); открытие из
+ * текста этого не делало — поэтому конструктор не видел полей вложенного запроса.
+ * Обходим весь распарсенный пакет (запросы пакета → участники объединения → таблицы),
+ * и каждому источнику-подзапросу с пустым `fullName` назначаем уникальное имя и
+ * собираем синтетическую метатаблицу с колонками из `deriveUnionColumns`. `fullName`
+ * проставляется ДО `docToSnapshot`, который переносит те же объекты `SelectedTable`
+ * в снимок (псевдоним `alias` не трогаем — генератор печатает `КАК <alias>`).
+ */
+function synthesizeSubqueryTables(doc: BatchDocument, taken: Set<string>): MetaTable[] {
+  const metas: MetaTable[] = [];
+  for (const query of doc.members) {
+    for (const member of query.members) {
+      for (const sel of member.model.tables) {
+        if (!sel.subquery || sel.fullName) continue;
+        const base = (sel.alias ?? '').trim() || 'ВложенныйЗапрос';
+        let name = base;
+        let i = 2;
+        while (taken.has(name)) name = `${base}${i++}`;
+        taken.add(name);
+        sel.fullName = name;
+        const fields: MetaField[] = deriveUnionColumns(sel.subquery.members).map(c => ({
+          name: c.alias,
+          kind: 'attribute',
+          types: [],
+        }));
+        metas.push(syntheticSourceTable(name, fields));
+      }
+    }
+  }
+  return metas;
 }
 
 // ============================================================================
@@ -1456,11 +1493,16 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
           focusedDbFieldPath: null,
         };
       }
+      // Синтез метатаблиц источников-подзапросов ДО docToSnapshot (мутирует fullName
+      // тех же объектов SelectedTable, которые попадут в снимок). Новый массив tables
+      // создаём только при наличии подзапросов — иначе ссылка на tables сохраняется.
+      const subqueryMetas = synthesizeSubqueryTables(action.doc, new Set(state.tables.map(t => t.fullName)));
       const snaps = action.doc.members.map(docToSnapshot);
       const savedQueries: (SavedQuery | null)[] = snaps[0].savedQueries.slice();
       savedQueries[0] = null;
       return {
         ...state,
+        ...(subqueryMetas.length > 0 ? { tables: [...state.tables, ...subqueryMetas] } : {}),
         activeBatch: 0,
         batchSaved: snaps.map((s, i) => (i === 0 ? null : s)),
         queryList: snaps[0].queryList,

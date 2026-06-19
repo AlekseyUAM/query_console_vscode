@@ -147,6 +147,59 @@ describe('LOAD_BATCH round-trip', () => {
   });
 });
 
+// 7.8.8-fix — открытие из текста источника-подзапроса `(ВЫБРАТЬ …) КАК ВложенныйЗапрос`
+// должно синтезировать метатаблицу с колонками подзапроса, иначе конструктор не видит
+// его полей (`fieldsForTable`/`TablesPanel` резолвят колонки по `fullName`).
+const NESTED_SUBQUERY_SOURCE =
+  'ВЫБРАТЬ\n' +
+  '	Валюты.Ссылка КАК Ссылка,\n' +
+  '	Валюты.Наименование КАК Наименование,\n' +
+  '	ВложенныйЗапрос.ВерсияДанных КАК ВерсияДанных\n' +
+  'ИЗ\n' +
+  '	Справочник.Валюты КАК Валюты,\n' +
+  '	(ВЫБРАТЬ\n' +
+  '		ВложенныйЗапрос.ВерсияДанных КАК ВерсияДанных\n' +
+  '	ИЗ\n' +
+  '		(ВЫБРАТЬ\n' +
+  '			ВложенныйЗапрос.ВерсияДанных КАК ВерсияДанных\n' +
+  '		ИЗ\n' +
+  '			(ВЫБРАТЬ\n' +
+  '				АвансовыйОтчет.ВерсияДанных КАК ВерсияДанных\n' +
+  '			ИЗ\n' +
+  '				Документ.АвансовыйОтчет КАК АвансовыйОтчет) КАК ВложенныйЗапрос) КАК ВложенныйЗапрос) КАК ВложенныйЗапрос\n' +
+  'ГДЕ\n' +
+  '	Валюты.Код = &Код';
+
+describe('LOAD_BATCH subquery source columns (7.8.8-fix)', () => {
+  it('synthesizes a meta table with the subquery columns so the constructor sees its fields', () => {
+    const doc = parseBatch(NESTED_SUBQUERY_SOURCE);
+    const state = reducer(initialState(), { type: 'LOAD_BATCH', doc });
+
+    const subSel = state.selectedTables.find(t => t.subquery !== undefined);
+    expect(subSel).toBeDefined();
+    // Источник-подзапрос из текста должен получить непустой fullName для резолва колонок.
+    expect(subSel!.fullName).not.toBe('');
+
+    const meta = state.tables.find(m => m.fullName === subSel!.fullName);
+    expect(meta).toBeDefined();
+    expect(meta!.kind).toBe('ТабличнаяЧасть');
+    expect(meta!.fields.map(f => f.name)).toContain('ВерсияДанных');
+  });
+
+  it('does not allocate a new tables array when there are no subquery sources', () => {
+    const tables: MetaTable[] = [
+      { kind: 'Справочник', name: 'Валюты', fullName: 'Справочник.Валюты', fields: [] },
+    ];
+    const state = reducer(initialState(), { type: 'SET_METADATA', tables });
+    const after = reducer(state, { type: 'LOAD_BATCH', doc: parseBatch(SINGLE) });
+    expect(after.tables).toBe(tables);
+  });
+
+  it('round-trips the subquery source text unchanged (alias preserved)', () => {
+    expect(roundTrip(NESTED_SUBQUERY_SOURCE)).toBe(generateBatch(parseBatch(NESTED_SUBQUERY_SOURCE)));
+  });
+});
+
 describe('modelToFlat', () => {
   it('substitutes empty defaults for undefined optionals', () => {
     const model: QueryModel = {
