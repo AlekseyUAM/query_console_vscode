@@ -190,6 +190,30 @@ test.describe('Query Constructor Webview', () => {
     expect(types).toContain('cancel');
   });
 
+  test('7.8.10: ОК на некорректном запросе показывает ошибку и не сохраняет', async ({ page }) => {
+    await page.goto(BASE);
+    await page.locator('text=Справочники').click();
+    await dragTableToPanel(page, 'Справочник.Валюты');
+
+    // Добавляем произвольное выражение, дающее некорректный SDBL (ключевое слово «ИЗ»
+    // как тело выражения ломает разбор: «ВЫБРАТЬ ИЗ КАК Поле1 ИЗ ...»).
+    await page.locator('button[title="Добавить поле (произвольное выражение)"]').click();
+    await expect(page.locator('text=Произвольное выражение')).toBeVisible();
+    await page.locator('textarea').fill('ИЗ');
+    await page.locator('[data-testid="expr-ok"]').click();
+    await expect(page.locator('[data-field-idx="0"]')).toBeVisible();
+
+    // Чистим зафиксированные сообщения моста.
+    await page.evaluate(() => { (window as any).__webviewMessages = []; });
+
+    // Нижняя панель ОК доступна (текст пакета непустой), но валидация должна заблокировать.
+    await page.locator('button:has-text("ОК")').click();
+
+    await expect(page.locator('[data-testid="ok-error"]')).toBeVisible();
+    const msgs = await page.evaluate(() => (window as any).__webviewMessages);
+    expect(msgs.some((m: any) => m.type === 'insertText')).toBe(false);
+  });
+
   test('Связи: селект таблицы имеет title с полным псевдонимом (anti-clip)', async ({ page }) => {
     await page.goto(BASE);
     // Inject a second table into the metadata so we can add two distinct tables

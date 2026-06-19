@@ -5,6 +5,7 @@ import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer, assembleBatch } from './state/queryStore';
 import { generateBatch } from '../core/query/sdblGenerator';
 import { parseBatch } from '../core/query/sdblParser';
+import { validateBatchText } from '../core/query/validateBatch';
 
 const BTN: React.CSSProperties = {
   padding: '4px 12px',
@@ -24,6 +25,8 @@ export function App(): React.ReactElement {
   // 7.8.2: пока не пришли метаданные (и модель запроса, если открываем существующий
   // текст) — показываем индикатор загрузки, чтобы не мигать пустым конструктором.
   const [loading, setLoading] = useState(true);
+  // 7.8.10: текст ошибки валидации при нажатии ОК (null = нет ошибки).
+  const [okError, setOkError] = useState<string | null>(null);
   const expectModelRef = React.useRef(false);
 
   useEffect(() => {
@@ -94,9 +97,15 @@ export function App(): React.ReactElement {
         dispatch={dispatch}
         onExpandRef={ref => postToHost({ type: 'expandRef', ref })}
         toolbar={cacheToolbar}
-        onOk={() => handleInsert(batchText)}
+        onOk={() => {
+          const v = validateBatchText(batchText);
+          if (!v.ok) { setOkError(v.error); return; }
+          setOkError(null);
+          handleInsert(batchText);
+        }}
         onCancel={handleCancel}
         okDisabled={!batchText.trim()}
+        okError={okError}
       />
 
       {/* 7.8.2: loading overlay — covers the constructor until it is fully populated */}

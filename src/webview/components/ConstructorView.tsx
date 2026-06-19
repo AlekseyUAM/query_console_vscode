@@ -46,12 +46,14 @@ export interface ConstructorViewProps {
   onOk: () => void;
   onCancel: () => void;
   okDisabled?: boolean;
+  /** 7.8.10: текст ошибки валидации (показывается баннером в нижней панели). */
+  okError?: string | null;
   /** 7.8.8: режим вложенного конструктора (скрыть вкладку «Пакет запросов»). */
   nested?: boolean;
 }
 
 export function ConstructorView(props: ConstructorViewProps): React.ReactElement {
-  const { state, dispatch, onExpandRef, toolbar, onOk, onCancel, okDisabled, nested } = props;
+  const { state, dispatch, onExpandRef, toolbar, onOk, onCancel, okDisabled, okError, nested } = props;
   const [activeTab, setActiveTab] = useState('Таблицы и поля');
   const [queryModalText, setQueryModalText] = useState<string | null>(null);
   const [vtDialogTableId, setVtDialogTableId] = useState<string | null>(null);
@@ -492,6 +494,11 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
       {/* Bottom bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderTop: '1px solid var(--vscode-panel-border, #444)' }}>
         <button style={BTN} onClick={handleShowQuery}>Запрос</button>
+        {okError != null && (
+          <span data-testid="ok-error" style={{ color: 'var(--vscode-errorForeground, #f44747)', fontSize: 12 }}>
+            {okError}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <button style={{ ...BTN, opacity: okDisabled ? 0.5 : 1 }} disabled={okDisabled} onClick={onOk}>ОК</button>
         <button style={BTN} onClick={onCancel}>Отмена</button>
