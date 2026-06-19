@@ -200,6 +200,74 @@ describe('LOAD_BATCH subquery source columns (7.8.8-fix)', () => {
   });
 });
 
+// 7.8.8-fix3 — открытие из текста ссылки на временную таблицу `ВТ КАК ВТ` (внешняя ВТ,
+// без ПОМЕСТИТЬ в запросе). Источник с односегментным именем, не являющийся подзапросом/
+// виртуальной таблицей и не разрешимый в метаданных, — это ссылка на ВТ: помечаем
+// tempTable:true и синтезируем метатаблицу с колонками из ссылок на её поля (`ВТ.asdfa`).
+const TEMP_TABLE_REF =
+  'ВЫБРАТЬ\n' +
+  '	Валюты.Ссылка КАК Ссылка,\n' +
+  '	ВложенныйЗапрос.ВерсияДанных КАК ВерсияДанных,\n' +
+  '	ВТ.asdfa КАК asdfa\n' +
+  'ИЗ\n' +
+  '	Справочник.Валюты КАК Валюты,\n' +
+  '	(ВЫБРАТЬ\n' +
+  '		АвансовыйОтчет.ВерсияДанных КАК ВерсияДанных\n' +
+  '	ИЗ\n' +
+  '		Документ.АвансовыйОтчет КАК АвансовыйОтчет) КАК ВложенныйЗапрос,\n' +
+  '	ВТ КАК ВТ\n' +
+  'ГДЕ\n' +
+  '	Валюты.Код = &Код';
+
+describe('LOAD_BATCH temp-table reference (7.8.8-fix3)', () => {
+  it('marks a bare-name non-metadata source as a temp table and synthesizes its columns', () => {
+    const doc = parseBatch(TEMP_TABLE_REF);
+    const state = reducer(initialState(), { type: 'LOAD_BATCH', doc });
+
+    const vt = state.selectedTables.find(t => t.fullName === 'ВТ');
+    expect(vt).toBeDefined();
+    expect(vt!.tempTable).toBe(true);
+    expect(vt!.subquery).toBeUndefined();
+
+    const meta = state.tables.find(m => m.fullName === 'ВТ');
+    expect(meta).toBeDefined();
+    expect(meta!.kind).toBe('ТабличнаяЧасть');
+    expect(meta!.fields.map(f => f.name)).toContain('asdfa');
+
+    // подзапрос по-прежнему распознан как подзапрос (не перепутан с ВТ)
+    const sub = state.selectedTables.find(t => t.subquery);
+    expect(sub).toBeDefined();
+    expect(sub!.tempTable).toBeUndefined();
+  });
+
+  it('does not mark real metadata tables as temp tables', () => {
+    const tables: MetaTable[] = [
+      { kind: 'Справочник', name: 'Валюты', fullName: 'Справочник.Валюты', fields: [] },
+    ];
+    let state = reducer(initialState(), { type: 'SET_METADATA', tables });
+    state = reducer(state, { type: 'LOAD_BATCH', doc: parseBatch(SINGLE) });
+    expect(state.selectedTables.every(t => !t.tempTable)).toBe(true);
+    expect(state.tables.find(m => m.kind === 'ТабличнаяЧасть')).toBeUndefined();
+  });
+
+  it('round-trips the temp-table reference text unchanged', () => {
+    expect(roundTrip(TEMP_TABLE_REF)).toBe(generateBatch(parseBatch(TEMP_TABLE_REF)));
+  });
+
+  it('does not mark a parameter source `ИЗ &ТЗ КАК Т` as a temp table', () => {
+    const PARAM_SOURCE =
+      'ВЫБРАТЬ\n' +
+      '	Т.Поле КАК Поле\n' +
+      'ИЗ\n' +
+      '	&ТЗ КАК Т';
+    const state = reducer(initialState(), { type: 'LOAD_BATCH', doc: parseBatch(PARAM_SOURCE) });
+    const t = state.selectedTables.find(s => s.fullName === '&ТЗ');
+    expect(t).toBeDefined();
+    expect(t!.tempTable).toBeUndefined();
+    expect(state.tables.find(m => m.fullName === '&ТЗ')).toBeUndefined();
+  });
+});
+
 describe('modelToFlat', () => {
   it('substitutes empty defaults for undefined optionals', () => {
     const model: QueryModel = {

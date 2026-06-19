@@ -257,6 +257,68 @@ function uniqueSourceName(state: QueryState, base: string): string {
 }
 
 /**
+ * 7.8.8-fix3 — колонки источника-ВТ из ссылок на его поля. У ссылки на временную
+ * таблицу (`ИЗ ВТ КАК ВТ`, без ПОМЕСТИТЬ в запросе) нет описания колонок — известны
+ * лишь поля, на которые ссылаются `ВТ.<поле>` в выборке/условиях/группировке/порядке/
+ * итогах. Собираем их различимые первые сегменты как колонки синтетической метатаблицы.
+ */
+function collectTempColumns(model: QueryModel, tableId: string): string[] {
+  const cols: string[] = [];
+  const add = (path?: string): void => {
+    if (!path) return;
+    const col = path.split('.')[0];
+    if (col && !cols.includes(col)) cols.push(col);
+  };
+  for (const f of model.fields) if (f.tableId === tableId) add(f.path);
+  for (const c of model.conditions ?? []) if (c.tableId === tableId) add(c.path);
+  const g = model.grouping;
+  if (g) {
+    for (const f of g.groupFields) if (f.tableId === tableId) add(f.path);
+    for (const set of g.groupSets) for (const f of set) if (f.tableId === tableId) add(f.path);
+    for (const f of g.aggregates) if (f.tableId === tableId) add(f.path);
+  }
+  for (const f of model.order?.fields ?? []) if (f.tableId === tableId) add(f.path);
+  for (const f of model.totals?.groupFields ?? []) if (f.tableId === tableId) add(f.path);
+  for (const f of model.totals?.totalFields ?? []) if (f.tableId === tableId) add(f.path);
+  return cols;
+}
+
+/**
+ * 7.8.8-fix3 — пометить источники-ссылки на временные таблицы и синтезировать их
+ * метатаблицы при открытии из текста. Парсер отдаёт ссылку `ИЗ ВТ КАК ВТ` обычным
+ * `SelectedTable` (односегментное имя, без флага) — конструктор не отличал её от
+ * реальной таблицы: двойной клик не открывал окно ВТ, раскрытие не показывало полей.
+ * Источник считаем ссылкой на ВТ, если он не подзапрос, не виртуальная таблица, имя
+ * односегментное (без точки) и не разрешается в метаданных (`known`). Помечаем
+ * `tempTable:true` (ДО `docToSnapshot`) и собираем синтетическую `ТабличнаяЧасть` с
+ * колонками из `collectTempColumns` (объединение по всем участникам пакета — одно имя
+ * ВТ = одна метатаблица). Генерация не меняется: источник печатается как `ВТ КАК ВТ`.
+ */
+function synthesizeTempTables(doc: BatchDocument, known: Set<string>): MetaTable[] {
+  const byName = new Map<string, string[]>();
+  const order: string[] = [];
+  for (const query of doc.members) {
+    for (const member of query.members) {
+      for (const sel of member.model.tables) {
+        if (sel.subquery || sel.virtual || !sel.fullName) continue;
+        if (sel.fullName.includes('.') || known.has(sel.fullName)) continue;
+        // Источник-параметр (`ИЗ &ТЗ КАК Т`) и подстановка (`ИЗ #Имя КАК Т`) —
+        // не ВТ; парсер исключает их тем же признаком (sdblParser inferUndefinedTempTables).
+        if (sel.fullName.startsWith('&') || sel.fullName.startsWith('#')) continue;
+        sel.tempTable = true;
+        if (!byName.has(sel.fullName)) { byName.set(sel.fullName, []); order.push(sel.fullName); }
+        const acc = byName.get(sel.fullName)!;
+        for (const col of collectTempColumns(member.model, sel.id)) if (!acc.includes(col)) acc.push(col);
+      }
+    }
+  }
+  return order.map(fullName => {
+    const fields: MetaField[] = byName.get(fullName)!.map(c => ({ name: c, kind: 'attribute', types: [] }));
+    return syntheticSourceTable(fullName, fields);
+  });
+}
+
+/**
  * 7.8.8-fix2 — синхронизация счётчика id таблиц с распарсенным пакетом.
  * Парсер нумерует таблицы позиционно (`t0`, `t1`, … в каждом запросе), а
  * интерактивные добавления (`ADD_TABLE`/`ADD_TEMP_TABLE`/`ADD_SUBQUERY_TABLE`/
@@ -1519,16 +1581,20 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       // Счётчик id таблиц — за пределы загруженных позиционных id (t0, t1, …), чтобы
       // следующая интерактивно добавленная таблица не получила уже занятый id.
       syncTableCounter(action.doc);
-      // Синтез метатаблиц источников-подзапросов ДО docToSnapshot (мутирует fullName
-      // тех же объектов SelectedTable, которые попадут в снимок). Новый массив tables
-      // создаём только при наличии подзапросов — иначе ссылка на tables сохраняется.
+      // Синтез метатаблиц источников-подзапросов и ссылок на ВТ ДО docToSnapshot
+      // (мутирует fullName/tempTable тех же объектов SelectedTable, которые попадут в
+      // снимок). Новый массив tables создаём только при наличии синтетики — иначе
+      // ссылка на tables сохраняется.
       const subqueryMetas = synthesizeSubqueryTables(action.doc, new Set(state.tables.map(t => t.fullName)));
+      const known = new Set([...state.tables.map(t => t.fullName), ...subqueryMetas.map(m => m.fullName)]);
+      const tempMetas = synthesizeTempTables(action.doc, known);
+      const newMetas = [...subqueryMetas, ...tempMetas];
       const snaps = action.doc.members.map(docToSnapshot);
       const savedQueries: (SavedQuery | null)[] = snaps[0].savedQueries.slice();
       savedQueries[0] = null;
       return {
         ...state,
-        ...(subqueryMetas.length > 0 ? { tables: [...state.tables, ...subqueryMetas] } : {}),
+        ...(newMetas.length > 0 ? { tables: [...state.tables, ...newMetas] } : {}),
         activeBatch: 0,
         batchSaved: snaps.map((s, i) => (i === 0 ? null : s)),
         queryList: snaps[0].queryList,
