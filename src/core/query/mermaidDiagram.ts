@@ -10,9 +10,10 @@ export type DiagramKind = 'packageFlow' | 'joins' | 'unions' | 'fields';
 /** Экранирование подписи узла/ребра: убираем ломающие mermaid символы. */
 function esc(label: string): string {
   const s = String(label ?? '')
-    .replace(/"/g, "'")
-    .replace(/[\r\n]+/g, ' ')
     .replace(/[[\]{}|<>]/g, ' ')
+    .replace(/"/g, "'")
+    .replace(/\s+/g, ' ')
+    .replace(/ '/g, "'")
     .trim();
   return s.length ? s : ' ';
 }
@@ -166,6 +167,47 @@ function unionsDiagram(doc: QueryDocument): string {
   return lines.join('\n');
 }
 
-function fieldsDiagram(_model: QueryModel): string {
-  return placeholder();
+function fieldRefLabel(f: FieldRef): string {
+  return f.expression ?? f.path ?? 'поле';
+}
+
+function conditionLabel(c: Condition): string {
+  if (c.expression) return c.expression;
+  if (c.path) return `${c.path} ${c.operator ?? '='} ${c.param ?? ''}`.trim();
+  return 'условие';
+}
+
+function orderLabel(o: OrderField): string {
+  const base = o.expression ?? o.selectAlias ?? o.path ?? 'поле';
+  return o.direction === 'desc' ? `${base} УБЫВ` : base;
+}
+
+function totalLabel(t: TotalField): string {
+  return t.expression ?? t.path ?? 'итог';
+}
+
+function fieldsDiagram(model: QueryModel): string {
+  const lines = ['graph TD', node('root', 'Запрос')];
+  let counter = 0;
+
+  const addSection = (title: string, items: string[]): void => {
+    if (!items.length) return;
+    const sid = `s${counter++}`;
+    lines.push(node(sid, title));
+    lines.push(edge('root', sid));
+    for (const it of items) {
+      const lid = `l${counter++}`;
+      lines.push(node(lid, it));
+      lines.push(edge(sid, lid));
+    }
+  };
+
+  addSection('Поля', orderedSelectElements(model).map(el => elementAlias(el, model)));
+  addSection('Группировка', (model.grouping?.groupFields ?? []).map(fieldRefLabel));
+  addSection('Условия', (model.conditions ?? []).map(conditionLabel));
+  addSection('Порядок', (model.order?.fields ?? []).map(orderLabel));
+  addSection('Итоги', (model.totals?.totalFields ?? []).map(totalLabel));
+
+  if (counter === 0) return placeholder();
+  return lines.join('\n');
 }

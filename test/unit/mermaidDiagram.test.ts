@@ -93,3 +93,36 @@ describe('unions', () => {
     expect(out).toContain('Результат');
   });
 });
+
+describe('fields', () => {
+  it('секции Поля и Порядок с листьями', () => {
+    const model = {
+      tables: [{ id: 'A', fullName: 'Справочник.Заказы', alias: 'Заказы' }],
+      fields: [{ tableId: 'A', path: 'Ссылка', alias: 'Ссылка' }],
+      order: { auto: false, fields: [{ tableId: 'A', path: 'Дата', direction: 'desc' }] },
+    };
+    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model }] }] } as any, 'fields', 0);
+    expect(out.startsWith('graph TD')).toBe(true);
+    expect(out).toContain('Запрос');
+    expect(out).toContain('Поля');
+    expect(out).toContain('Порядок');
+    expect(out).toContain('Дата УБЫВ');
+  });
+
+  it('запрос без секций → плейсхолдер', () => {
+    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model: { tables: [], fields: [] } }] }] } as any, 'fields', 0);
+    expect(out).toContain('Пустой запрос');
+  });
+});
+
+describe('экранирование', () => {
+  it('кавычки и скобки в подписи не ломают mermaid', () => {
+    const model = {
+      tables: [{ id: 'A', fullName: 'Справочник."Странное[имя]"', alias: 'A' }],
+      fields: [],
+    };
+    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model }] }] } as any, 'joins', 0);
+    expect(out).not.toMatch(/\[\s*"[^"]*"[^\]]*[[\]"][^\]]*"\s*\]/); // нет вложенных "/[/]
+    expect(out).toContain("Справочник.'Странное имя'");
+  });
+});
