@@ -1338,6 +1338,24 @@ function parseOneField(cur: Cursor): RawField {
     }
   }
 
+  // Валидация: два ПРОСТЫХ идентификатора подряд в теле поля (`аа а.asdfa` — пробел
+  // вместо точки/оператора) — некорректный SDBL. Сырой сбор тела (нужный для re-emit
+  // сложных выражений) иначе молча принимал это и квалифицировал как путь. Ключевые
+  // слова-операторы лексер отдаёт как ident (`ВЫБОР`/`КОГДА`/`И`/`ИЛИ`/`ЕСТЬ`/`NULL`…),
+  // но они перечислены в EXPR_STOP_WORDS — пару с любым из них НЕ считаем ошибкой;
+  // функция `СУММА(` — ident затем `(`; хвостовой псевдоним без КАК уже снят выше.
+  for (let i = 0; i + 1 < bodyTokens.length; i++) {
+    const a = bodyTokens[i];
+    const b = bodyTokens[i + 1];
+    if (
+      a.type === 'ident' && b.type === 'ident' &&
+      !EXPR_STOP_WORDS.has(a.value.toUpperCase()) &&
+      !EXPR_STOP_WORDS.has(b.value.toUpperCase())
+    ) {
+      throw cur.error('два идентификатора подряд в элементе выборки (пропущены оператор или точка?)', b);
+    }
+  }
+
   const rawBody = sliceSource(cur.source, bodyTokens);
   return { bodyTokens, alias, rawBody };
 }
