@@ -6,6 +6,7 @@ import {
   docToSnapshot,
   assembleBatch,
   buildModelFromFlat,
+  tempTableDialogInitial,
 } from '../../src/webview/state/queryStore';
 import { generateBatch } from '../../src/core/query/sdblGenerator';
 import { parseBatch } from '../../src/core/query/sdblParser';
@@ -278,6 +279,31 @@ describe('LOAD_BATCH temp-table reference (7.8.8-fix3)', () => {
 
     // генерация не меняется — источник остаётся `&ВТ КАК ВТ`
     expect(roundTrip(PARAM_TEMP)).toBe(generateBatch(parseBatch(PARAM_TEMP)));
+  });
+
+  // Имя ВТ может начинаться на `#` (подстановка). Окно ВТ должно показывать `#ВТ`
+  // (РЕАЛЬНОЕ имя), а не `ВТ` (псевдоним без `#`), иначе ОК теряет `#` при переименовании.
+  it('temp-table dialog initial uses the real name (#ВТ), and editing preserves it', () => {
+    const HASH =
+      'ВЫБРАТЬ\n' +
+      '	Валюты.Ссылка КАК Ссылка,\n' +
+      '	ВТ.asdfa КАК asdfa\n' +
+      'ИЗ\n' +
+      '	Справочник.Валюты КАК Валюты,\n' +
+      '	#ВТ КАК ВТ';
+    let state = reducer(initialState(), { type: 'LOAD_BATCH', doc: parseBatch(HASH) });
+    const vt = state.selectedTables.find(t => t.fullName === '#ВТ')!;
+    expect(vt.tempTable).toBe(true);
+
+    const init = tempTableDialogInitial(state, vt.id);
+    expect(init).toBeDefined();
+    expect(init!.name).toBe('#ВТ');
+    expect(init!.fields.map(f => f.name)).toContain('asdfa');
+
+    // ОК окна с тем же именем не теряет `#`: источник остаётся `#ВТ КАК ВТ`.
+    state = reducer(state, { type: 'UPDATE_TEMP_TABLE', tableId: vt.id, name: init!.name, fields: init!.fields });
+    expect(state.selectedTables.find(t => t.id === vt.id)!.fullName).toBe('#ВТ');
+    expect(generateBatch(assembleBatch(state))).toContain('#ВТ КАК ВТ');
   });
 });
 

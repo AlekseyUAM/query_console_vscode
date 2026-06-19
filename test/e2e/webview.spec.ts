@@ -306,4 +306,32 @@ test.describe('Query Constructor Webview', () => {
     const overflow = await strip.evaluate(el => getComputedStyle(el).overflowY);
     expect(overflow).toBe('auto');
   });
+
+  test('#ВТ: открытие из текста показывает имя с # в окне ВТ', async ({ page }) => {
+    await page.goto(BASE);
+    await expect(page.locator('text=Справочники')).toBeVisible(); // дождаться метаданных
+    const TEXT =
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка,\n\tВТ.asdfa КАК asdfa\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты,\n\t#ВТ КАК ВТ';
+    await page.evaluate((text) => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text } }));
+    }, TEXT);
+    // Источник-ВТ появился (псевдоним ВТ); двойной клик открывает окно с реальным именем `#ВТ`.
+    await page.locator('[data-table-alias="ВТ"]').dblclick();
+    await expect(page.locator('[data-testid="tt-name"]')).toHaveValue('#ВТ');
+  });
+
+  test('некорректный текст: показывает синтаксическую ошибку, а не пустой конструктор', async ({ page }) => {
+    await page.goto(BASE);
+    await expect(page.locator('text=Справочники')).toBeVisible();
+    const BAD =
+      'ВЫБРАТЬ\n\tВалюты.Ссылка КАК Ссылка\n' +
+      'ИЗ\n\tСправочник.Валюты КАК Валюты,\n\t?ВТ КАК ВТ';
+    await page.evaluate((text) => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text } }));
+    }, BAD);
+    const err = page.locator('[data-testid="load-error"]');
+    await expect(err).toBeVisible();
+    await expect(err).toContainText('Ошибка разбора 5:'); // строка с `?ВТ`
+  });
 });

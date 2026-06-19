@@ -26,6 +26,9 @@ export function App(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   // 7.8.10: текст ошибки валидации при нажатии ОК (null = нет ошибки).
   const [okError, setOkError] = useState<string | null>(null);
+  // Текст синтаксической ошибки при открытии из текста (null = нет): некорректный
+  // запрос НЕ открывается пустым конструктором, а показывает ошибку с номером строки.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const expectModelRef = React.useRef(false);
 
   useEffect(() => {
@@ -42,10 +45,12 @@ export function App(): React.ReactElement {
         setRefreshState({ ok: msg.ok, message: msg.message });
       } else if (msg.type === 'loadModel') {
         // Открытие из текста и проверка при «ОК» (7.8.10) используют ЕДИНЫЙ разбор
-        // `tryParseBatch`: если текст разобрался — загружаем модель, иначе открываем
-        // пустой конструктор. В любом случае снимаем оверлей загрузки (7.8.2).
+        // `tryParseBatch`: текст разобрался — загружаем модель; иначе показываем
+        // синтаксическую ошибку (с номером строки) вместо пустого конструктора. В
+        // любом случае снимаем оверлей загрузки (7.8.2).
         const r = tryParseBatch(msg.text);
-        if (r.ok) dispatch({ type: 'LOAD_BATCH', doc: r.doc });
+        if (r.ok) { dispatch({ type: 'LOAD_BATCH', doc: r.doc }); setLoadError(null); }
+        else setLoadError(r.error);
         setLoading(false);
       }
     });
@@ -103,6 +108,27 @@ export function App(): React.ReactElement {
         okDisabled={!batchText.trim()}
         okError={okError}
       />
+
+      {/* Синтаксическая ошибка открытия из текста — поверх конструктора, с номером строки. */}
+      {loadError != null && (
+        <div
+          data-testid="load-error"
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'var(--vscode-editor-background, #1e1e1e)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 12, padding: 24, textAlign: 'center', zIndex: 400,
+          }}
+        >
+          <div style={{ color: 'var(--vscode-errorForeground, #f44747)', fontSize: 14, fontWeight: 600 }}>
+            Не удалось открыть запрос: синтаксическая ошибка
+          </div>
+          <div style={{ color: 'var(--vscode-errorForeground, #f44747)', fontSize: 13, whiteSpace: 'pre-wrap', maxWidth: 640 }}>
+            {loadError}
+          </div>
+          <button style={BTN} onClick={handleCancel}>Закрыть</button>
+        </div>
+      )}
 
       {/* 7.8.2: loading overlay — covers the constructor until it is fully populated */}
       {loading && (

@@ -381,6 +381,24 @@ function synthesizeSubqueryTables(doc: BatchDocument, taken: Set<string>): MetaT
 // Слой документа объединения: снимок/восстановление активного запроса.
 // ============================================================================
 
+/**
+ * Предзаполнение окна «Временная таблица» для существующего источника-ВТ (двойной
+ * клик). Имя — РЕАЛЬНОЕ имя ВТ (`sel.fullName`, напр. `#ВТ`/`&ВТ`), а НЕ
+ * `defaultTableAlias` (тот отбрасывает ведущий `#` и подставляет псевдоним): иначе
+ * двойной клик по `#ВТ КАК ВТ` показывал «ВТ», и ОК переименовывал источник в `ВТ`,
+ * теряя `#`. Поля — из синтетической метатаблицы источника.
+ */
+export function tempTableDialogInitial(
+  state: QueryState,
+  editId: string,
+): { name: string; fields: { name: string }[] } | undefined {
+  const sel = state.selectedTables.find(t => t.id === editId);
+  if (!sel) return undefined;
+  const meta = state.tables.find(t => t.fullName === sel.fullName);
+  if (!meta) return undefined;
+  return { name: sel.fullName, fields: meta.fields.map(f => ({ name: f.name })) };
+}
+
 /** Извлечь working set активного запроса (плоские поля) в сериализуемый SavedQuery. */
 export function snapshotActive(state: QueryState): SavedQuery {
   return {

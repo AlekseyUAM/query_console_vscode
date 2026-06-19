@@ -23,7 +23,7 @@ import type { MetaField, MetaTable } from '../../core/metadata/types';
 import type { RefId } from '../../shared/messages';
 import { accumPeriodFields } from '../../core/query/accumVirtualFields';
 import type { QueryState, QueryAction } from '../state/queryStore';
-import { assembleMembers, assembleBatch, batchMemberName, initialState, reducer } from '../state/queryStore';
+import { assembleMembers, assembleBatch, batchMemberName, initialState, reducer, tempTableDialogInitial } from '../state/queryStore';
 import { generateBatch } from '../../core/query/sdblGenerator';
 import { deriveUnionColumns } from '../../core/query/unionModel';
 import type { QueryDocument } from '../../core/query/unionModel';
@@ -559,11 +559,7 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
       {/* 7.8.9 / 7.8.14: temp table description dialog (create / edit) */}
       {tempTableDialog && (() => {
         const editId = tempTableDialog.tableId;
-        const sel = editId ? state.selectedTables.find(t => t.id === editId) : undefined;
-        const meta = sel ? state.tables.find(t => t.fullName === sel.fullName) : undefined;
-        const initial = sel && meta
-          ? { name: defaultTableAlias(sel), fields: meta.fields.map(f => ({ name: f.name })) }
-          : undefined;
+        const initial = editId ? tempTableDialogInitial(state, editId) : undefined;
         return (
           <TempTableDialog
             initial={initial}
