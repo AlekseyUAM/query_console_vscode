@@ -66,8 +66,50 @@ export function buildDiagram(
 
 // --- генераторы (заглушки; реальные реализации — Tasks 2–5) ---
 
-function packageFlowDiagram(_batch: BatchDocument): string {
-  return placeholder();
+function packageNodeLabel(doc: QueryDocument, i: number): string {
+  const m = headModel(doc);
+  const qt = m?.queryType;
+  const name = m?.tempTableName;
+  if ((qt === 'createTemp' || qt === 'appendTemp') && name) {
+    return `${i + 1}. ПОМЕСТИТЬ ${name}`;
+  }
+  if (qt === 'dropTemp' && name) {
+    return `${i + 1}. УНИЧТОЖИТЬ ${name}`;
+  }
+  return `Запрос ${i + 1}`;
+}
+
+function packageFlowDiagram(batch: BatchDocument): string {
+  if (!batch.members.length) return placeholder();
+  const lines = ['graph TD'];
+
+  // Имя ВТ (в верхнем регистре) → индекс запроса-производителя.
+  const producer = new Map<string, number>();
+  batch.members.forEach((doc, i) => {
+    const m = headModel(doc);
+    if ((m?.queryType === 'createTemp' || m?.queryType === 'appendTemp') && m.tempTableName) {
+      producer.set(m.tempTableName.toUpperCase(), i);
+    }
+    lines.push(node(`q${i}`, packageNodeLabel(doc, i)));
+  });
+
+  // Ребро на каждую таблицу-потребителя, чьё имя совпало с произведённой ВТ.
+  batch.members.forEach((doc, i) => {
+    const seen = new Set<string>();
+    for (const um of doc.members) {
+      for (const t of um.model.tables) {
+        const key = (t.fullName ?? '').toUpperCase();
+        const p = producer.get(key);
+        if (p == null || p === i) continue;
+        const ek = `${p}->${i}:${key}`;
+        if (seen.has(ek)) continue;
+        seen.add(ek);
+        lines.push(edge(`q${p}`, `q${i}`, t.fullName));
+      }
+    }
+  });
+
+  return lines.join('\n');
 }
 
 function joinsDiagram(_model: QueryModel): string {
