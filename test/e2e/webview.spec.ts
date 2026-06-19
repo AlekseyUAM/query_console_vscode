@@ -404,6 +404,30 @@ test.describe('Query Constructor Webview', () => {
     await expect(page.locator('[data-table-alias="врем"]')).toBeVisible();
   });
 
+  test('7.8.20: участники ОБЪЕДИНЕНИЯ запроса пакета показаны отдельной полосой', async ({ page }) => {
+    await page.goto(BASE);
+    const TEXT =
+      'ВЫБРАТЬ\n\tБанки.Ссылка КАК Ссылка\nПОМЕСТИТЬ Пакет1\nИЗ\n\tСправочник.Банки КАК Банки\n\n' +
+      'ОБЪЕДИНИТЬ ВСЕ\n\nВЫБРАТЬ\n\tБанки.Ссылка\nИЗ\n\tСправочник.Банки КАК Банки' +
+      '\n;\n\n' + '/'.repeat(80) + '\n' +
+      'ВЫБРАТЬ\n\tАдресатыПисем.Ссылка КАК Ссылка\nИЗ\n\tСправочник.АдресатыПисем КАК АдресатыПисем';
+    await loadModelText(page, TEXT);
+
+    // Активен «Пакет1» (объединение из 2 участников): видны обе полосы — пакета и участников.
+    await expect(page.locator('[data-testid="side-strip"]')).toBeVisible();
+    await expect(page.locator('[data-testid="union-strip"]')).toBeVisible();
+    await expect(page.locator('[data-union-query="Запрос 1"]')).toBeVisible();
+    await expect(page.locator('[data-union-query="Запрос 2"]')).toBeVisible();
+
+    // Переключаемся на 2-й запрос пакета (1 участник) — полоса участников исчезает.
+    await page.locator('[data-testid="side-strip"] >> text=Запрос пакета 2').click();
+    await expect(page.locator('[data-testid="union-strip"]')).toHaveCount(0);
+
+    // Назад на «Пакет1» — полоса участников снова видна.
+    await page.locator('[data-testid="side-strip"] >> text=Пакет1').click();
+    await expect(page.locator('[data-testid="union-strip"]')).toBeVisible();
+  });
+
   test('некорректный текст: показывает синтаксическую ошибку, а не пустой конструктор', async ({ page }) => {
     await page.goto(BASE);
     const BAD =

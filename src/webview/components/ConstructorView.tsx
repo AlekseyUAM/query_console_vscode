@@ -203,6 +203,40 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
     </div>
   ) : null;
 
+  // Вертикальная полоса участников ОБЪЕДИНЕНИЯ активного запроса (если их > 1). В 1С
+  // показывается вложенно рядом с полосой запросов пакета: участники («Запрос 1»,
+  // «Запрос 2») — внутренняя полоса, запросы пакета — внешняя (правее). Переключение —
+  // SET_ACTIVE_QUERY (как на вкладке «Объединения/Псевдонимы»).
+  const showUnionTabs = state.queryList.length > 1 && activeTab !== 'Пакет запросов';
+  const unionTabsStrip = showUnionTabs ? (
+    <div data-testid="union-strip" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: '100%', borderLeft: '1px solid var(--vscode-panel-border, #444)', background: 'var(--vscode-editorGroupHeader-tabsBackground, #252526)' }}>
+      {state.queryList.map((q, i) => {
+        const isActive = i === state.activeQuery;
+        return (
+          <div
+            key={i}
+            data-union-query={q.name}
+            onClick={() => dispatch({ type: 'SET_ACTIVE_QUERY', index: i })}
+            title={q.name}
+            style={{
+              writingMode: 'vertical-rl',
+              flexShrink: 0,
+              padding: '12px 6px',
+              cursor: 'pointer',
+              borderLeft: isActive ? '2px solid var(--vscode-focusBorder, #007fd4)' : '2px solid transparent',
+              color: isActive ? 'var(--vscode-tab-activeForeground, #fff)' : 'var(--vscode-tab-inactiveForeground, #999)',
+              background: isActive ? 'var(--vscode-tab-activeBackground, #1e1e1e)' : 'transparent',
+              fontSize: 13,
+              userSelect: 'none',
+            }}
+          >
+            {q.name}
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
       <TabsBar tabs={finalTabs} active={activeTab} onSelect={setActiveTab} />
@@ -489,6 +523,7 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
         </div>
       )}
       </div>
+      {unionTabsStrip}
       {sideTabsStrip}
       </div>
 
