@@ -1356,6 +1356,27 @@ function parseOneField(cur: Cursor): RawField {
     }
   }
 
+  // Хвостовой зарезервированный идентификатор-связка (`ССЫЛКА`/`ЕСТЬ`/`И`/`КАК`…),
+  // стоящий самостоятельным токеном после завершённого первичного выражения, —
+  // некорректное/незавершённое выражение: `Банки.Ссылка Ссылка` (где `Ссылка`=ССЫЛКА —
+  // не может быть неявным псевдонимом), `Поле ЕСТЬ`, `Поле И`. Не путать с сегментом
+  // пути (`Банки.Ссылка` — `Ссылка` идёт после `.`) и с допустимыми терминаторами
+  // (`… КОНЕЦ`, `… ЕСТЬ NULL`). Проверено реальным 1С (validate_query).
+  if (bodyTokens.length >= 2) {
+    const last = bodyTokens[bodyTokens.length - 1];
+    const prev = bodyTokens[bodyTokens.length - 2];
+    const lastUp = last.type === 'ident' ? last.value.toUpperCase() : '';
+    const lastIsConnector =
+      last.type === 'ident' && EXPR_STOP_WORDS.has(lastUp) && !EXPR_TERMINATOR_WORDS.has(lastUp);
+    const prevEndsPrimary =
+      prev.type === 'string' || prev.type === 'number' || prev.type === 'date' ||
+      prev.type === 'param' || prev.type === 'ident' ||
+      (prev.type === 'punct' && prev.value === ')');
+    if (lastIsConnector && prevEndsPrimary) {
+      throw cur.error('некорректный элемент выборки: лишний идентификатор или незавершённое выражение', last);
+    }
+  }
+
   const rawBody = sliceSource(cur.source, bodyTokens);
   return { bodyTokens, alias, rawBody };
 }
@@ -2427,6 +2448,16 @@ const EXPR_STOP_WORDS = new Set<string>([
   'ИЕРАРХИИ', 'ИЕРАРХИЯ', 'УБЫВ', 'ВОЗР', 'РАЗЛИЧНЫЕ', 'КАК', 'ССЫЛКА',
   'ВЫБОР', 'КОГДА', 'ТОГДА', 'ИНАЧЕ', 'КОНЕЦ',
   'ГОД', 'КВАРТАЛ', 'МЕСЯЦ', 'ДЕКАДА', 'НЕДЕЛЯ', 'ДЕНЬ', 'ЧАС', 'МИНУТА', 'СЕКУНДА',
+]);
+
+/**
+ * Подмножество EXPR_STOP_WORDS, которым ВЫРАЖЕНИЕ может законно ОКАНЧИВАТЬСЯ
+ * (литералы и `КОНЕЦ` блока `ВЫБОР`). Остальные стоп-слова — связки/операторы
+ * (`ССЫЛКА`, `ЕСТЬ`, `И`, `КАК`, гранулярности периода…), которые НЕ могут стоять
+ * самостоятельным хвостовым токеном после завершённого первичного выражения.
+ */
+const EXPR_TERMINATOR_WORDS = new Set<string>([
+  'NULL', 'ИСТИНА', 'ЛОЖЬ', 'НЕОПРЕДЕЛЕНО', 'КОНЕЦ',
 ]);
 
 /**
