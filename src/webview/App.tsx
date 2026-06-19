@@ -4,8 +4,7 @@ import { ConstructorView } from './components/ConstructorView';
 import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer, assembleBatch } from './state/queryStore';
 import { generateBatch } from '../core/query/sdblGenerator';
-import { parseBatch } from '../core/query/sdblParser';
-import { validateBatchText } from '../core/query/validateBatch';
+import { tryParseBatch, validateBatchText } from '../core/query/validateBatch';
 
 const BTN: React.CSSProperties = {
   padding: '4px 12px',
@@ -42,15 +41,12 @@ export function App(): React.ReactElement {
       } else if (msg.type === 'refreshResult') {
         setRefreshState({ ok: msg.ok, message: msg.message });
       } else if (msg.type === 'loadModel') {
-        // Разбор реального текста под курсором может бросить — не оставляем оверлей
-        // загрузки навсегда поверх UI (7.8.2): в любом случае снимаем loading.
-        try {
-          dispatch({ type: 'LOAD_BATCH', doc: parseBatch(msg.text) });
-        } catch {
-          // не удалось разобрать — открываем пустой конструктор, не блокируем UI
-        } finally {
-          setLoading(false);
-        }
+        // Открытие из текста и проверка при «ОК» (7.8.10) используют ЕДИНЫЙ разбор
+        // `tryParseBatch`: если текст разобрался — загружаем модель, иначе открываем
+        // пустой конструктор. В любом случае снимаем оверлей загрузки (7.8.2).
+        const r = tryParseBatch(msg.text);
+        if (r.ok) dispatch({ type: 'LOAD_BATCH', doc: r.doc });
+        setLoading(false);
       }
     });
     postToHost({ type: 'ready' });

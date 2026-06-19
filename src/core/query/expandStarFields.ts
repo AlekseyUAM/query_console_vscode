@@ -52,7 +52,7 @@ export function expandStarFields(model: QueryModel, resolver?: MetadataResolver)
   const reserved = new Set<string>();
   for (const f of model.fields) {
     if (parseStar(f)) continue;
-    const a = fieldAlias(f, model);
+    const a = fieldAlias(f);
     if (a) reserved.add(a.toUpperCase());
   }
 

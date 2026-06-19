@@ -2168,7 +2168,7 @@ function renderOrder(order: Order | undefined, model: QueryModel, includeAuto = 
       //  • Таблица-параметр `&Имя`/подзапрос/нерезолвимое — ОТБРАСЫВАЕТ. Фаза 6.16.73.
       const lastSeg = f.path.split('.').pop();
       const ownerTable = model.tables.find(t => t.id === f.tableId);
-      const resolvable = ownerTable !== undefined && ownerTable.subquery !== true;
+      const resolvable = ownerTable !== undefined && ownerTable.subquery === undefined;
       const paramTable = ownerTable !== undefined && ownerTable.fullName.startsWith('&');
       const metadataTable = resolvable && !paramTable && ownerTable!.fullName.includes('.');
       const tempTable = resolvable && !paramTable && !ownerTable!.fullName.includes('.');
