@@ -254,17 +254,30 @@ describe('LOAD_BATCH temp-table reference (7.8.8-fix3)', () => {
     expect(roundTrip(TEMP_TABLE_REF)).toBe(generateBatch(parseBatch(TEMP_TABLE_REF)));
   });
 
-  it('does not mark a parameter source `ИЗ &ТЗ КАК Т` as a temp table', () => {
-    const PARAM_SOURCE =
+  // Имя источника-ВТ может начинаться на `&` (передача таблицы значений/ВТ параметром:
+  // `&ВТ КАК ВТ`) — его поля тоже должны открываться (адресуются по псевдониму `ВТ.asdfa`).
+  it('marks an `&`-prefixed temp-table source and synthesizes its columns', () => {
+    const PARAM_TEMP =
       'ВЫБРАТЬ\n' +
-      '	Т.Поле КАК Поле\n' +
+      '	Валюты.Ссылка КАК Ссылка,\n' +
+      '	ВТ.asdfa КАК asdfa\n' +
       'ИЗ\n' +
-      '	&ТЗ КАК Т';
-    const state = reducer(initialState(), { type: 'LOAD_BATCH', doc: parseBatch(PARAM_SOURCE) });
-    const t = state.selectedTables.find(s => s.fullName === '&ТЗ');
-    expect(t).toBeDefined();
-    expect(t!.tempTable).toBeUndefined();
-    expect(state.tables.find(m => m.fullName === '&ТЗ')).toBeUndefined();
+      '	Справочник.Валюты КАК Валюты,\n' +
+      '	&ВТ КАК ВТ';
+    const doc = parseBatch(PARAM_TEMP);
+    const state = reducer(initialState(), { type: 'LOAD_BATCH', doc });
+
+    const vt = state.selectedTables.find(s => s.fullName === '&ВТ');
+    expect(vt).toBeDefined();
+    expect(vt!.tempTable).toBe(true);
+
+    const meta = state.tables.find(m => m.fullName === '&ВТ');
+    expect(meta).toBeDefined();
+    expect(meta!.kind).toBe('ТабличнаяЧасть');
+    expect(meta!.fields.map(f => f.name)).toContain('asdfa');
+
+    // генерация не меняется — источник остаётся `&ВТ КАК ВТ`
+    expect(roundTrip(PARAM_TEMP)).toBe(generateBatch(parseBatch(PARAM_TEMP)));
   });
 });
 

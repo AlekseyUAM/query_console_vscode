@@ -289,8 +289,10 @@ function collectTempColumns(model: QueryModel, tableId: string): string[] {
  * `SelectedTable` (односегментное имя, без флага) — конструктор не отличал её от
  * реальной таблицы: двойной клик не открывал окно ВТ, раскрытие не показывало полей.
  * Источник считаем ссылкой на ВТ, если он не подзапрос, не виртуальная таблица, имя
- * односегментное (без точки) и не разрешается в метаданных (`known`). Помечаем
- * `tempTable:true` (ДО `docToSnapshot`) и собираем синтетическую `ТабличнаяЧасть` с
+ * односегментное (без точки) и не разрешается в метаданных (`known`). Имя ВТ может
+ * начинаться на `&` (передача ТЗ/ВТ параметром: `&ВТ КАК ВТ`) или `#` (подстановка) —
+ * это тоже ссылка на ВТ, её поля адресуются по псевдониму. Помечаем `tempTable:true`
+ * (ДО `docToSnapshot`) и собираем синтетическую `ТабличнаяЧасть` с
  * колонками из `collectTempColumns` (объединение по всем участникам пакета — одно имя
  * ВТ = одна метатаблица). Генерация не меняется: источник печатается как `ВТ КАК ВТ`.
  */
@@ -302,9 +304,6 @@ function synthesizeTempTables(doc: BatchDocument, known: Set<string>): MetaTable
       for (const sel of member.model.tables) {
         if (sel.subquery || sel.virtual || !sel.fullName) continue;
         if (sel.fullName.includes('.') || known.has(sel.fullName)) continue;
-        // Источник-параметр (`ИЗ &ТЗ КАК Т`) и подстановка (`ИЗ #Имя КАК Т`) —
-        // не ВТ; парсер исключает их тем же признаком (sdblParser inferUndefinedTempTables).
-        if (sel.fullName.startsWith('&') || sel.fullName.startsWith('#')) continue;
         sel.tempTable = true;
         if (!byName.has(sel.fullName)) { byName.set(sel.fullName, []); order.push(sel.fullName); }
         const acc = byName.get(sel.fullName)!;
