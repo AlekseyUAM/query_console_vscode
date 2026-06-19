@@ -19,8 +19,11 @@ interface Props {
   onAddSubquery: () => void;
   /** 7.8.9: создать описание временной таблицы. */
   onAddTempTable: () => void;
-  /** 7.8.14/7.8.16: двойной клик по строке таблицы — активация (ветвится по типу источника). */
+  /** 7.8.16: двойной клик по строке таблицы — добавить все её поля (любой источник). */
   onActivateTable: (tableId: string) => void;
+  /** 7.8.14/7.8.15: «Редактирование» — открыть окно ВТ / вложенный конструктор для
+   * выделенного источника (активна только для ВТ/подзапроса). */
+  onEditTable: (tableId: string) => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -97,7 +100,7 @@ function FieldRow({ tableFullName, field, depth, expandedRefs, onExpandRef }: {
   );
 }
 
-export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable, onActivateTable }: Props): React.ReactElement {
+export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable, onActivateTable, onEditTable }: Props): React.ReactElement {
   const [expandedTableIds, setExpandedTableIds] = React.useState<Set<string>>(new Set());
   const [expandedTsSections, setExpandedTsSections] = React.useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -149,6 +152,8 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
   const focusedTable = selectedTables.find(t => t.id === focusedSelectedTableId);
   const focusedMeta = focusedTable ? metaTables.find(m => m.fullName === focusedTable.fullName) : undefined;
   const focusedIsVirtual = !!focusedMeta?.virtual;
+  // 7.8.14/7.8.15: «Редактирование» активно только для ВТ/подзапроса.
+  const focusedIsEditable = !!focusedTable && (!!focusedTable.subquery || !!focusedTable.tempTable);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 4, gap: 4 }}>
@@ -185,6 +190,15 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
           onClick={onAddTempTable}
         >
           ВТ
+        </button>
+        <button
+          data-testid="edit-source"
+          style={BTN}
+          title="Редактирование"
+          disabled={!focusedIsEditable}
+          onClick={() => focusedSelectedTableId && onEditTable(focusedSelectedTableId)}
+        >
+          ✎
         </button>
       </div>
       <div

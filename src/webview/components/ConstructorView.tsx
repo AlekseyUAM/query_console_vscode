@@ -238,18 +238,15 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
             onAddSubquery={() => setSubqueryEditor({ tableId: null })}
             onAddTempTable={() => setTempTableDialog({ tableId: null })}
             onActivateTable={id => {
-              // Двойной клик ветвится по типу источника.
+              // 7.8.14/7.8.15/7.8.16: двойной клик по ЛЮБОМУ источнику (обычная таблица,
+              // ВТ, подзапрос) добавляет все его поля с дублями.
+              dispatch({ type: 'ADD_ALL_FIELDS_DUP', tableId: id });
+            }}
+            onEditTable={id => {
+              // «Редактирование»: ВТ → окно описания; подзапрос → вложенный конструктор.
               const sel = state.selectedTables.find(t => t.id === id);
-              if (sel?.subquery) {
-                // 7.8.15: переоткрыть вложенный конструктор, заполнив его подзапросом.
-                setSubqueryEditor({ tableId: id, initialDoc: sel.subquery });
-              } else if (sel?.tempTable) {
-                // 7.8.14: переоткрыть окно описания временной таблицы.
-                setTempTableDialog({ tableId: id });
-              } else {
-                // 7.8.16: все поля с дублями.
-                dispatch({ type: 'ADD_ALL_FIELDS_DUP', tableId: id });
-              }
+              if (sel?.subquery) setSubqueryEditor({ tableId: id, initialDoc: sel.subquery });
+              else if (sel?.tempTable) setTempTableDialog({ tableId: id });
             }}
           />
         </div>

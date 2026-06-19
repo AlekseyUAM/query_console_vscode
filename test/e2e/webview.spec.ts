@@ -111,7 +111,7 @@ test.describe('Query Constructor Webview', () => {
     await expect(page.locator('[data-field-idx]').nth(2)).toBeVisible();
   });
 
-  test('7.8.14: двойной клик по ВТ открывает окно с полями', async ({ page }) => {
+  test('7.8.14: кнопка «Редактирование» переоткрывает окно ВТ; двойной клик добавляет поля', async ({ page }) => {
     await page.goto(BASE);
     // Открыть окно «Временная таблица».
     await page.locator('[data-testid="add-temp-table"]').click();
@@ -124,9 +124,49 @@ test.describe('Query Constructor Webview', () => {
     // Источник-ВТ появляется в списке «Таблицы» с синонимом = имя ВТ.
     await expect(page.locator('[data-table-alias="ВТТовары"]')).toBeVisible();
 
-    // Двойной клик переоткрывает окно, предзаполненное именем.
-    await page.locator('[data-table-alias="ВТТовары"]').dblclick();
+    // Выделение ВТ активирует кнопку «Редактирование»; она переоткрывает окно.
+    await page.locator('[data-table-alias="ВТТовары"]').click();
+    await expect(page.locator('[data-testid="edit-source"]')).toBeEnabled();
+    await page.locator('[data-testid="edit-source"]').click();
     await expect(page.locator('[data-testid="tt-name"]')).toHaveValue('ВТТовары');
+    await page.locator('[data-testid="tt-cancel"]').click();
+
+    // 7.8.14: двойной клик по синониму ВТ добавляет все её поля в «Поля».
+    await page.locator('[data-table-alias="ВТТовары"]').dblclick();
+    await expect(page.locator('text=ВТТовары.Товар')).toBeVisible();
+    await expect(page.locator('text=ВТТовары.Количество')).toBeVisible();
+  });
+
+  test('7.8.14: кнопка «Редактирование» неактивна для обычной таблицы', async ({ page }) => {
+    await page.goto(BASE);
+    await page.locator('text=Справочники').click();
+    await dragTableToPanel(page, 'Справочник.Валюты');
+    await page.locator('[data-table-alias="Валюты"]').click();
+    await expect(page.locator('[data-testid="edit-source"]')).toBeDisabled();
+  });
+
+  test('7.8.15: «Редактирование» открывает вложенный конструктор; двойной клик добавляет поля', async ({ page }) => {
+    await page.goto(BASE);
+    await expect(page.locator('text=Справочники')).toBeVisible();
+    const TEXT =
+      'ВЫБРАТЬ\n\tВложенныйЗапрос.ВерсияДанных КАК ВерсияДанных\n' +
+      'ИЗ\n\t(ВЫБРАТЬ\n\t\tАвансовыйОтчет.ВерсияДанных КАК ВерсияДанных\n\tИЗ\n' +
+      '\t\tДокумент.АвансовыйОтчет КАК АвансовыйОтчет) КАК ВложенныйЗапрос';
+    await page.evaluate((text) => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text } }));
+    }, TEXT);
+
+    // Выделение подзапроса активирует «Редактирование»; она открывает вложенный конструктор.
+    await page.locator('[data-table-alias="ВложенныйЗапрос"]').click();
+    await expect(page.locator('[data-testid="edit-source"]')).toBeEnabled();
+    await page.locator('[data-testid="edit-source"]').click();
+    await expect(page.locator('[data-testid="subquery-constructor"]')).toBeVisible();
+    await page.locator('button:has-text("Отмена")').last().click();
+    await expect(page.locator('[data-testid="subquery-constructor"]')).toBeHidden();
+
+    // 7.8.15: двойной клик по синониму подзапроса добавляет его поля (дубль → idx 1).
+    await page.locator('[data-table-alias="ВложенныйЗапрос"]').dblclick();
+    await expect(page.locator('[data-field-idx="1"]')).toBeVisible();
   });
 
   test('7.8.8: кнопка ВЗ открывает вложенный конструктор', async ({ page }) => {
@@ -316,8 +356,10 @@ test.describe('Query Constructor Webview', () => {
     await page.evaluate((text) => {
       window.dispatchEvent(new MessageEvent('message', { data: { type: 'loadModel', text } }));
     }, TEXT);
-    // Источник-ВТ появился (псевдоним ВТ); двойной клик открывает окно с реальным именем `#ВТ`.
-    await page.locator('[data-table-alias="ВТ"]').dblclick();
+    // Источник-ВТ появился (псевдоним ВТ); выделение + «Редактирование» открывает
+    // окно с реальным именем `#ВТ`.
+    await page.locator('[data-table-alias="ВТ"]').click();
+    await page.locator('[data-testid="edit-source"]').click();
     await expect(page.locator('[data-testid="tt-name"]')).toHaveValue('#ВТ');
   });
 
