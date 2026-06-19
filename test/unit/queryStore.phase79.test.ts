@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { reducer, initialState, assembleBatch } from '../../src/webview/state/queryStore';
 import type { QueryState } from '../../src/webview/state/queryStore';
 import { generateBatch } from '../../src/core/query/sdblGenerator';
+import { parseBatch } from '../../src/core/query/sdblParser';
 import type { MetaTable } from '../../src/core/metadata/types';
 
 const валюты: MetaTable = {
@@ -144,5 +145,72 @@ describe('7.8.14 — UPDATE_TEMP_TABLE renames + replaces columns + prunes field
     // an ordinary (non-temp) table is not updatable as a temp table.
     const realId = s.selectedTables[0].id;
     expect(reducer(s, { type: 'UPDATE_TEMP_TABLE', tableId: realId, name: 'X', fields: [] })).toBe(prev);
+  });
+});
+
+describe('7.8.15 — UPDATE_SUBQUERY_TABLE replaces subquery + columns + prunes fields', () => {
+  const docKodNaim = parseBatch(
+    'ВЫБРАТЬ\n\tВалюты.Код КАК Код,\n\tВалюты.Наименование КАК Наименование\nИЗ\n\tСправочник.Валюты КАК Валюты'
+  ).members[0];
+  const docKod = parseBatch(
+    'ВЫБРАТЬ\n\tВалюты.Код КАК Код\nИЗ\n\tСправочник.Валюты КАК Валюты'
+  ).members[0];
+  const docX = parseBatch(
+    'ВЫБРАТЬ\n\tВалюты.Код КАК X\nИЗ\n\tСправочник.Валюты КАК Валюты'
+  ).members[0];
+
+  it('replaces subquery + synthetic columns, keeps surviving field, prunes the dropped one', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_SUBQUERY_TABLE', name: 'ВложенныйЗапрос', subquery: docKodNaim, columns: ['Код', 'Наименование'] });
+    const sel0 = s.selectedTables.find(t => t.subquery)!;
+    const tid = sel0.id;
+    const fullName = sel0.fullName;
+    // synthetic meta has both columns.
+    expect(s.tables.find(t => t.fullName === fullName)!.fields.map(f => f.name)).toEqual(['Код', 'Наименование']);
+
+    s = reducer(s, { type: 'ADD_FIELD_WITH_TABLE', tableFullName: fullName, fieldPath: 'Код' });
+    expect(s.selectedFields.filter(f => f.tableId === tid && f.path === 'Код')).toHaveLength(1);
+
+    // update to a doc with just Код.
+    s = reducer(s, { type: 'UPDATE_SUBQUERY_TABLE', tableId: tid, subquery: docKod, columns: ['Код'] });
+
+    const meta = s.tables.find(t => t.fullName === fullName)!;
+    expect(meta.fields.map(f => f.name)).toEqual(['Код']);
+    expect(meta.fields[0].types).toEqual([]);
+    const sel = s.selectedTables.find(t => t.id === tid)!;
+    expect(sel.subquery).toBe(docKod); // subquery replaced
+    expect(sel.fullName).toBe(fullName); // name unchanged
+    // the selected Код field survives.
+    expect(s.selectedFields.filter(f => f.tableId === tid && f.path === 'Код')).toHaveLength(1);
+
+    // a second update with columns ['X'] prunes the Код selected field.
+    s = reducer(s, { type: 'UPDATE_SUBQUERY_TABLE', tableId: tid, subquery: docX, columns: ['X'] });
+    expect(s.tables.find(t => t.fullName === fullName)!.fields.map(f => f.name)).toEqual(['X']);
+    expect(s.selectedFields.filter(f => f.tableId === tid && f.path === 'Код')).toHaveLength(0);
+  });
+
+  it('prunes grouping/order references for dropped subquery columns', () => {
+    let s = initialState();
+    s = reducer(s, { type: 'ADD_SUBQUERY_TABLE', name: 'ВложенныйЗапрос', subquery: docKodNaim, columns: ['Код', 'Наименование'] });
+    const tid = s.selectedTables.find(t => t.subquery)!.id;
+    const fullName = s.selectedTables.find(t => t.subquery)!.fullName;
+    s = reducer(s, { type: 'ADD_FIELD_WITH_TABLE', tableFullName: fullName, fieldPath: 'Код' });
+    s = reducer(s, { type: 'ADD_GROUP_FIELD', tableId: tid, path: 'Код' });
+    s = reducer(s, { type: 'ADD_ORDER_FIELD', tableId: tid, path: 'Код' });
+    expect(s.grouping.groupFields).toHaveLength(1);
+    expect(s.order.fields).toHaveLength(1);
+
+    s = reducer(s, { type: 'UPDATE_SUBQUERY_TABLE', tableId: tid, subquery: docX, columns: ['X'] });
+    expect(s.grouping.groupFields).toHaveLength(0);
+    expect(s.order.fields).toHaveLength(0);
+  });
+
+  it('returns state unchanged when the table id is missing or not a subquery', () => {
+    let s = withMetadata();
+    s = reducer(s, { type: 'ADD_TABLE', table: валюты });
+    const prev = s;
+    expect(reducer(s, { type: 'UPDATE_SUBQUERY_TABLE', tableId: 'nope', subquery: docKod, columns: ['Код'] })).toBe(prev);
+    const realId = s.selectedTables[0].id;
+    expect(reducer(s, { type: 'UPDATE_SUBQUERY_TABLE', tableId: realId, subquery: docKod, columns: ['Код'] })).toBe(prev);
   });
 });

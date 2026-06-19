@@ -173,10 +173,10 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
         <button
           data-testid="add-subquery"
           style={BTN}
-          title="Создать вложенный запрос"
+          title="Создать вложенный запрос (ВЗ)"
           onClick={onAddSubquery}
         >
-          ⊂З
+          ВЗ
         </button>
         <button
           data-testid="add-temp-table"

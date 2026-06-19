@@ -113,6 +113,8 @@ export type QueryAction =
   | { type: 'ADD_TEMP_TABLE'; name: string; fields: { name: string }[] }
   // 7.8.14: двойной клик по синониму ВТ переоткрывает окно; ОК обновляет существующую ВТ.
   | { type: 'UPDATE_TEMP_TABLE'; tableId: string; name: string; fields: { name: string }[] }
+  // 7.8.15: двойной клик по синониму подзапроса переоткрывает конструктор; ОК обновляет подзапрос.
+  | { type: 'UPDATE_SUBQUERY_TABLE'; tableId: string; subquery: QueryDocument; columns: string[] }
   | { type: 'REMOVE_FIELD'; fieldIdx: number }
   | { type: 'ADD_TAB_SECTION_WITH_TABLE'; parentTableFullName: string; tsName: string; tsFullName: string; tsFields: string[] }
   | { type: 'REMOVE_TAB_SECTION'; tableId: string; tsName: string }
@@ -823,6 +825,60 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
 
       // Обрезать выбранные поля этой таблицы, чьи пути исчезли из набора колонок.
       const keep = new Set(newFields.map(f => f.name));
+      const removedPaths = new Set(
+        state.selectedFields
+          .filter(f => f.tableId === action.tableId && f.path !== '' && !keep.has(f.path))
+          .map(f => f.path)
+      );
+      const selectedFields = state.selectedFields.filter(
+        f => !(f.tableId === action.tableId && removedPaths.has(f.path))
+      );
+
+      const pruned = (tableId: string, path: string) =>
+        tableId === action.tableId && removedPaths.has(path);
+      const grouping: Grouping = {
+        ...state.grouping,
+        groupFields: state.grouping.groupFields.filter(f => !pruned(f.tableId, f.path)),
+        aggregates: state.grouping.aggregates.filter(a => !pruned(a.tableId, a.path)),
+        groupSets: state.grouping.groupSets
+          .map(set => set.filter(f => !pruned(f.tableId, f.path)))
+          .filter(set => set.length > 0),
+      };
+      const order: Order = {
+        ...state.order,
+        fields: state.order.fields.filter(f => !pruned(f.tableId, f.path)),
+      };
+      const totals: Totals = {
+        ...state.totals,
+        groupFields: state.totals.groupFields.filter(f => !pruned(f.tableId, f.path)),
+        totalFields: state.totals.totalFields.filter(f => !pruned(f.tableId, f.path)),
+      };
+      const indexing: Indexing = {
+        ...state.indexing,
+        indexes: state.indexing.indexes.map(idx => ({
+          ...idx,
+          fields: idx.fields.filter(f => !pruned(f.tableId, f.path)),
+        })),
+      };
+
+      return { ...state, tables, selectedTables, selectedFields, grouping, order, totals, indexing };
+    }
+
+    case 'UPDATE_SUBQUERY_TABLE': {
+      // 7.8.15: ОК вложенного конструктора — заменить подзапрос и пересчитать колонки
+      // синтетической метатаблицы; имя источника НЕ меняется (адресация по fullName).
+      const sel = state.selectedTables.find(t => t.id === action.tableId);
+      if (!sel || !sel.subquery) return state;
+      const fullName = sel.fullName;
+      const newFields: MetaField[] = action.columns.map(c => ({ name: c, kind: 'attribute', types: [] }));
+      const newMeta = syntheticSourceTable(fullName, newFields);
+      const tables = state.tables.map(t => (t.fullName === fullName ? newMeta : t));
+      const selectedTables = state.selectedTables.map(t =>
+        t.id === action.tableId ? { ...t, subquery: action.subquery } : t
+      );
+
+      // Обрезать выбранные поля этой таблицы, чьи пути исчезли из набора колонок.
+      const keep = new Set(action.columns);
       const removedPaths = new Set(
         state.selectedFields
           .filter(f => f.tableId === action.tableId && f.path !== '' && !keep.has(f.path))

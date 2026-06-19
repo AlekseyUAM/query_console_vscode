@@ -129,6 +129,22 @@ test.describe('Query Constructor Webview', () => {
     await expect(page.locator('[data-testid="tt-name"]')).toHaveValue('ВТТовары');
   });
 
+  test('7.8.8: кнопка ВЗ открывает вложенный конструктор', async ({ page }) => {
+    await page.goto(BASE);
+    // Кнопка переименована ⊂З → ВЗ.
+    const btn = page.locator('[data-testid="add-subquery"]');
+    await expect(btn).toHaveText('ВЗ');
+
+    // Клик открывает вложенный рекурсивный конструктор.
+    await btn.click();
+    const nested = page.locator('[data-testid="subquery-constructor"]');
+    await expect(nested).toBeVisible();
+
+    // У вложенной модалки своя нижняя панель — её «Отмена» (последняя на странице) закрывает её.
+    await page.locator('button:has-text("Отмена")').last().click();
+    await expect(nested).toBeHidden();
+  });
+
   test('adds field to Fields panel via > button after table selected', async ({ page }) => {
     await page.goto(BASE);
     // Expand group, add table to query via drag

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { TabsBar, TABS } from './TabsBar';
 import { DbTreePanel } from './DbTreePanel';
 import { TablesPanel } from './TablesPanel';
@@ -16,7 +16,6 @@ import { BuilderTab } from './BuilderTab';
 import { BatchTab } from './BatchTab';
 import { VirtualTableParamsDialog } from './VirtualTableParamsDialog';
 import { ExpressionBuilder } from './ExpressionBuilder';
-import { SubqueryDialog } from './SubqueryDialog';
 import { TempTableDialog } from './TempTableDialog';
 import type { VirtualParams } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
@@ -24,10 +23,10 @@ import type { MetaField, MetaTable } from '../../core/metadata/types';
 import type { RefId } from '../../shared/messages';
 import { accumPeriodFields } from '../../core/query/accumVirtualFields';
 import type { QueryState, QueryAction } from '../state/queryStore';
-import { assembleMembers, assembleBatch, batchMemberName } from '../state/queryStore';
+import { assembleMembers, assembleBatch, batchMemberName, initialState, reducer } from '../state/queryStore';
 import { generateBatch } from '../../core/query/sdblGenerator';
-import { parseBatch } from '../../core/query/sdblParser';
 import { deriveUnionColumns } from '../../core/query/unionModel';
+import type { QueryDocument } from '../../core/query/unionModel';
 
 const BTN: React.CSSProperties = {
   padding: '4px 12px',
@@ -47,10 +46,12 @@ export interface ConstructorViewProps {
   onOk: () => void;
   onCancel: () => void;
   okDisabled?: boolean;
+  /** 7.8.8: режим вложенного конструктора (скрыть вкладку «Пакет запросов»). */
+  nested?: boolean;
 }
 
 export function ConstructorView(props: ConstructorViewProps): React.ReactElement {
-  const { state, dispatch, onExpandRef, toolbar, onOk, onCancel, okDisabled } = props;
+  const { state, dispatch, onExpandRef, toolbar, onOk, onCancel, okDisabled, nested } = props;
   const [activeTab, setActiveTab] = useState('Таблицы и поля');
   const [queryModalText, setQueryModalText] = useState<string | null>(null);
   const [vtDialogTableId, setVtDialogTableId] = useState<string | null>(null);
@@ -59,8 +60,9 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
     initial: string;
     onOk: (text: string) => void;
   }>(null);
-  // 7.8.8 / 7.8.9: модальные окна «Вложенный запрос» / «Временная таблица».
-  const [subqueryDialog, setSubqueryDialog] = useState<{ error: string | null } | null>(null);
+  // 7.8.8 / 7.8.15: вложенный конструктор подзапроса — null закрыт; tableId=null режим
+  // создания, иначе режим правки существующего источника-подзапроса (initialDoc заполнён).
+  const [subqueryEditor, setSubqueryEditor] = useState<null | { tableId: string | null; initialDoc?: QueryDocument }>(null);
   // 7.8.9 / 7.8.14: окно «Временная таблица» — null закрыто; tableId=null режим создания,
   // иначе режим правки существующей ВТ.
   const [tempTableDialog, setTempTableDialog] = useState<null | { tableId: string | null }>(null);
@@ -140,6 +142,11 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
     const i = finalTabs.indexOf('Дополнительно');
     finalTabs = [...finalTabs.slice(0, i + 1), 'Индексы', ...finalTabs.slice(i + 1)];
   }
+  // 7.8.8: в режиме вложенного конструктора подзапрос — единый документ объединения,
+  // а не пакет; вкладка «Пакет запросов» недоступна.
+  if (nested) {
+    finalTabs = finalTabs.filter(t => t !== 'Пакет запросов');
+  }
 
   // Если активная вкладка «Связи» скрылась (удалили таблицу) — вернуться к «Таблицы и поля».
   useEffect(() => {
@@ -195,7 +202,7 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
   ) : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', color: 'var(--vscode-foreground, #ccc)', background: 'var(--vscode-editor-background, #1e1e1e)', fontFamily: 'var(--vscode-font-family, sans-serif)', overflow: 'hidden' }}>
       <TabsBar tabs={finalTabs} active={activeTab} onSelect={setActiveTab} />
       {toolbar}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -226,15 +233,19 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
             onFocusTable={id => dispatch({ type: 'FOCUS_SELECTED_TABLE', id })}
             onExpandRef={ref => onExpandRef(ref)}
             onOpenVirtualParams={tableId => setVtDialogTableId(tableId)}
-            onAddSubquery={() => setSubqueryDialog({ error: null })}
+            onAddSubquery={() => setSubqueryEditor({ tableId: null })}
             onAddTempTable={() => setTempTableDialog({ tableId: null })}
             onActivateTable={id => {
-              // 7.8.14: двойной клик ветвится по типу источника.
+              // Двойной клик ветвится по типу источника.
               const sel = state.selectedTables.find(t => t.id === id);
-              if (sel?.tempTable) {
+              if (sel?.subquery) {
+                // 7.8.15: переоткрыть вложенный конструктор, заполнив его подзапросом.
+                setSubqueryEditor({ tableId: id, initialDoc: sel.subquery });
+              } else if (sel?.tempTable) {
+                // 7.8.14: переоткрыть окно описания временной таблицы.
                 setTempTableDialog({ tableId: id });
               } else {
-                // (источник-подзапрос обрабатывается в следующем шаге) 7.8.16: все поля с дублями.
+                // 7.8.16: все поля с дублями.
                 dispatch({ type: 'ADD_ALL_FIELDS_DUP', tableId: id });
               }
             }}
@@ -518,26 +529,22 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
         />
       )}
 
-      {/* 7.8.8: nested subquery dialog */}
-      {subqueryDialog && (
-        <SubqueryDialog
-          parseError={subqueryDialog.error}
-          onCancel={() => setSubqueryDialog(null)}
-          onOk={(name, text) => {
-            let doc;
-            try {
-              doc = parseBatch(text).members[0];
-            } catch (e) {
-              setSubqueryDialog({ error: `Не удалось разобрать запрос: ${(e as Error).message}` });
-              return;
-            }
-            if (!doc || doc.members.length === 0) {
-              setSubqueryDialog({ error: 'Пустой запрос' });
-              return;
-            }
+      {/* 7.8.8 / 7.8.15: вложенный рекурсивный конструктор подзапроса. */}
+      {subqueryEditor && (
+        <NestedConstructorModal
+          metadataTables={state.tables}
+          expandedRefs={state.expandedRefs}
+          onExpandRef={onExpandRef}
+          initialDoc={subqueryEditor.initialDoc}
+          onCancel={() => setSubqueryEditor(null)}
+          onOk={doc => {
             const columns = deriveUnionColumns(doc.members).map(c => c.alias);
-            dispatch({ type: 'ADD_SUBQUERY_TABLE', name, subquery: doc, columns });
-            setSubqueryDialog(null);
+            if (subqueryEditor.tableId === null) {
+              dispatch({ type: 'ADD_SUBQUERY_TABLE', name: 'ВложенныйЗапрос', subquery: doc, columns });
+            } else {
+              dispatch({ type: 'UPDATE_SUBQUERY_TABLE', tableId: subqueryEditor.tableId, subquery: doc, columns });
+            }
+            setSubqueryEditor(null);
           }}
         />
       )}
@@ -615,6 +622,86 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+interface NestedConstructorModalProps {
+  metadataTables: MetaTable[];
+  expandedRefs: Map<string, MetaField[]>;
+  onExpandRef: (ref: RefId) => void;
+  /** Предзаполнение для правки существующего подзапроса (7.8.15). */
+  initialDoc?: QueryDocument;
+  onOk: (doc: QueryDocument) => void;
+  onCancel: () => void;
+}
+
+/**
+ * 7.8.8: хост вложенного рекурсивного конструктора подзапроса. Владеет собственным
+ * reducer'ом; метаданные/ссылки приходят сверху (не перезапрашиваются). ОК собирает
+ * единый документ объединения и возвращает его через onOk.
+ */
+function NestedConstructorModal({ metadataTables, expandedRefs, onExpandRef, initialDoc, onOk, onCancel }: NestedConstructorModalProps): React.ReactElement {
+  const [nestedState, nestedDispatch] = useReducer(reducer, undefined, initialState);
+
+  // Посев метаданных и предзаполнения — только на mount. Повторная синхронизация
+  // tables затёрла бы синтетические таблицы (ВТ/подзапросы), добавленные внутри.
+  useEffect(() => {
+    nestedDispatch({ type: 'SET_METADATA', tables: metadataTables });
+    if (initialDoc) {
+      nestedDispatch({ type: 'LOAD_BATCH', doc: { members: [initialDoc] } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Догрузка раскрытых ссылок: дозаписать во внутренний reducer те, которых ещё нет.
+  useEffect(() => {
+    for (const [key, fields] of expandedRefs) {
+      if (!nestedState.expandedRefs.has(key)) {
+        const dot = key.indexOf('.');
+        const kind = key.slice(0, dot);
+        const name = key.slice(dot + 1);
+        nestedDispatch({ type: 'SET_REF_FIELDS', ref: { kind, name }, fields });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedRefs]);
+
+  const nestedBatchText = generateBatch(assembleBatch(nestedState));
+
+  function handleOk() {
+    const doc: QueryDocument = { members: assembleMembers(nestedState) };
+    onOk(doc);
+  }
+
+  return (
+    <div
+      data-testid="subquery-constructor"
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 250,
+      }}
+    >
+      <div style={{
+        width: '92vw', height: '92vh',
+        background: 'var(--vscode-editor-background, #1e1e1e)',
+        border: '1px solid var(--vscode-panel-border, #555)',
+        borderRadius: 4,
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
+      }}>
+        <ConstructorView
+          state={nestedState}
+          dispatch={nestedDispatch}
+          onExpandRef={onExpandRef}
+          onOk={handleOk}
+          onCancel={onCancel}
+          okDisabled={!nestedBatchText.trim()}
+          nested
+        />
+      </div>
     </div>
   );
 }
