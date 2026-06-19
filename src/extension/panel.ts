@@ -8,6 +8,7 @@ import { loadMetadataCached, rebuildModelCache } from '../core/metadata/modelCac
 import { parseConfiguration } from '../core/metadata/parser/parseConfiguration';
 import { generate } from '../core/query/sdblGenerator';
 import { insertResult } from './insertResult';
+import { openDiagram } from './diagramPreview';
 import type { SavedEditorState } from './insertResult';
 import type { HostMsg, WebviewMsg } from '../shared/messages';
 import type { MetadataModel } from '../core/metadata/types';
@@ -184,6 +185,8 @@ export function createPanel(
         const reply: HostMsg = { type: 'refreshResult', ok: false, message: `Ошибка парсинга: ${e}` };
         panel.webview.postMessage(reply);
       }
+    } else if (msg.type === 'showDiagram') {
+      await openDiagram(context, msg.kind, msg.title, msg.mermaid);
     }
   });
 
