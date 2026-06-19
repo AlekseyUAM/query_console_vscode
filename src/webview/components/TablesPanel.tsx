@@ -19,8 +19,8 @@ interface Props {
   onAddSubquery: () => void;
   /** 7.8.9: создать описание временной таблицы. */
   onAddTempTable: () => void;
-  /** 7.8.16: двойной клик по строке таблицы → добавить все её поля в «Поля». */
-  onAddAllFields: (tableId: string) => void;
+  /** 7.8.14/7.8.16: двойной клик по строке таблицы — активация (ветвится по типу источника). */
+  onActivateTable: (tableId: string) => void;
 }
 
 const BTN: React.CSSProperties = {
@@ -97,7 +97,7 @@ function FieldRow({ tableFullName, field, depth, expandedRefs, onExpandRef }: {
   );
 }
 
-export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable, onAddAllFields }: Props): React.ReactElement {
+export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId, expandedRefs, onAddTable, onRemoveTable, onFocusTable, onExpandRef, onOpenVirtualParams, onAddSubquery, onAddTempTable, onActivateTable }: Props): React.ReactElement {
   const [expandedTableIds, setExpandedTableIds] = React.useState<Set<string>>(new Set());
   const [expandedTsSections, setExpandedTsSections] = React.useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -217,7 +217,7 @@ export function TablesPanel({ metaTables, selectedTables, focusedSelectedTableId
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
                 onClick={() => { onFocusTable(t.id); toggleExpand(t.id); }}
-                onDoubleClick={() => onAddAllFields(t.id)}
+                onDoubleClick={() => onActivateTable(t.id)}
                 style={{
                   padding: '2px 6px',
                   cursor: 'default',

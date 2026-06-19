@@ -111,6 +111,24 @@ test.describe('Query Constructor Webview', () => {
     await expect(page.locator('[data-field-idx]').nth(2)).toBeVisible();
   });
 
+  test('7.8.14: двойной клик по ВТ открывает окно с полями', async ({ page }) => {
+    await page.goto(BASE);
+    // Открыть окно «Временная таблица».
+    await page.locator('[data-testid="add-temp-table"]').click();
+    await page.locator('[data-testid="tt-name"]').fill('ВТТовары');
+    await page.locator('[data-testid="tt-field-name-0"]').fill('Товар');
+    await page.locator('[data-testid="tt-add-row"]').click();
+    await page.locator('[data-testid="tt-field-name-1"]').fill('Количество');
+    await page.locator('[data-testid="tt-ok"]').click();
+
+    // Источник-ВТ появляется в списке «Таблицы» с синонимом = имя ВТ.
+    await expect(page.locator('[data-table-alias="ВТТовары"]')).toBeVisible();
+
+    // Двойной клик переоткрывает окно, предзаполненное именем.
+    await page.locator('[data-table-alias="ВТТовары"]').dblclick();
+    await expect(page.locator('[data-testid="tt-name"]')).toHaveValue('ВТТовары');
+  });
+
   test('adds field to Fields panel via > button after table selected', async ({ page }) => {
     await page.goto(BASE);
     // Expand group, add table to query via drag

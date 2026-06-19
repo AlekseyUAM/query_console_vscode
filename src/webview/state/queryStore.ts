@@ -1,4 +1,4 @@
-import type { MetaTable, MetaType } from '../../core/metadata/types';
+import type { MetaTable } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, SelectedTabSectionField, VirtualParams, Grouping, AggregateFunction, Condition, ConditionOperator, Selection, QueryType, QueryModel, Join, JoinCondition, Order, SortDirection, Totals, TotalKind, ReportBuilder, BuilderField, Indexing, QueryIndex, FieldRef } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import type { RefId } from '../../shared/messages';
@@ -110,7 +110,9 @@ export type QueryAction =
   | { type: 'SET_FIELD_EXPRESSION'; fieldIdx: number; expression: string }
   // 7.8.8 / 7.8.9: источник-подзапрос / описание временной таблицы.
   | { type: 'ADD_SUBQUERY_TABLE'; name: string; subquery: QueryDocument; columns: string[] }
-  | { type: 'ADD_TEMP_TABLE'; name: string; fields: { name: string; type: string }[] }
+  | { type: 'ADD_TEMP_TABLE'; name: string; fields: { name: string }[] }
+  // 7.8.14: двойной клик по синониму ВТ переоткрывает окно; ОК обновляет существующую ВТ.
+  | { type: 'UPDATE_TEMP_TABLE'; tableId: string; name: string; fields: { name: string }[] }
   | { type: 'REMOVE_FIELD'; fieldIdx: number }
   | { type: 'ADD_TAB_SECTION_WITH_TABLE'; parentTableFullName: string; tsName: string; tsFullName: string; tsFields: string[] }
   | { type: 'REMOVE_TAB_SECTION'; tableId: string; tsName: string }
@@ -229,17 +231,6 @@ export function initialState(): QueryState {
 }
 
 let _tableCounter = 0;
-
-/** Примитивные типы для описания полей временной таблицы (окно «Временная таблица»). */
-export const TEMP_TABLE_TYPES = ['Строка', 'Число', 'Дата', 'Булево'] as const;
-
-/** Текст типа из окна «Временная таблица» → MetaType[] (примитивы; иначе без типа). */
-function tempFieldTypes(type: string): MetaType[] {
-  const t = type.trim();
-  return (TEMP_TABLE_TYPES as readonly string[]).includes(t)
-    ? [{ primitive: t as MetaType['primitive'] }]
-    : [];
-}
 
 /**
  * Синтетическая метатаблица для источника-подзапроса / временной таблицы. Вид
@@ -787,15 +778,88 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       const fullName = uniqueSourceName(state, name);
       const fields: MetaField[] = action.fields
         .filter(f => f.name.trim())
-        .map(f => ({ name: f.name.trim(), kind: 'attribute', types: tempFieldTypes(f.type) }));
+        .map(f => ({ name: f.name.trim(), kind: 'attribute', types: [] }));
       const meta = syntheticSourceTable(fullName, fields);
       const id = `t${++_tableCounter}`;
       return {
         ...state,
         tables: [...state.tables, meta],
-        selectedTables: [...state.selectedTables, { id, fullName }],
+        selectedTables: [...state.selectedTables, { id, fullName, tempTable: true }],
         focusedSelectedTableId: id,
       };
+    }
+
+    case 'UPDATE_TEMP_TABLE': {
+      const sel = state.selectedTables.find(t => t.id === action.tableId);
+      if (!sel || !sel.tempTable) return state;
+      const oldFullName = sel.fullName;
+      const trimmed = action.name.trim();
+      // Уникальность нового имени — исключая саму обновляемую таблицу (не сталкиваться с собой).
+      let newFullName: string;
+      if (trimmed === oldFullName || !trimmed) {
+        newFullName = oldFullName;
+      } else {
+        const taken = new Set<string>([
+          ...state.tables.filter(t => t.fullName !== oldFullName).map(t => t.fullName),
+          ...state.selectedTables.filter(t => t.id !== action.tableId).map(t => t.fullName),
+        ]);
+        if (!taken.has(trimmed)) {
+          newFullName = trimmed;
+        } else {
+          let i = 2;
+          while (taken.has(`${trimmed}${i}`)) i++;
+          newFullName = `${trimmed}${i}`;
+        }
+      }
+
+      const newFields: MetaField[] = action.fields
+        .filter(f => f.name.trim())
+        .map(f => ({ name: f.name.trim(), kind: 'attribute', types: [] }));
+      const newMeta = syntheticSourceTable(newFullName, newFields);
+      const tables = state.tables.map(t => (t.fullName === oldFullName ? newMeta : t));
+      const selectedTables = state.selectedTables.map(t =>
+        t.id === action.tableId ? { ...t, fullName: newFullName } : t
+      );
+
+      // Обрезать выбранные поля этой таблицы, чьи пути исчезли из набора колонок.
+      const keep = new Set(newFields.map(f => f.name));
+      const removedPaths = new Set(
+        state.selectedFields
+          .filter(f => f.tableId === action.tableId && f.path !== '' && !keep.has(f.path))
+          .map(f => f.path)
+      );
+      const selectedFields = state.selectedFields.filter(
+        f => !(f.tableId === action.tableId && removedPaths.has(f.path))
+      );
+
+      const pruned = (tableId: string, path: string) =>
+        tableId === action.tableId && removedPaths.has(path);
+      const grouping: Grouping = {
+        ...state.grouping,
+        groupFields: state.grouping.groupFields.filter(f => !pruned(f.tableId, f.path)),
+        aggregates: state.grouping.aggregates.filter(a => !pruned(a.tableId, a.path)),
+        groupSets: state.grouping.groupSets
+          .map(set => set.filter(f => !pruned(f.tableId, f.path)))
+          .filter(set => set.length > 0),
+      };
+      const order: Order = {
+        ...state.order,
+        fields: state.order.fields.filter(f => !pruned(f.tableId, f.path)),
+      };
+      const totals: Totals = {
+        ...state.totals,
+        groupFields: state.totals.groupFields.filter(f => !pruned(f.tableId, f.path)),
+        totalFields: state.totals.totalFields.filter(f => !pruned(f.tableId, f.path)),
+      };
+      const indexing: Indexing = {
+        ...state.indexing,
+        indexes: state.indexing.indexes.map(idx => ({
+          ...idx,
+          fields: idx.fields.filter(f => !pruned(f.tableId, f.path)),
+        })),
+      };
+
+      return { ...state, tables, selectedTables, selectedFields, grouping, order, totals, indexing };
     }
 
     case 'ADD_TAB_SECTION_WITH_TABLE': {

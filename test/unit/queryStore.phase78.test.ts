@@ -78,14 +78,14 @@ describe('7.8.5 SET_FIELD_EXPRESSION', () => {
 });
 
 describe('7.8.9 ADD_TEMP_TABLE', () => {
-  it('adds a synthetic source table (invisible in the DB tree) with typed fields', () => {
+  it('adds a synthetic source table (invisible in the DB tree) with untyped fields', () => {
     let s = initialState();
     s = reducer(s, {
       type: 'ADD_TEMP_TABLE',
       name: 'ВТТовары',
       fields: [
-        { name: 'Товар', type: 'Строка' },
-        { name: 'Количество', type: 'Число' },
+        { name: 'Товар' },
+        { name: 'Количество' },
       ],
     });
     const meta = s.tables.find(t => t.fullName === 'ВТТовары');
@@ -93,15 +93,19 @@ describe('7.8.9 ADD_TEMP_TABLE', () => {
     // 'ТабличнаяЧасть' kind keeps it out of DbTreePanel groups.
     expect(meta!.kind).toBe('ТабличнаяЧасть');
     expect(meta!.fields.map(f => f.name)).toEqual(['Товар', 'Количество']);
-    expect(meta!.fields[1].types).toEqual([{ primitive: 'Число' }]);
-    expect(s.selectedTables.some(t => t.fullName === 'ВТТовары')).toBe(true);
+    // 7.8.9: «Тип значения» удалён — синтетические колонки без типов.
+    expect(meta!.fields[1].types).toEqual([]);
+    const sel = s.selectedTables.find(t => t.fullName === 'ВТТовары');
+    expect(sel).toBeDefined();
+    // 7.8.14: источник помечен как ВТ для повторного открытия окна.
+    expect(sel!.tempTable).toBe(true);
   });
 
   it('generates a FROM referencing the temp table', () => {
     let s = reducer(initialState(), {
       type: 'ADD_TEMP_TABLE',
       name: 'ВТТовары',
-      fields: [{ name: 'Товар', type: 'Строка' }],
+      fields: [{ name: 'Товар' }],
     });
     s = reducer(s, { type: 'ADD_FIELD_WITH_TABLE', tableFullName: 'ВТТовары', fieldPath: 'Товар' });
     const text = generateBatch(assembleBatch(s));

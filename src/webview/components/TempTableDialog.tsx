@@ -1,14 +1,14 @@
 import * as React from 'react';
-import { TEMP_TABLE_TYPES } from '../state/queryStore';
 
 export interface TempTableField {
   name: string;
-  type: string;
 }
 
 interface Props {
   onOk: (name: string, fields: TempTableField[]) => void;
   onCancel: () => void;
+  /** 7.8.14: режим правки — предзаполнить имя и поля существующей ВТ. */
+  initial?: { name: string; fields: TempTableField[] };
 }
 
 const OVERLAY: React.CSSProperties = {
@@ -34,16 +34,18 @@ const INPUT: React.CSSProperties = {
   border: '1px solid var(--vscode-input-border, #555)',
 };
 
-/** Окно «Временная таблица» (7.8.9): имя ВТ + список полей с типами значений. */
-export function TempTableDialog({ onOk, onCancel }: Props): React.ReactElement {
-  const [name, setName] = React.useState('ВТ');
-  const [fields, setFields] = React.useState<TempTableField[]>([{ name: '', type: TEMP_TABLE_TYPES[0] }]);
+/** Окно «Временная таблица» (7.8.9): имя ВТ + список полей (без «Типа значения»). */
+export function TempTableDialog({ onOk, onCancel, initial }: Props): React.ReactElement {
+  const [name, setName] = React.useState(initial?.name ?? 'ВТ');
+  const [fields, setFields] = React.useState<TempTableField[]>(
+    initial && initial.fields.length > 0 ? initial.fields : [{ name: '' }]
+  );
 
   function setField(i: number, patch: Partial<TempTableField>) {
     setFields(prev => prev.map((f, k) => (k === i ? { ...f, ...patch } : f)));
   }
   function addRow() {
-    setFields(prev => [...prev, { name: '', type: TEMP_TABLE_TYPES[0] }]);
+    setFields(prev => [...prev, { name: '' }]);
   }
   function removeRow(i: number) {
     setFields(prev => (prev.length > 1 ? prev.filter((_, k) => k !== i) : prev));
@@ -67,7 +69,6 @@ export function TempTableDialog({ onOk, onCancel }: Props): React.ReactElement {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '40vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', gap: 8, fontSize: 11, opacity: 0.7 }}>
             <span style={{ flex: 1 }}>Имя поля</span>
-            <span style={{ width: 120 }}>Тип значения</span>
             <span style={{ width: 20 }} />
           </div>
           {fields.map((f, i) => (
@@ -78,14 +79,6 @@ export function TempTableDialog({ onOk, onCancel }: Props): React.ReactElement {
                 value={f.name}
                 onChange={e => setField(i, { name: e.target.value })}
               />
-              <select
-                data-testid={`tt-field-type-${i}`}
-                style={{ ...INPUT, flex: 'none', width: 120 }}
-                value={f.type}
-                onChange={e => setField(i, { type: e.target.value })}
-              >
-                {TEMP_TABLE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
               <button
                 style={{ ...BTN, padding: '0 6px', background: 'var(--vscode-button-secondaryBackground, #3a3d41)' }}
                 title="Убрать поле"

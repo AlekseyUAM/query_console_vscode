@@ -57,7 +57,9 @@ export function App(): React.ReactElement {
   const expectModelRef = React.useRef(false);
   // 7.8.8 / 7.8.9: модальные окна «Вложенный запрос» / «Временная таблица».
   const [subqueryDialog, setSubqueryDialog] = useState<{ error: string | null } | null>(null);
-  const [tempTableOpen, setTempTableOpen] = useState(false);
+  // 7.8.9 / 7.8.14: окно «Временная таблица» — null закрыто; tableId=null режим создания,
+  // иначе режим правки существующей ВТ.
+  const [tempTableDialog, setTempTableDialog] = useState<null | { tableId: string | null }>(null);
 
   useEffect(() => {
     const unsub = onHostMessage(msg => {
@@ -276,8 +278,17 @@ export function App(): React.ReactElement {
             onExpandRef={ref => postToHost({ type: 'expandRef', ref })}
             onOpenVirtualParams={tableId => setVtDialogTableId(tableId)}
             onAddSubquery={() => setSubqueryDialog({ error: null })}
-            onAddTempTable={() => setTempTableOpen(true)}
-            onAddAllFields={id => dispatch({ type: 'ADD_ALL_FIELDS_DUP', tableId: id })}
+            onAddTempTable={() => setTempTableDialog({ tableId: null })}
+            onActivateTable={id => {
+              // 7.8.14: двойной клик ветвится по типу источника.
+              const sel = state.selectedTables.find(t => t.id === id);
+              if (sel?.tempTable) {
+                setTempTableDialog({ tableId: id });
+              } else {
+                // (источник-подзапрос обрабатывается в следующем шаге) 7.8.16: все поля с дублями.
+                dispatch({ type: 'ADD_ALL_FIELDS_DUP', tableId: id });
+              }
+            }}
           />
         </div>
         <div style={panelStyle}>
@@ -582,16 +593,29 @@ export function App(): React.ReactElement {
         />
       )}
 
-      {/* 7.8.9: temp table description dialog */}
-      {tempTableOpen && (
-        <TempTableDialog
-          onCancel={() => setTempTableOpen(false)}
-          onOk={(name, fields) => {
-            dispatch({ type: 'ADD_TEMP_TABLE', name, fields });
-            setTempTableOpen(false);
-          }}
-        />
-      )}
+      {/* 7.8.9 / 7.8.14: temp table description dialog (create / edit) */}
+      {tempTableDialog && (() => {
+        const editId = tempTableDialog.tableId;
+        const sel = editId ? state.selectedTables.find(t => t.id === editId) : undefined;
+        const meta = sel ? state.tables.find(t => t.fullName === sel.fullName) : undefined;
+        const initial = sel && meta
+          ? { name: defaultTableAlias(sel), fields: meta.fields.map(f => ({ name: f.name })) }
+          : undefined;
+        return (
+          <TempTableDialog
+            initial={initial}
+            onCancel={() => setTempTableDialog(null)}
+            onOk={(name, fields) => {
+              if (editId) {
+                dispatch({ type: 'UPDATE_TEMP_TABLE', tableId: editId, name, fields });
+              } else {
+                dispatch({ type: 'ADD_TEMP_TABLE', name, fields });
+              }
+              setTempTableDialog(null);
+            }}
+          />
+        );
+      })()}
 
       {/* 7.8.2: loading overlay — covers the constructor until it is fully populated */}
       {loading && (
