@@ -4399,6 +4399,77 @@ export interface ParseOptions {
   preserveComments?: boolean;
 }
 
+/**
+ * Фаза 8.1 — режет текст документа на тексты участников ОБЪЕДИНЕНИЯ, инвертируя
+ * `splitUnionMembers`: границы — ключевые слова `ОБЪЕДИНИТЬ [ВСЕ]` ВЕРХНЕГО уровня
+ * (вне `(…)` и `{…}`). Текст участника = от конца предыдущего разделителя до начала
+ * следующего `ОБЪЕДИНИТЬ` (или до конца). Срез участника СОДЕРЖИТ ведущие комментарии
+ * перед его `ВЫБРАТЬ` (вид 3) — комментарии не входят в поток токенов лексера, поэтому
+ * старт среза берётся по позиции ПОСЛЕ разделителя, а не по первому реальному токену.
+ * Возвращает срезы в том же порядке и количестве, что и `splitUnionMembers`.
+ */
+function splitUnionMemberTexts(text: string): string[] {
+  const tokens = tokenize(text);
+  const slices: string[] = [];
+  let segStart = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (t.type === 'eof') break;
+    if (t.type === 'punct') {
+      if (t.value === '(') parenDepth++;
+      else if (t.value === ')') parenDepth--;
+      else if (t.value === '{') braceDepth++;
+      else if (t.value === '}') braceDepth--;
+    }
+    if (t.type === 'keyword' && t.value === 'ОБЪЕДИНИТЬ' && parenDepth === 0 && braceDepth === 0) {
+      slices.push(text.slice(segStart, t.pos));
+      let sepEnd = t.pos + t.text.length;
+      let j = i + 1;
+      const nxt = tokens[j];
+      if (nxt && nxt.type === 'keyword' && nxt.value === 'ВСЕ') {
+        sepEnd = nxt.pos + nxt.text.length;
+        j++;
+      }
+      segStart = sepEnd;
+      i = j;
+      continue;
+    }
+    i++;
+  }
+  slices.push(text.slice(segStart));
+  return slices;
+}
+
+/**
+ * Фаза 8.1 — привязать комментарии к моделям документа (одиночный запрос ИЛИ
+ * ОБЪЕДИНЕНИЕ). Для ОБЪЕДИНЕНИЯ комментарии каждого участника привязываются к его
+ * QueryModel (= к номеру участника, по позиции в `doc.members`). Никогда не роняет
+ * разбор: каждое извлечение в try/catch, при рассинхроне числа срезов — пропуск.
+ */
+function extractDocComments(text: string, doc: QueryDocument): void {
+  if (doc.members.length === 0) return;
+  if (doc.members.length === 1) {
+    try {
+      extractComments(text, doc.members[0].model);
+    } catch {
+      /* лучшее усилие */
+    }
+    return;
+  }
+  const slices = splitUnionMemberTexts(text);
+  if (slices.length !== doc.members.length) return;
+  doc.members.forEach((m, i) => {
+    try {
+      extractComments(slices[i], m.model);
+    } catch {
+      /* лучшее усилие */
+    }
+  });
+}
+
 export function parseDocument(
   text: string,
   resolver?: MetadataResolver,
@@ -4408,14 +4479,10 @@ export function parseDocument(
   sourceResolver = resolver;
   try {
     const doc = parseDocumentInner(text, resolver);
-    // 8.1: связывание комментариев — только для пакета из ОДНОГО участника
-    // (не-ОБЪЕДИНЕНИЕ); никогда не роняем разбор из-за извлечения комментариев.
-    if (opts?.preserveComments && doc.members.length === 1) {
-      try {
-        extractComments(text, doc.members[0].model);
-      } catch {
-        /* комментарии — лучшее усилие; ошибка извлечения не ломает разбор */
-      }
+    // 8.1: связывание комментариев для одиночного запроса И для ОБЪЕДИНЕНИЯ
+    // (по участникам); никогда не роняем разбор из-за извлечения комментариев.
+    if (opts?.preserveComments) {
+      extractDocComments(text, doc);
     }
     return doc;
   } finally {
@@ -4759,19 +4826,11 @@ function splitBatchText(text: string): string[] {
 /**
  * Фаза 8.1 — привязать комментарии к моделям пакета. Чанк `chunks[i]` — это сырой текст
  * i-го оператора пакета (включая ведущий авто-разделитель `////…`, идущий после `;`).
- * Связываем только для документов из ОДНОГО участника; ошибки извлечения проглатываем.
+ * Делегирует `extractDocComments`, который покрывает и одиночный запрос, и ОБЪЕДИНЕНИЕ.
  */
 function attachBatchComments(chunks: string[], members: QueryDocument[]): void {
   if (chunks.length !== members.length) return;
-  members.forEach((doc, i) => {
-    if (doc.members.length === 1) {
-      try {
-        extractComments(chunks[i], doc.members[0].model);
-      } catch {
-        /* лучшее усилие */
-      }
-    }
-  });
+  members.forEach((doc, i) => extractDocComments(chunks[i], doc));
 }
 
 export function parseBatch(
