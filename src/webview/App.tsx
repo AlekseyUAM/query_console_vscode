@@ -18,10 +18,8 @@ const BTN: React.CSSProperties = {
 };
 
 const DIAGRAM_ITEMS: { kind: DiagramKind; label: string }[] = [
-  { kind: 'packageFlow', label: 'Поток пакета' },
-  { kind: 'joins', label: 'Схема соединений' },
-  { kind: 'unions', label: 'Объединения' },
-  { kind: 'fields', label: 'Поля/структура' },
+  { kind: 'flowchart', label: 'Flowchart' },
+  { kind: 'joinTree', label: 'Join Tree' },
 ];
 
 type RefreshState = 'idle' | 'loading' | { ok: boolean; message: string };

@@ -1,11 +1,8 @@
 import type { BatchDocument } from './batchModel';
 import type { QueryDocument } from './unionModel';
-import type {
-  QueryModel, SelectedTable, Join, FieldRef, OrderField, TotalField, Condition,
-} from './queryModel';
-import { orderedSelectElements, elementAlias } from './unionModel';
+import type { QueryModel, SelectedTable, Join } from './queryModel';
 
-export type DiagramKind = 'packageFlow' | 'joins' | 'unions' | 'fields';
+export type DiagramKind = 'flowchart' | 'joinTree';
 
 /** Экранирование подписи узла/ребра: убираем ломающие mermaid символы. */
 function esc(label: string): string {
@@ -32,7 +29,7 @@ function placeholder(): string {
   return 'graph TD\n' + node('n0', 'Пустой запрос');
 }
 
-/** Модель «головного» участника запроса пакета (для joins/fields). */
+/** Модель «головного» участника запроса пакета. */
 function headModel(doc: QueryDocument): QueryModel | undefined {
   return doc.members[0]?.model;
 }
@@ -42,21 +39,13 @@ export function buildDiagram(
   kind: DiagramKind,
   activeIndex: number,
 ): string {
+  void activeIndex;
   try {
-    const active = batch.members[activeIndex];
     switch (kind) {
-      case 'packageFlow':
+      case 'flowchart':
         return packageFlowDiagram(batch);
-      case 'joins': {
-        const m = active && headModel(active);
-        return m ? joinsDiagram(m) : placeholder();
-      }
-      case 'unions':
-        return active ? unionsDiagram(active) : placeholder();
-      case 'fields': {
-        const m = active && headModel(active);
-        return m ? fieldsDiagram(m) : placeholder();
-      }
+      case 'joinTree':
+        return joinTreeDiagram(batch);
       default:
         return placeholder();
     }
@@ -131,83 +120,94 @@ function joinConditionText(j: Join): string {
   return '';
 }
 
-function joinsDiagram(model: QueryModel): string {
-  if (!model.tables.length) return placeholder();
-  const lines = ['graph LR'];
-  const idOf = new Map<string, string>();
-  model.tables.forEach((t, i) => {
-    const nid = `t${i}`;
-    idOf.set(t.id, nid);
-    lines.push(node(nid, tableLabel(t)));
-  });
-  for (const j of model.joins ?? []) {
-    const l = idOf.get(j.leftTableId);
-    const r = idOf.get(j.rightTableId);
-    if (!l || !r) continue;
-    const cond = joinConditionText(j);
-    const label = cond ? `${joinKindLabel(j)}: ${cond}` : joinKindLabel(j);
-    lines.push(edge(l, r, label));
+/** Виртуальная таблица регистра → узел-цилиндр. */
+function isRegister(t: SelectedTable): boolean {
+  return !!t.virtual || /^Регистр(Сведений|Накопления|Бухгалтерии|Расчета)\./.test(t.fullName || '');
+}
+
+/** Заголовок субграфа запроса пакета (`Запрос N · <суффикс>`). */
+function jtTitle(model: QueryModel | undefined, i: number): string {
+  const qt = model?.queryType;
+  const name = model?.tempTableName;
+  if ((qt === 'createTemp' || qt === 'appendTemp') && name) {
+    return `Запрос ${i + 1} · ВТ.${name}`;
   }
-  return lines.join('\n');
+  if (qt === 'dropTemp' && name) {
+    return `Запрос ${i + 1} · УНИЧТОЖИТЬ ${name}`;
+  }
+  return `Запрос ${i + 1}`;
 }
 
-function unionsDiagram(doc: QueryDocument): string {
-  if (!doc.members.length) return placeholder();
+/** Дерево соединений всего пакета (см. tmp/1.md, раздел 3). */
+function joinTreeDiagram(batch: BatchDocument): string {
+  if (!batch.members.length) return placeholder();
   const lines = ['graph TD'];
-  doc.members.forEach((um, i) => {
-    const nid = `u${i}`;
-    lines.push(node(nid, um.name || `Запрос ${i + 1}`));
-    if (i === 0) {
-      lines.push(edge(nid, 'result'));
-    } else {
-      lines.push(edge(nid, 'result', um.distinct ? 'ОБЪЕДИНИТЬ' : 'ОБЪЕДИНИТЬ ВСЕ'));
+
+  const firsts: string[] = [];
+  const lasts: string[] = [];
+
+  batch.members.forEach((doc, i) => {
+    const model = doc.members[0]?.model;
+    lines.push(`  subgraph JT${i}["${esc(jtTitle(model, i))}"]`);
+
+    const tables = model?.tables ?? [];
+    if (!tables.length) {
+      const only = `q${i}t0`;
+      lines.push(`    ${only}["${esc('(нет таблиц)')}"]`);
+      firsts[i] = only;
+      lasts[i] = only;
+      lines.push('  end');
+      return;
     }
+
+    const nodeId = (j: number): string => `q${i}t${j}`;
+    const idOf = new Map<string, string>();
+    tables.forEach((t, j) => idOf.set(t.id, nodeId(j)));
+
+    // Узлы таблиц.
+    tables.forEach((t, j) => {
+      const id = nodeId(j);
+      const label = t.subquery ? `(подзапрос ${t.alias || ''})` : tableLabel(t);
+      if (isRegister(t)) {
+        lines.push(`    ${id}[("${esc(label)}")]`);
+      } else {
+        lines.push(`    ${id}["${esc(label)}"]`);
+      }
+    });
+
+    // Рёбра соединений.
+    const linked = new Set<string>();
+    for (const j of model?.joins ?? []) {
+      const fromTableId = j.seedTableId ?? j.leftTableId;
+      const toTableId = j.joinedTableId ?? j.rightTableId;
+      const from = idOf.get(fromTableId);
+      const to = idOf.get(toTableId);
+      if (!from || !to) continue;
+      const cond = joinConditionText(j);
+      const kind = joinKindLabel(j);
+      const label = cond ? `${cond} · ${kind}` : kind;
+      lines.push(`    ${from} -->|"${esc(label)}"| ${to}`);
+      linked.add(fromTableId);
+      linked.add(toTableId);
+    }
+
+    // Декартовы связи: первая таблица → каждая не участвовавшая в соединении.
+    const root = nodeId(0);
+    tables.forEach((t, j) => {
+      if (j === 0) return;
+      if (linked.has(t.id)) return;
+      lines.push(`    ${root} -.->|"${esc('декартово (ГДЕ)')}"| ${nodeId(j)}`);
+    });
+
+    firsts[i] = nodeId(0);
+    lasts[i] = nodeId(tables.length - 1);
+    lines.push('  end');
   });
-  lines.push(node('result', 'Результат'));
-  return lines.join('\n');
-}
 
-function fieldRefLabel(f: FieldRef): string {
-  return f.expression ?? f.path ?? 'поле';
-}
+  // Вертикальные коннекторы между запросами пакета.
+  for (let i = 1; i < batch.members.length; i++) {
+    lines.push(`  ${lasts[i - 1]} -.-> ${firsts[i]}`);
+  }
 
-function conditionLabel(c: Condition): string {
-  if (c.expression) return c.expression;
-  if (c.path) return `${c.path} ${c.operator ?? '='} ${c.param ?? ''}`.trim();
-  return 'условие';
-}
-
-function orderLabel(o: OrderField): string {
-  const base = o.expression ?? o.selectAlias ?? o.path ?? 'поле';
-  return o.direction === 'desc' ? `${base} УБЫВ` : base;
-}
-
-function totalLabel(t: TotalField): string {
-  return t.expression ?? t.path ?? 'итог';
-}
-
-function fieldsDiagram(model: QueryModel): string {
-  const lines = ['graph TD', node('root', 'Запрос')];
-  let counter = 0;
-
-  const addSection = (title: string, items: string[]): void => {
-    if (!items.length) return;
-    const sid = `s${counter++}`;
-    lines.push(node(sid, title));
-    lines.push(edge('root', sid));
-    for (const it of items) {
-      const lid = `l${counter++}`;
-      lines.push(node(lid, it));
-      lines.push(edge(sid, lid));
-    }
-  };
-
-  addSection('Поля', orderedSelectElements(model).map(el => elementAlias(el, model)));
-  addSection('Группировка', (model.grouping?.groupFields ?? []).map(fieldRefLabel));
-  addSection('Условия', (model.conditions ?? []).map(conditionLabel));
-  addSection('Порядок', (model.order?.fields ?? []).map(orderLabel));
-  addSection('Итоги', (model.totals?.totalFields ?? []).map(totalLabel));
-
-  if (counter === 0) return placeholder();
   return lines.join('\n');
 }

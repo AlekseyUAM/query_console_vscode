@@ -11,8 +11,8 @@ function q(model: Partial<QueryModel>): { members: { name: string; distinct: boo
 }
 
 describe('buildDiagram — диспетчер и устойчивость', () => {
-  it('пустой пакет → плейсхолдер, не бросает', () => {
-    const out = buildDiagram(emptyBatch, 'packageFlow', 0);
+  it('пустой пакет + flowchart → плейсхолдер, не бросает', () => {
+    const out = buildDiagram(emptyBatch, 'flowchart', 0);
     expect(out).toContain('graph');
     expect(out).toContain('Пустой запрос');
   });
@@ -23,13 +23,13 @@ describe('buildDiagram — диспетчер и устойчивость', () =
     expect(out).toContain('Пустой запрос');
   });
 
-  it('activeIndex за пределами пакета → плейсхолдер', () => {
-    const out = buildDiagram(emptyBatch, 'joins', 5);
+  it('пустой пакет + joinTree → плейсхолдер', () => {
+    const out = buildDiagram(emptyBatch, 'joinTree', 0);
     expect(out).toContain('Пустой запрос');
   });
 });
 
-describe('packageFlow', () => {
+describe('flowchart', () => {
   it('ПОМЕСТИТЬ ВТ → потребитель: узлы и ребро с именем ВТ', () => {
     const batch: BatchDocument = {
       members: [
@@ -37,7 +37,7 @@ describe('packageFlow', () => {
         q({ queryType: 'select', tables: [{ id: 'b', fullName: 'ВТТовары' }] }),
       ],
     };
-    const out = buildDiagram(batch, 'packageFlow', 0);
+    const out = buildDiagram(batch, 'flowchart', 0);
     expect(out.startsWith('graph TD')).toBe(true);
     expect(out).toContain('ПОМЕСТИТЬ ВТТовары');
     expect(out).toContain('Запрос 2');
@@ -48,14 +48,14 @@ describe('packageFlow', () => {
     const batch: BatchDocument = {
       members: [q({ queryType: 'dropTemp', tempTableName: 'ВТТовары' })],
     };
-    const out = buildDiagram(batch, 'packageFlow', 0);
+    const out = buildDiagram(batch, 'flowchart', 0);
     expect(out).toContain('УНИЧТОЖИТЬ ВТТовары');
     expect(out).not.toContain('-->');
   });
 });
 
-describe('joins', () => {
-  it('ЛЕВОЕ соединение с простым условием', () => {
+describe('joinTree', () => {
+  it('ЛЕВОЕ соединение двух таблиц с простым условием', () => {
     const tables: SelectedTable[] = [
       { id: 'A', fullName: 'Справочник.Заказы', alias: 'Заказы' },
       { id: 'B', fullName: 'Справочник.Контрагенты', alias: 'Контр' },
@@ -64,65 +64,69 @@ describe('joins', () => {
       leftTableId: 'A', rightTableId: 'B', leftAll: true, rightAll: false,
       custom: false, leftPath: 'Контрагент', operator: '=', rightPath: 'Ссылка',
     }];
-    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model: { tables, fields: [], joins } } ] }] } as any, 'joins', 0);
-    expect(out.startsWith('graph LR')).toBe(true);
+    const batch: BatchDocument = { members: [q({ tables, joins })] };
+    const out = buildDiagram(batch, 'joinTree', 0);
+    expect(out).toContain('graph TD');
+    expect(out).toContain('subgraph');
+    expect(out).toContain('ЛЕВОЕ');
+    expect(out).toContain('Контрагент = Ссылка');
+    expect(out).toContain('-->');
+  });
+
+  it('одна таблица → есть subgraph и узел, но нет join-ребра', () => {
+    const batch: BatchDocument = {
+      members: [q({ tables: [{ id: 'A', fullName: 'Справочник.Заказы', alias: 'Заказы' }] })],
+    };
+    const out = buildDiagram(batch, 'joinTree', 0);
+    expect(out).toContain('subgraph');
     expect(out).toContain('Справочник.Заказы');
-    expect(out).toContain('t0 -->|"ЛЕВОЕ: Контрагент = Ссылка"| t1');
+    expect(out).not.toContain('-->|');
   });
 
-  it('нет таблиц → плейсхолдер', () => {
-    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model: { tables: [], fields: [] } }] }] } as any, 'joins', 0);
-    expect(out).toContain('Пустой запрос');
+  it('виртуальная таблица регистра → узел-цилиндр', () => {
+    const batch: BatchDocument = {
+      members: [q({ tables: [{ id: 'A', fullName: 'РегистрСведений.Цены', alias: 'Цены' }] })],
+    };
+    const out = buildDiagram(batch, 'joinTree', 0);
+    expect(out).toContain('[(');
   });
-});
 
-describe('unions', () => {
-  it('три участника ОБЪЕДИНИТЬ ВСЕ сходятся в результат', () => {
-    const doc = {
+  it('два запроса в пакете → вертикальный коннектор', () => {
+    const batch: BatchDocument = {
       members: [
-        { name: 'Заказы', distinct: false, model: { tables: [], fields: [] } },
-        { name: 'Возвраты', distinct: false, model: { tables: [], fields: [] } },
-        { name: 'Списания', distinct: true, model: { tables: [], fields: [] } },
+        q({ queryType: 'createTemp', tempTableName: 'ВТ1', tables: [{ id: 'A', fullName: 'Справочник.Заказы' }] }),
+        q({ tables: [{ id: 'B', fullName: 'Справочник.Контрагенты' }] }),
       ],
     };
-    const out = buildDiagram({ members: [doc] } as any, 'unions', 0);
-    expect(out.startsWith('graph TD')).toBe(true);
-    expect(out).toContain('u0 --> result');
-    expect(out).toContain('u1 -->|"ОБЪЕДИНИТЬ ВСЕ"| result');
-    expect(out).toContain('u2 -->|"ОБЪЕДИНИТЬ"| result');
-    expect(out).toContain('Результат');
+    const out = buildDiagram(batch, 'joinTree', 0);
+    expect(out).toContain('-.->');
   });
-});
 
-describe('fields', () => {
-  it('секции Поля и Порядок с листьями', () => {
-    const model = {
-      tables: [{ id: 'A', fullName: 'Справочник.Заказы', alias: 'Заказы' }],
-      fields: [{ tableId: 'A', path: 'Ссылка', alias: 'Ссылка' }],
-      order: { auto: false, fields: [{ tableId: 'A', path: 'Дата', direction: 'desc' }] },
+  it('декартово: две таблицы без соединений', () => {
+    const batch: BatchDocument = {
+      members: [q({
+        tables: [
+          { id: 'A', fullName: 'Справочник.Заказы' },
+          { id: 'B', fullName: 'Справочник.Контрагенты' },
+        ],
+      })],
     };
-    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model }] }] } as any, 'fields', 0);
-    expect(out.startsWith('graph TD')).toBe(true);
-    expect(out).toContain('Запрос');
-    expect(out).toContain('Поля');
-    expect(out).toContain('Порядок');
-    expect(out).toContain('Дата УБЫВ');
-  });
-
-  it('запрос без секций → плейсхолдер', () => {
-    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model: { tables: [], fields: [] } }] }] } as any, 'fields', 0);
-    expect(out).toContain('Пустой запрос');
+    const out = buildDiagram(batch, 'joinTree', 0);
+    expect(out).toContain('-.->');
+    expect(out).toContain('декартово');
   });
 });
 
 describe('экранирование', () => {
   it('кавычки и скобки в подписи не ломают mermaid', () => {
-    const model = {
-      tables: [{ id: 'A', fullName: 'Справочник."Странное[имя]"', alias: 'A' }],
-      fields: [],
+    const batch: BatchDocument = {
+      members: [q({ tables: [{ id: 'A', fullName: 'Справочник."Странное[имя]"', alias: 'A' }] })],
     };
-    const out = buildDiagram({ members: [{ members: [{ name: '', distinct: false, model }] }] } as any, 'joins', 0);
-    expect(out).not.toMatch(/\[\s*"[^"]*"[^\]]*[[\]"][^\]]*"\s*\]/); // нет вложенных "/[/]
+    const out = buildDiagram(batch, 'joinTree', 0);
+    // подпись узла не содержит сырых "/[/] (проверяем построчно)
+    const nodeLine = out.split('\n').find(l => l.includes('Справочник'))!;
+    const label = nodeLine.slice(nodeLine.indexOf('"') + 1, nodeLine.lastIndexOf('"'));
+    expect(label).not.toMatch(/["[\]]/);
     expect(out).toContain("Справочник.'Странное имя'");
   });
 });
