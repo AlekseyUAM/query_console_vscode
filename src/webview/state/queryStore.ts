@@ -168,6 +168,9 @@ export type QueryAction =
   | { type: 'RENAME_QUERY'; index: number; name: string }
   | { type: 'SET_QUERY_DISTINCT'; index: number; distinct: boolean }
   | { type: 'SET_COLUMN_ALIAS'; alias: string; newAlias: string }
+  // 8.3.1: перемещение колонки (поля) объединения вверх/вниз — позиционный своп
+  // i-го и соседнего скалярного поля во ВСЕХ участниках объединения.
+  | { type: 'MOVE_UNION_COLUMN'; index: number; dir: 'up' | 'down' }
   // --- слой пакета запросов ---
   | { type: 'ADD_BATCH_QUERY' }
   | { type: 'SET_ACTIVE_BATCH'; index: number }
@@ -185,8 +188,10 @@ export type QueryAction =
   | { type: 'SET_TOTAL_GROUP_KIND'; tableId: string; path: string; kind: TotalKind }
   | { type: 'SET_TOTAL_GROUP_ALIAS'; tableId: string; path: string; alias: string }
   | { type: 'ADD_TOTAL_FIELD'; tableId: string; path: string }
-  | { type: 'REMOVE_TOTAL_FIELD'; tableId: string; path: string }
-  | { type: 'SET_TOTAL_FIELD_EXPRESSION'; tableId: string; path: string; expression: string }
+  // 8.3.2: удаление/смена функции итогового поля адресуются по ИНДЕКСУ — у
+  // распарсенных агрегатов tableId/path пусты, поэтому (tableId,path) не уникален.
+  | { type: 'REMOVE_TOTAL_FIELD'; index: number }
+  | { type: 'SET_TOTAL_FIELD_FUNC'; index: number; func: AggregateFunction }
   | { type: 'SET_TOTAL_GRAND'; grand: boolean }
   // --- построитель (отчёт) ---
   | { type: 'ADD_BUILDER_FIELD'; section: BuilderSection; field: BuilderField }
@@ -692,6 +697,17 @@ export function stripBatchComments(batch: BatchDocument): BatchDocument {
  * Фаза 8.1 — снять комментарии со ВСЕХ полей запроса (commentLeading/commentTrailing
  * привязаны к синониму поля и контейнеру). Возвращает новые объекты без этих ключей.
  */
+/**
+ * 8.3.2: псевдоним колонки выборки — операнда простого агрегата ИТОГИ. Ищем
+ * скалярную колонку с таким (tableId, path) и берём её явный псевдоним; иначе —
+ * последний сегмент пути. Это текст, который конструктор печатает внутри
+ * ФУНКЦИЯ(<операнд>).
+ */
+function totalOperandAlias(state: QueryState, tableId: string, path: string): string {
+  const col = state.selectedFields.find(f => !f.expression && f.tableId === tableId && f.path === path);
+  return col?.alias ?? (path.split('.').pop() ?? path);
+}
+
 function stripFieldComments(fields: SelectedField[]): SelectedField[] {
   return fields.map(f => {
     if (f.commentLeading === undefined && f.commentTrailing === undefined) return f;
@@ -1608,6 +1624,29 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
       return { ...state, selectedFields, savedQueries };
     }
 
+    case 'MOVE_UNION_COLUMN': {
+      const { index, dir } = action;
+      const target = dir === 'up' ? index - 1 : index + 1;
+      // Колонки объединения позиционны: i-я колонка = i-е скалярное поле каждого
+      // участника. Своп i-го и соседнего поля выполняем во ВСЕХ участниках (активный
+      // — в плоских полях, остальные — в snapshot'ах). Участник, у которого нет поля
+      // на этих позициях, остаётся без изменений (его ячейка и так NULL).
+      const swap = (arr: SelectedField[]): SelectedField[] => {
+        if (index < 0 || target < 0 || index >= arr.length || target >= arr.length) return arr;
+        const next = [...arr];
+        [next[index], next[target]] = [next[target], next[index]];
+        return next;
+      };
+      const swapped = swap(state.selectedFields);
+      if (swapped === state.selectedFields) return state; // позиция вне диапазона активного — нет хода
+      const savedQueries = state.savedQueries.map((sq, i) =>
+        i === state.activeQuery || sq === null
+          ? sq
+          : { ...sq, selectedFields: swap(sq.selectedFields) }
+      );
+      return { ...state, selectedFields: swapped, savedQueries };
+    }
+
     case 'ADD_BATCH_QUERY': {
       // Сохранить активный запрос пакета в его слот, добавить новый пустой и сделать активным.
       const batchSaved = [...state.batchSaved];
@@ -1812,35 +1851,43 @@ export function reducer(state: QueryState, action: QueryAction): QueryState {
     case 'ADD_TOTAL_FIELD': {
       const { tableId, path } = action;
       if (state.totals.totalFields.some(f => f.tableId === tableId && f.path === path)) return state;
-      const last = path.split('.').pop() ?? path;
+      // 8.3.2: новое итоговое поле — простой агрегат КОЛИЧЕСТВО(<псевдонимКолонки>).
+      // operandAlias — псевдоним соответствующей колонки выборки (или последний
+      // сегмент пути), func задаёт функцию агрегата; генератор печатает их канонически
+      // через wrapAggregate (expression не нужен).
+      const operandAlias = totalOperandAlias(state, tableId, path);
       return {
         ...state,
         totals: {
           ...state.totals,
-          totalFields: [...state.totals.totalFields, { tableId, path, expression: `СУММА(${last})` }],
+          totalFields: [...state.totals.totalFields, { tableId, path, func: 'Количество', operandAlias }],
         },
       };
     }
 
     case 'REMOVE_TOTAL_FIELD': {
-      const { tableId, path } = action;
+      const { index } = action;
       return {
         ...state,
         totals: {
           ...state.totals,
-          totalFields: state.totals.totalFields.filter(f => !(f.tableId === tableId && f.path === path)),
+          totalFields: state.totals.totalFields.filter((_, i) => i !== index),
         },
       };
     }
 
-    case 'SET_TOTAL_FIELD_EXPRESSION': {
-      const { tableId, path, expression } = action;
+    case 'SET_TOTAL_FIELD_FUNC': {
+      const { index, func } = action;
       return {
         ...state,
         totals: {
           ...state.totals,
-          totalFields: state.totals.totalFields.map(f =>
-            f.tableId === tableId && f.path === path ? { ...f, expression } : f
+          totalFields: state.totals.totalFields.map((f, i) =>
+            // Смена функции: операнд (operandAlias) сохраняем, сырое expression
+            // сбрасываем — генератор соберёт ФУНКЦИЯ(operandAlias) канонически.
+            i === index
+              ? { ...f, func, operandAlias: f.operandAlias ?? totalOperandAlias(state, f.tableId, f.path), expression: undefined }
+              : f
           ),
         },
       };

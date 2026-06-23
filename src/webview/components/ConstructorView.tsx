@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { TabsBar, TABS } from './TabsBar';
 import { DbTreePanel } from './DbTreePanel';
 import { TablesPanel } from './TablesPanel';
@@ -17,6 +17,7 @@ import { BatchTab } from './BatchTab';
 import { VirtualTableParamsDialog } from './VirtualTableParamsDialog';
 import { ExpressionBuilder } from './ExpressionBuilder';
 import { TempTableDialog } from './TempTableDialog';
+import { ResizeHandle } from './ResizeHandle';
 import type { VirtualParams } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import type { MetaField, MetaTable } from '../../core/metadata/types';
@@ -68,6 +69,9 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
   // 7.8.9 / 7.8.14: окно «Временная таблица» — null закрыто; tableId=null режим создания,
   // иначе режим правки существующей ВТ.
   const [tempTableDialog, setTempTableDialog] = useState<null | { tableId: string | null }>(null);
+  // 8.3.7: перетаскиваемые границы трёх панелей вкладки «Таблицы и поля».
+  const [dbPanelWidth, setDbPanelWidth] = useState(300);
+  const [tablesPanelWidth, setTablesPanelWidth] = useState(300);
 
   function handleShowQuery() {
     const text = generateBatch(assembleBatch(state));
@@ -115,15 +119,14 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
   };
 
   // Участники объединения и производные колонки — общий источник для генерации
-  // и вкладки «Объединения/Псевдонимы».
-  const members = assembleMembers(state);
-  const unionColumns = deriveUnionColumns(members);
-
-  // Готовый текст пакета запросов — для предпросмотра и вставки.
-  const batchText = generateBatch(assembleBatch(state));
+  // и вкладки «Объединения/Псевдонимы». 8.3.6: мемоизация по `state`, чтобы тяжёлые
+  // вычисления НЕ повторялись на ре-рендерах от локального UI-состояния (смена
+  // вкладки, открытие диалогов, фокус) — критично для больших запросов.
+  const members = useMemo(() => assembleMembers(state), [state]);
+  const unionColumns = useMemo(() => deriveUnionColumns(members), [members]);
 
   // Имена запросов пакета — для вкладки «Пакет запросов» и боковой полосы.
-  const batchNames = state.batchSaved.map((_, i) => batchMemberName(state, i));
+  const batchNames = useMemo(() => state.batchSaved.map((_, i) => batchMemberName(state, i)), [state]);
 
   // Видимые вкладки: «Связи» — сразу после «Таблицы и поля» и только при > 1 таблице.
   // При типе dropTemp видны только «Дополнительно» и «Пакет запросов».
@@ -245,7 +248,7 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
       {activeTab === 'Таблицы и поля' && (
       <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
-        <div style={panelStyle}>
+        <div style={{ ...panelStyle, flex: 'none', width: dbPanelWidth }}>
           <DbTreePanel
             tables={state.tables}
             tempTables={availableTempTables(state)}
@@ -259,7 +262,8 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
             onAddField={(_tableFullName, _fieldPath) => { /* drag to FieldsPanel instead */ }}
           />
         </div>
-        <div style={panelStyle}>
+        <ResizeHandle onResize={d => setDbPanelWidth(w => Math.max(160, w + d))} />
+        <div style={{ ...panelStyle, flex: 'none', width: tablesPanelWidth }}>
           <TablesPanel
             metaTables={state.tables}
             selectedTables={state.selectedTables}
@@ -288,6 +292,7 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
             }}
           />
         </div>
+        <ResizeHandle onResize={d => setTablesPanelWidth(w => Math.max(160, w + d))} />
         <div style={panelStyle}>
           <FieldsPanel
             selectedTables={state.selectedTables}
@@ -461,6 +466,7 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
           onRenameQuery={(index, name) => dispatch({ type: 'RENAME_QUERY', index, name })}
           onSetQueryDistinct={(index, distinct) => dispatch({ type: 'SET_QUERY_DISTINCT', index, distinct })}
           onSetColumnAlias={(alias, newAlias) => dispatch({ type: 'SET_COLUMN_ALIAS', alias, newAlias })}
+          onMoveColumn={(index, dir) => dispatch({ type: 'MOVE_UNION_COLUMN', index, dir })}
         />
       )}
 
@@ -487,8 +493,8 @@ export function ConstructorView(props: ConstructorViewProps): React.ReactElement
           onSetGroupKind={(tableId, path, kind) => dispatch({ type: 'SET_TOTAL_GROUP_KIND', tableId, path, kind })}
           onSetGroupAlias={(tableId, path, alias) => dispatch({ type: 'SET_TOTAL_GROUP_ALIAS', tableId, path, alias })}
           onAddTotalField={(tableId, path) => dispatch({ type: 'ADD_TOTAL_FIELD', tableId, path })}
-          onRemoveTotalField={(tableId, path) => dispatch({ type: 'REMOVE_TOTAL_FIELD', tableId, path })}
-          onSetTotalFieldExpression={(tableId, path, expression) => dispatch({ type: 'SET_TOTAL_FIELD_EXPRESSION', tableId, path, expression })}
+          onRemoveTotalField={index => dispatch({ type: 'REMOVE_TOTAL_FIELD', index })}
+          onSetTotalFieldFunc={(index, func) => dispatch({ type: 'SET_TOTAL_FIELD_FUNC', index, func })}
           onSetGrand={grand => dispatch({ type: 'SET_TOTAL_GRAND', grand })}
         />
       )}
@@ -706,7 +712,7 @@ function NestedConstructorModal({ metadataTables, expandedRefs, onExpandRef, ini
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedRefs]);
 
-  const nestedBatchText = generateBatch(assembleBatch(nestedState));
+  const nestedBatchText = useMemo(() => generateBatch(assembleBatch(nestedState)), [nestedState]);
 
   function handleOk() {
     const doc: QueryDocument = { members: assembleMembers(nestedState) };

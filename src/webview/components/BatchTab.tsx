@@ -71,7 +71,7 @@ export function BatchTab({
 
   return (
     <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
-      <div style={{ ...PANEL, width: 320, flexShrink: 0 }}>
+      <div style={{ ...PANEL, flex: 1, minWidth: 0 }}>
         <div style={SECTION_HEADER}>Запросы пакета</div>
         <div style={{ display: 'flex', gap: 4, padding: '4px 6px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
           <button style={ICON_BTN} title="Добавить" onClick={onAdd}>⊕ Добавить</button>

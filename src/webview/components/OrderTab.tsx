@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { SelectedTable, SelectedField, Order, OrderField, SortDirection } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { distinctFieldRefs } from '../fieldSource';
+import { ResizeHandle } from './ResizeHandle';
 
 interface Props {
   selectedTables: SelectedTable[];
@@ -49,6 +50,8 @@ export function OrderTab(props: Props): React.ReactElement {
 
   // Источник: обычные поля выборки (не выражения, не ТЧ).
   const sourceFields = distinctFieldRefs(selectedFields);
+  // 8.3.7: перетаскиваемая граница ширины левого списка «Поля».
+  const [leftWidth, setLeftWidth] = React.useState(260);
 
   function labelFor(tableId: string, path: string): string {
     const table = selectedTables.find(t => t.id === tableId);
@@ -93,7 +96,7 @@ export function OrderTab(props: Props): React.ReactElement {
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, padding: 4, gap: 4, overflow: 'hidden' }}>
       <div style={{ display: 'flex', flex: 1, gap: 4, overflow: 'hidden' }}>
         {/* Левый список: Поля */}
-        <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
+        <div style={{ ...panelBox, width: leftWidth, flexShrink: 0 }}>
           <div style={SECTION_HEADER}>Поля</div>
           <div style={dropZone} data-field-source="order-source">
             {sourceFields.map((f, i) => (
@@ -115,8 +118,10 @@ export function OrderTab(props: Props): React.ReactElement {
           </div>
         </div>
 
+        <ResizeHandle onResize={d => setLeftWidth(w => Math.max(140, w + d))} />
+
         {/* Правый список: Сортировка */}
-        <div style={{ ...panelBox, flex: 2, minWidth: 0 }}>
+        <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex' }}>
             <div style={{ ...SECTION_HEADER, flex: 1 }}>Поле</div>
             <div style={{ ...SECTION_HEADER, width: 180, flexShrink: 0 }}>Сортировка</div>
@@ -151,11 +156,6 @@ export function OrderTab(props: Props): React.ReactElement {
                 <button style={REMOVE_BTN} title="Убрать" onClick={() => onRemoveOrderField(f.tableId, f.path)}>✕</button>
               </div>
             ))}
-            {order.fields.length === 0 && (
-              <div style={{ padding: 6, color: 'var(--vscode-descriptionForeground, #888)', fontSize: 12 }}>
-                Перетащите поля из списка «Поля».
-              </div>
-            )}
           </div>
         </div>
       </div>

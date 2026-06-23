@@ -3,6 +3,7 @@ import type { MetaTable, MetaField } from '../../core/metadata/types';
 import type { SelectedTable, Condition, ConditionOperator } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { accumPeriodFields } from '../../core/query/accumVirtualFields';
+import { ResizeHandle } from './ResizeHandle';
 
 const OPERATORS: ConditionOperator[] = ['=', '<>', '>', '>=', '<', '<=', 'В', 'МЕЖДУ', 'ПОДОБНО'];
 
@@ -93,6 +94,9 @@ export function ConditionsTab(props: Props): React.ReactElement {
     onOpenExpressionBuilder,
   } = props;
 
+  // 8.3.7: перетаскиваемая граница ширины левого списка «Поля».
+  const [leftWidth, setLeftWidth] = React.useState(260);
+
   function dragStart(e: React.DragEvent, tableId: string, path: string) {
     e.dataTransfer.setData('text/plain', JSON.stringify({ tableId, path }));
     e.dataTransfer.effectAllowed = 'copy';
@@ -132,7 +136,7 @@ export function ConditionsTab(props: Props): React.ReactElement {
   return (
     <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
       {/* Левый список: Поля */}
-      <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
+      <div style={{ ...panelBox, width: leftWidth, flexShrink: 0 }}>
         <div style={SECTION_HEADER}>Поля</div>
         <div style={dropZone}>
           {selectedTables.map(sel => {
@@ -166,8 +170,10 @@ export function ConditionsTab(props: Props): React.ReactElement {
         </div>
       </div>
 
+      <ResizeHandle onResize={d => setLeftWidth(w => Math.max(140, w + d))} />
+
       {/* Правая колонка: Условия */}
-      <div style={{ ...panelBox, flex: 2, minWidth: 0 }}>
+      <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
         {/* Тулбар */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
           <span style={{ fontSize: 12, fontWeight: 'bold', color: 'var(--vscode-descriptionForeground, #aaa)' }}>Условия</span>
@@ -239,11 +245,6 @@ export function ConditionsTab(props: Props): React.ReactElement {
               <button style={REMOVE_BTN} title="Удалить условие" onClick={() => onRemoveCondition(i)}>✕</button>
             </div>
           ))}
-          {conditions.length === 0 && (
-            <div style={{ padding: 6, color: 'var(--vscode-descriptionForeground, #888)', fontSize: 12 }}>
-              Перетащите поле сюда, чтобы добавить условие.
-            </div>
-          )}
         </div>
       </div>
     </div>

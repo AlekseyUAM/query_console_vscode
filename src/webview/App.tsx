@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useReducer, useEffect, useState } from 'react';
+import { useReducer, useEffect, useMemo, useState } from 'react';
 import { ConstructorView } from './components/ConstructorView';
 import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer, assembleBatch, stripBatchComments } from './state/queryStore';
@@ -77,8 +77,12 @@ export function App(): React.ReactElement {
   // Готовый текст пакета запросов — для вставки и блокировки кнопки ОК.
   // 8.1: при снятой галочке «Сохранять комментарии» комментарии убираются из модели
   // перед генерацией (генератор печатает их только при наличии).
-  const assembled = assembleBatch(state);
-  const batchText = generateBatch(preserveComments ? assembled : stripBatchComments(assembled));
+  // 8.3.6: мемоизация — не пересобирать большой запрос на ре-рендерах от локального
+  // состояния (баннеры ошибок/загрузки, тулбар кэша), только при изменении модели.
+  const batchText = useMemo(() => {
+    const assembled = assembleBatch(state);
+    return generateBatch(preserveComments ? assembled : stripBatchComments(assembled));
+  }, [state, preserveComments]);
 
   const cacheToolbar = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>

@@ -3,6 +3,7 @@ import type { MetaTable } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, ReportBuilder, BuilderField } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { isRefField } from './GroupingTab';
+import { ResizeHandle } from './ResizeHandle';
 
 type Section = 'fields' | 'conditions' | 'order' | 'totals';
 
@@ -92,6 +93,8 @@ export function BuilderTab(props: Props): React.ReactElement {
   const [active, setActive] = React.useState<Section>('fields');
   const [expandAll, setExpandAll] = React.useState(false);
   const [expandedTables, setExpandedTables] = React.useState<Record<string, boolean>>({});
+  // 8.3.7: перетаскиваемая граница ширины левого списка «Поля».
+  const [leftWidth, setLeftWidth] = React.useState(260);
 
   const rows = builder[active];
 
@@ -218,7 +221,7 @@ export function BuilderTab(props: Props): React.ReactElement {
 
       <div style={{ display: 'flex', flex: 1, gap: 4, overflow: 'hidden' }}>
         {/* Левый список: Поля */}
-        <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
+        <div style={{ ...panelBox, width: leftWidth, flexShrink: 0 }}>
           <div style={SECTION_HEADER}>Поля</div>
           <div style={dropZone}>
             {/* Группа 1: текущие поля выборки */}
@@ -286,8 +289,10 @@ export function BuilderTab(props: Props): React.ReactElement {
           </div>
         </div>
 
+        <ResizeHandle onResize={d => setLeftWidth(w => Math.max(140, w + d))} />
+
         {/* Правый список: строки построителя */}
-        <div style={{ ...panelBox, flex: 2, minWidth: 0 }}>
+        <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex' }}>
             <div style={{ ...SECTION_HEADER, flex: 1 }}>Поле</div>
             <div style={{ ...SECTION_HEADER, width: 40, flexShrink: 0, textAlign: 'center' }}>И.</div>
@@ -328,11 +333,6 @@ export function BuilderTab(props: Props): React.ReactElement {
                 </div>
               );
             })}
-            {rows.length === 0 && (
-              <div style={{ padding: 6, color: 'var(--vscode-descriptionForeground, #888)', fontSize: 12 }}>
-                Перетащите поля из списка «Поля» или нажмите «&gt;».
-              </div>
-            )}
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import type { MetaTable, MetaField } from '../../core/metadata/types';
 import type { SelectedTable, SelectedField, Grouping, AggregateFunction, FieldRef, SummableField } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { distinctFieldRefs } from '../fieldSource';
+import { ResizeHandle } from './ResizeHandle';
 
 const ALL_FUNCS: AggregateFunction[] = ['Сумма', 'Количество', 'КоличествоРазличных', 'Максимум', 'Минимум', 'Среднее'];
 const NON_NUMERIC_FUNCS: AggregateFunction[] = ['КоличествоРазличных', 'Количество', 'Максимум', 'Минимум'];
@@ -101,6 +102,8 @@ export function GroupingTab(props: Props): React.ReactElement {
     onAddGroupSet, onRemoveGroupSet, onAddFieldToSet, onRemoveFieldFromSet,
   } = props;
 
+  const [leftWidth, setLeftWidth] = React.useState(260);
+
   // Источник: обычные поля выборки (не выражения, не ТЧ).
   const sourceFields = distinctFieldRefs(selectedFields);
 
@@ -146,7 +149,7 @@ export function GroupingTab(props: Props): React.ReactElement {
   return (
     <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
       {/* Левый список: Поля */}
-      <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
+      <div style={{ ...panelBox, width: leftWidth, flexShrink: 0 }}>
         <div style={SECTION_HEADER}>Поля</div>
         <div style={dropZone} data-field-source="grouping-source">
           {sourceFields.map((f, i) => (
@@ -168,8 +171,10 @@ export function GroupingTab(props: Props): React.ReactElement {
         </div>
       </div>
 
+      <ResizeHandle onResize={d => setLeftWidth(w => Math.max(140, w + d))} />
+
       {/* Правая колонка */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 2, minWidth: 0, gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 4 }}>
         {/* Поле группировки */}
         <div style={{ ...panelBox, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 6px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>

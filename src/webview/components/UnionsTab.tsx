@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { QueryMeta } from '../state/queryStore';
 import type { UnionColumn } from '../../core/query/unionModel';
+import { ResizeHandle } from './ResizeHandle';
 
 const ALIAS_RE = /^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$/;
 const ALIAS_ERROR = "Псевдонимы полей должны начинаться с буквы и могут содержать только буквы, цифры, и символ '_'";
@@ -15,6 +16,7 @@ interface Props {
   onRenameQuery: (index: number, name: string) => void;
   onSetQueryDistinct: (index: number, distinct: boolean) => void;
   onSetColumnAlias: (alias: string, newAlias: string) => void;
+  onMoveColumn: (index: number, dir: 'up' | 'down') => void;
 }
 
 const SECTION_HEADER: React.CSSProperties = {
@@ -74,10 +76,14 @@ const PANEL: React.CSSProperties = {
 export function UnionsTab({
   queryList, activeQuery, columns,
   onAddQuery, onRemoveQuery, onSetActiveQuery,
-  onRenameQuery, onSetQueryDistinct, onSetColumnAlias,
+  onRenameQuery, onSetQueryDistinct, onSetColumnAlias, onMoveColumn,
 }: Props): React.ReactElement {
   const [selectedRow, setSelectedRow] = React.useState(activeQuery);
   const [aliasError, setAliasError] = React.useState<string | null>(null);
+  // 8.3.1: выбранная колонка (поле) в «Списке полей» — для кнопок Вверх/Вниз.
+  const [selectedCol, setSelectedCol] = React.useState(0);
+  // 8.3.7: перетаскиваемая граница ширины «Списка запросов».
+  const [queryListWidth, setQueryListWidth] = React.useState(280);
   // Локальные значения полей ввода псевдонимов (по индексу колонки), чтобы при
   // невалидном вводе откатить отображаемый текст к исходному псевдониму.
   const [aliasDrafts, setAliasDrafts] = React.useState<Record<number, string>>({});
@@ -85,6 +91,18 @@ export function UnionsTab({
   React.useEffect(() => {
     if (selectedRow >= queryList.length) setSelectedRow(queryList.length - 1);
   }, [queryList.length, selectedRow]);
+
+  React.useEffect(() => {
+    if (selectedCol >= columns.length) setSelectedCol(Math.max(0, columns.length - 1));
+  }, [columns.length, selectedCol]);
+
+  // Выделение следует за перемещаемой колонкой, чтобы стрелки продолжали её двигать.
+  function moveColumn(dir: 'up' | 'down') {
+    const target = dir === 'up' ? selectedCol - 1 : selectedCol + 1;
+    if (target < 0 || target >= columns.length) return;
+    onMoveColumn(selectedCol, dir);
+    setSelectedCol(target);
+  }
 
   function selectRow(index: number) {
     setSelectedRow(index);
@@ -110,7 +128,7 @@ export function UnionsTab({
   return (
     <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
       {/* Список запросов */}
-      <div style={{ ...PANEL, width: 280, flexShrink: 0 }}>
+      <div style={{ ...PANEL, width: queryListWidth, flexShrink: 0 }}>
         <div style={SECTION_HEADER}>Список запросов</div>
         <div style={{ display: 'flex', gap: 4, padding: '4px 6px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
           <button style={ICON_BTN} title="Добавить запрос" onClick={onAddQuery}>+</button>
@@ -164,9 +182,29 @@ export function UnionsTab({
         </div>
       </div>
 
+      <ResizeHandle onResize={d => setQueryListWidth(w => Math.max(160, w + d))} />
+
       {/* Список полей */}
       <div style={{ ...PANEL, flex: 1, minWidth: 0 }}>
         <div style={SECTION_HEADER}>Список полей</div>
+        <div style={{ display: 'flex', gap: 4, padding: '4px 6px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
+          <button
+            style={{ ...ICON_BTN, opacity: selectedCol > 0 ? 1 : 0.5 }}
+            title="Переместить вверх"
+            disabled={selectedCol <= 0}
+            onClick={() => moveColumn('up')}
+          >
+            ↑
+          </button>
+          <button
+            style={{ ...ICON_BTN, opacity: selectedCol < columns.length - 1 ? 1 : 0.5 }}
+            title="Переместить вниз"
+            disabled={selectedCol >= columns.length - 1}
+            onClick={() => moveColumn('down')}
+          >
+            ↓
+          </button>
+        </div>
         <div style={{ overflow: 'auto', flex: 1 }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
@@ -182,7 +220,14 @@ export function UnionsTab({
                 const draft = aliasDrafts[colIdx];
                 const value = draft !== undefined ? draft : col.alias;
                 return (
-                  <tr key={col.alias}>
+                  <tr
+                    key={col.alias}
+                    onClick={() => setSelectedCol(colIdx)}
+                    style={{
+                      cursor: 'pointer',
+                      background: colIdx === selectedCol ? 'var(--vscode-list-activeSelectionBackground, #094771)' : 'transparent',
+                    }}
+                  >
                     <td style={TD}>
                       <input
                         style={INPUT}

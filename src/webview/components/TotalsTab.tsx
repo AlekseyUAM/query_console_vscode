@@ -1,9 +1,10 @@
 import * as React from 'react';
 import type { MetaTable } from '../../core/metadata/types';
-import type { SelectedTable, SelectedField, Totals, TotalGroupField, TotalField, TotalKind } from '../../core/query/queryModel';
+import type { SelectedTable, SelectedField, Totals, TotalGroupField, TotalField, TotalKind, AggregateFunction } from '../../core/query/queryModel';
 import { defaultTableAlias } from '../../core/query/queryModel';
 import { distinctFieldRefs } from '../fieldSource';
-import { findMetaField, isNumericField, isRefField } from './GroupingTab';
+import { findMetaField, isRefField } from './GroupingTab';
+import { ResizeHandle } from './ResizeHandle';
 
 interface Props {
   selectedTables: SelectedTable[];
@@ -15,10 +16,27 @@ interface Props {
   onSetGroupKind: (tableId: string, path: string, kind: TotalKind) => void;
   onSetGroupAlias: (tableId: string, path: string, alias: string) => void;
   onAddTotalField: (tableId: string, path: string) => void;
-  onRemoveTotalField: (tableId: string, path: string) => void;
-  onSetTotalFieldExpression: (tableId: string, path: string, expression: string) => void;
+  onRemoveTotalField: (index: number) => void;
+  onSetTotalFieldFunc: (index: number, func: AggregateFunction) => void;
   onSetGrand: (grand: boolean) => void;
 }
+
+/**
+ * 8.3.2: функции простого агрегата ИТОГИ, доступные для выбора в колонке
+ * «Выражение». Для нечисловых полей (Наименование, Ссылка) применимы именно эти.
+ */
+const TOTAL_FUNC_OPTIONS: { value: AggregateFunction; label: string }[] = [
+  { value: 'Количество', label: 'Количество' },
+  { value: 'КоличествоРазличных', label: 'Количество различные' },
+  { value: 'Максимум', label: 'Максимум' },
+  { value: 'Минимум', label: 'Минимум' },
+];
+
+/** Подпись функции для значений, не входящих в TOTAL_FUNC_OPTIONS (Сумма/Среднее). */
+const EXTRA_FUNC_LABEL: Partial<Record<AggregateFunction, string>> = {
+  'Сумма': 'Сумма',
+  'Среднее': 'Среднее',
+};
 
 const SECTION_HEADER: React.CSSProperties = {
   fontSize: 12,
@@ -66,15 +84,28 @@ export function TotalsTab(props: Props): React.ReactElement {
   const {
     selectedTables, selectedFields, metaTables, totals,
     onAddGroupField, onRemoveGroupField, onSetGroupKind, onSetGroupAlias,
-    onAddTotalField, onRemoveTotalField, onSetTotalFieldExpression, onSetGrand,
+    onAddTotalField, onRemoveTotalField, onSetTotalFieldFunc, onSetGrand,
   } = props;
 
   // Источник: обычные поля выборки (не выражения, не ТЧ).
   const sourceFields = distinctFieldRefs(selectedFields);
+  // 8.3.7: перетаскиваемая граница ширины левого списка «Поля».
+  const [leftWidth, setLeftWidth] = React.useState(260);
 
   function labelFor(tableId: string, path: string): string {
     const table = selectedTables.find(t => t.id === tableId);
     return table ? `${defaultTableAlias(table)}.${path}` : path;
+  }
+
+  /**
+   * 8.3.2: подпись итогового поля. У распарсенного агрегата tableId/path пусты —
+   * берём operandAlias (псевдоним колонки-операнда). У добавленного из UI поля
+   * operandAlias тоже задан; иначе — квалифицированный путь, иначе текст выражения.
+   */
+  function totalFieldLabel(f: TotalField): string {
+    if (f.operandAlias) return f.operandAlias;
+    if (f.tableId) return labelFor(f.tableId, f.path);
+    return f.path || (f.expression ?? '');
   }
 
   function dragStart(e: React.DragEvent, tableId: string, path: string) {
@@ -114,7 +145,7 @@ export function TotalsTab(props: Props): React.ReactElement {
   return (
     <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, overflow: 'hidden' }}>
       {/* Левый список: Поля */}
-      <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
+      <div style={{ ...panelBox, width: leftWidth, flexShrink: 0 }}>
         <div style={SECTION_HEADER}>Поля</div>
         <div style={dropZone} data-field-source="totals-source">
           {sourceFields.map((f, i) => (
@@ -136,8 +167,10 @@ export function TotalsTab(props: Props): React.ReactElement {
         </div>
       </div>
 
+      <ResizeHandle onResize={d => setLeftWidth(w => Math.max(140, w + d))} />
+
       {/* Правая колонка */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 2, minWidth: 0, gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 4 }}>
         {/* Группировочное поле | Тип итогов | Псевдоним */}
         <div style={{ ...panelBox, flex: 1 }}>
           <div style={{ display: 'flex' }}>
@@ -204,22 +237,35 @@ export function TotalsTab(props: Props): React.ReactElement {
             onDrop={e => {
               e.preventDefault();
               const d = parseDrop(e);
-              if (!d) return;
-              // Итоговые поля — только числовые.
-              if (!isNumericField(findMetaField(metaTables, selectedTables, d.tableId, d.path))) return;
-              onAddTotalField(d.tableId, d.path);
+              // 8.3.2: в итоги можно перетащить ЛЮБОЕ поле (Количество/Максимум/
+              // Минимум применимы и к нечисловым), без фильтра по типу.
+              if (d) onAddTotalField(d.tableId, d.path);
             }}
           >
-            {totals.totalFields.map((f: TotalField) => (
-              <div key={`${f.tableId}:${f.path}`} style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', gap: 4 }}>
-                <span style={{ flex: 1 }}>{labelFor(f.tableId, f.path)}</span>
-                <input
-                  type="text"
-                  value={f.expression ?? ''}
-                  onChange={e => onSetTotalFieldExpression(f.tableId, f.path, e.target.value)}
-                  style={{ ...INPUT, width: 210 }}
-                />
-                <button style={REMOVE_BTN} title="Убрать" onClick={() => onRemoveTotalField(f.tableId, f.path)}>✕</button>
+            {totals.totalFields.map((f: TotalField, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', gap: 4 }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={totalFieldLabel(f)}>
+                  {totalFieldLabel(f)}
+                </span>
+                {f.func ? (
+                  <select
+                    value={f.func}
+                    onChange={e => onSetTotalFieldFunc(idx, e.target.value as AggregateFunction)}
+                    style={{ ...INPUT, width: 200 }}
+                  >
+                    {TOTAL_FUNC_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {/* Сохраняем нестандартную функцию (Сумма/Среднее) из распарсенного запроса. */}
+                    {!TOTAL_FUNC_OPTIONS.some(o => o.value === f.func) && (
+                      <option value={f.func}>{EXTRA_FUNC_LABEL[f.func] ?? f.func}</option>
+                    )}
+                  </select>
+                ) : (
+                  // Агрегат-выражение (ВЫБОР…, параметр) — функцией не представим; показываем как есть.
+                  <span style={{ width: 200, flexShrink: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--vscode-descriptionForeground, #888)' }} title={f.expression}>
+                    {f.expression}
+                  </span>
+                )}
+                <button style={REMOVE_BTN} title="Убрать" onClick={() => onRemoveTotalField(idx)}>✕</button>
               </div>
             ))}
           </div>

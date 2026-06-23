@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { FUNCTION_CATALOG, type FunctionGroup, type FunctionLeaf } from '../../core/query/functionCatalog';
+import { ResizeHandle } from './ResizeHandle';
 
 interface Props {
   title?: string;
@@ -65,6 +66,9 @@ function FunctionTree({ node, depth, onPick }: { node: FunctionGroup | FunctionL
 export function ExpressionBuilder({ title = 'Произвольное выражение', availableFields, initialText = '', onOk, onCancel }: Props): React.ReactElement {
   const [text, setText] = React.useState(initialText);
   const taRef = React.useRef<HTMLTextAreaElement>(null);
+  // 8.3.7: перетаскиваемые границы — ширина списка «Поле» и высота поля ввода.
+  const [fieldsWidth, setFieldsWidth] = React.useState(280);
+  const [editorHeight, setEditorHeight] = React.useState(140);
 
   function insertAtCursor(snippet: string) {
     const ta = taRef.current;
@@ -89,8 +93,8 @@ export function ExpressionBuilder({ title = 'Произвольное выраж
     <div style={OVERLAY} onClick={onCancel}>
       <div style={PANEL} onClick={e => e.stopPropagation()}>
         <div style={{ fontWeight: 'bold', fontSize: 13 }}>{title}</div>
-        <div style={{ display: 'flex', flex: 1, gap: 8, minHeight: 0 }}>
-          <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--vscode-panel-border, #444)' }}>
+        <div style={{ display: 'flex', flex: 1, gap: 0, minHeight: 0 }}>
+          <div style={{ width: fieldsWidth, flexShrink: 0, overflow: 'auto', border: '1px solid var(--vscode-panel-border, #444)' }}>
             <div style={{ fontSize: 11, padding: '2px 6px', opacity: 0.7 }}>Поле</div>
             {availableFields.map(f => (
               <div
@@ -104,10 +108,12 @@ export function ExpressionBuilder({ title = 'Произвольное выраж
               </div>
             ))}
           </div>
-          <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--vscode-panel-border, #444)' }}>
+          <ResizeHandle onResize={d => setFieldsWidth(w => Math.max(120, w + d))} />
+          <div style={{ flex: 1, minWidth: 0, overflow: 'auto', border: '1px solid var(--vscode-panel-border, #444)' }}>
             <FunctionTree node={FUNCTION_CATALOG} depth={0} onPick={insertAtCursor} />
           </div>
         </div>
+        <ResizeHandle axis="y" onResize={d => setEditorHeight(h => Math.max(60, h - d))} />
         <textarea
           ref={taRef}
           value={text}
@@ -115,7 +121,7 @@ export function ExpressionBuilder({ title = 'Произвольное выраж
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
           onDrop={handleDrop}
           style={{
-            height: 120,
+            height: editorHeight,
             fontFamily: 'var(--vscode-editor-font-family, monospace)',
             fontSize: 13,
             resize: 'none',

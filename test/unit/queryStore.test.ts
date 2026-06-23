@@ -1030,10 +1030,10 @@ describe('queryStore — итоги (totals, фаза 5.7)', () => {
     expect(s.totals.groupFields).toEqual([{ tableId: t1, path: 'Наименование', kind: 'elements' }]);
   });
 
-  it('ADD_TOTAL_FIELD добавляет итоговое поле с дефолтным выражением СУММА', () => {
+  it('ADD_TOTAL_FIELD добавляет итоговое поле с дефолтным агрегатом КОЛИЧЕСТВО', () => {
     let { s, t1 } = withTwoFields();
     s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
-    expect(s.totals.totalFields).toEqual([{ tableId: t1, path: 'Код', expression: 'СУММА(Код)' }]);
+    expect(s.totals.totalFields).toEqual([{ tableId: t1, path: 'Код', func: 'Количество', operandAlias: 'Код' }]);
   });
 
   it('ADD_TOTAL_FIELD не дублирует существующее поле', () => {
@@ -1043,18 +1043,20 @@ describe('queryStore — итоги (totals, фаза 5.7)', () => {
     expect(s.totals.totalFields).toHaveLength(1);
   });
 
-  it('SET_TOTAL_FIELD_EXPRESSION меняет выражение', () => {
+  it('SET_TOTAL_FIELD_FUNC меняет функцию агрегата по индексу', () => {
     let { s, t1 } = withTwoFields();
     s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
-    s = reducer(s, { type: 'SET_TOTAL_FIELD_EXPRESSION', tableId: t1, path: 'Код', expression: 'МАКСИМУМ(Код)' });
-    expect(s.totals.totalFields[0].expression).toBe('МАКСИМУМ(Код)');
+    s = reducer(s, { type: 'SET_TOTAL_FIELD_FUNC', index: 0, func: 'Максимум' });
+    expect(s.totals.totalFields[0].func).toBe('Максимум');
+    expect(s.totals.totalFields[0].operandAlias).toBe('Код');
+    expect(s.totals.totalFields[0].expression).toBeUndefined();
   });
 
-  it('REMOVE_TOTAL_FIELD удаляет итоговое поле', () => {
+  it('REMOVE_TOTAL_FIELD удаляет итоговое поле по индексу', () => {
     let { s, t1 } = withTwoFields();
     s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Код' });
     s = reducer(s, { type: 'ADD_TOTAL_FIELD', tableId: t1, path: 'Наименование' });
-    s = reducer(s, { type: 'REMOVE_TOTAL_FIELD', tableId: t1, path: 'Код' });
+    s = reducer(s, { type: 'REMOVE_TOTAL_FIELD', index: 0 });
     expect(s.totals.totalFields.map(f => f.path)).toEqual(['Наименование']);
   });
 

@@ -139,7 +139,7 @@ export function FieldsPanel({
         {selectedFields.map((f, i) => {
           const table = selectedTables.find(t => t.id === f.tableId);
           const label = f.expression
-            ? (f.alias ?? f.expression)
+            ? f.expression.replace(/\s+/g, ' ').trim()
             : (table ? `${defaultTableAlias(table)}.${f.path}` : f.path);
           return (
             <div
@@ -159,7 +159,12 @@ export function FieldsPanel({
                 justifyContent: 'space-between',
               }}
             >
-              <span>{label}</span>
+              <span
+                title={f.expression ?? label}
+                style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {label}
+              </span>
               <button style={REMOVE_BTN} onClick={e => { e.stopPropagation(); onRemoveField(i); }}>✕</button>
             </div>
           );

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { SelectedField, Indexing, FieldRef } from '../../core/query/queryModel';
 import { distinctFieldRefs } from '../fieldSource';
+import { ResizeHandle } from './ResizeHandle';
 
 interface Props {
   selectedFields: SelectedField[];
@@ -70,6 +71,7 @@ export function IndexTab(props: Props): React.ReactElement {
   } = props;
 
   const indexes = indexing.indexes;
+  const [leftWidth, setLeftWidth] = React.useState(260);
   const [current, setCurrent] = React.useState(0);
   const [middleSel, setMiddleSel] = React.useState<string | null>(null);
   const [rightSel, setRightSel] = React.useState<string | null>(null);
@@ -159,7 +161,7 @@ export function IndexTab(props: Props): React.ReactElement {
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, padding: 4, gap: 4, overflow: 'hidden' }}>
       <div style={{ display: 'flex', flex: 1, gap: 4, overflow: 'hidden' }}>
         {/* Панель 1: Индексы */}
-        <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
+        <div style={{ ...panelBox, width: leftWidth, flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 2, padding: '2px 4px', borderBottom: '1px solid var(--vscode-panel-border, #444)' }}>
             <button style={TOOL_BTN} title="Добавить индекс" onClick={onAddIndex}>⊕</button>
             <button style={TOOL_BTN} title="Скопировать индекс" disabled={currentIdx < 0} onClick={() => currentIdx >= 0 && onCopyIndex(currentIdx)}>⧉</button>
@@ -194,6 +196,8 @@ export function IndexTab(props: Props): React.ReactElement {
             )}
           </div>
         </div>
+
+        <ResizeHandle onResize={d => setLeftWidth(w => Math.max(140, w + d))} />
 
         {/* Панель 2: Поля */}
         <div style={{ ...panelBox, flex: 1, minWidth: 0 }}>
