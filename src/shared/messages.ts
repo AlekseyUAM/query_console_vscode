@@ -1,6 +1,5 @@
 import type { MetaField, MetaTable, TableKind } from '../core/metadata/types';
 import type { QueryModel } from '../core/query/queryModel';
-import type { DiagramKind } from '../core/query/mermaidDiagram';
 
 export type RefId = { kind: TableKind; name: string };
 
@@ -18,5 +17,4 @@ export type WebviewMsg =
   | { type: 'generate'; model: QueryModel }
   | { type: 'insertText'; text: string }
   | { type: 'cancel' }
-  | { type: 'refreshCache' }
-  | { type: 'showDiagram'; kind: DiagramKind; mermaid: string; title: string };
+  | { type: 'refreshCache' };
