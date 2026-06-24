@@ -3,6 +3,11 @@
   "displayName": "1C: Query Constructor",
   "description": "Visual query constructor for 1C",
   "version": "0.1.0",
+  "publisher": "AlekseyYudanov",
+  "author": {
+    "name": "Aleksey Yudanov",
+    "url": "https://t.me/aleksey_yudanov"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/AlekseyUAM/query_console_vscode.git"
