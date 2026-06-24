@@ -2,7 +2,7 @@
   "name": "query-console-1c",
   "displayName": "1C: Query Constructor",
   "description": "Visual query constructor for 1C",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.90.0"
   },
