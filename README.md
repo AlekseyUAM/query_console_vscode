@@ -6,9 +6,6 @@
 поля → типы → связи», даёт собрать запрос мышью и генерирует текст на языке запросов
 1С (SDBL).
 
-> **Статус:** MVP-каркас (вертикальный срез сквозь все слои) + парсер метаданных в
-> YAML — готовы. Дорожная карта и фазы — в [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
 ## Архитектура
 
 Проект разбит на 4 изолированные подсистемы. Логика живёт в `core` (pure-TS, без
@@ -64,8 +61,7 @@ query_console_vscode/
 ├── tasks/                    # описания отдельных задач
 ├── .devcontainer/           # dev-контейнер (node:22 + Claude Code CLI)
 ├── package.json             # манифест расширения + npm-скрипты
-├── tsconfig*.json, vitest.config.ts, playwright.config.ts
-└── DESCRIPTION.md           # исходное описание требований
+└── tsconfig*.json, vitest.config.ts, playwright.config.ts
 ```
 
 ### `src/core/metadata/parser/` — парсер метаданных в YAML
@@ -118,6 +114,21 @@ npm run dev            # build + запуск VS Code с расширением 
 - `queryConsole.metadataPath` — путь к каталогу выгрузки `cf` (пусто → автоопределение).
 - `queryConsole.parserOutputPath` — каталог результата парсинга (по умолчанию `tmp/parser_data`).
 
+## Релизы (VSIX)
+
+Готовый `.vsix` собирается автоматически в GitHub Actions по git-тегу и
+прикладывается к GitHub Release — в репозитории файл не хранится.
+
+```bash
+npm version 0.1.0        # version в package.json + коммит + тег v0.1.0
+git push --follow-tags   # пуш тега запускает workflow .github/workflows/release.yml
+```
+
+Workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) на пуше
+тега `v*` ставит зависимости, упаковывает расширение через `@vscode/vsce` и создаёт
+Release с файлом `query-console-1c-<тег>.vsix` в Assets. Локально собрать пакет можно
+командой `npm run package`.
+
 ## Парсер метаданных (CLI)
 
 ```bash
@@ -144,7 +155,7 @@ cf/
 
 ## Тесты
 
-Разработка ведётся по **TDD** (см. `DESCRIPTION.md`).
+Разработка ведётся по **TDD** (см. [Исходные требования и контекст](#исходные-требования-и-контекст)).
 
 ```bash
 npm run test:unit      # юнит-тесты ядра (Vitest): cfParser, sdblGenerator, typeParser, cache
@@ -156,7 +167,7 @@ npm run test:e2e       # Playwright e2e для webview
 
 ## Тестирование на другой конфигурации
 
-Конструктор можно прогнать против произвольной конфигурации 1С: из базы выгружаются
+Парсер запроса можно прогнать против произвольной конфигурации 1С: из базы выгружаются
 эталонные запросы и тексты запросов из кода, валидируются через MCP-оракул `1c-md`,
 прогоняются через конструктор, и на каждое расхождение пишется отдельный JSON-файл с
 ошибкой. Механизм конфигурируется через `.env` (см. [`.env.example`](.env.example)),
@@ -168,8 +179,7 @@ npm run test:e2e       # Playwright e2e для webview
 
 ## Документация
 
-- [`tmp/1c-query-language.md`](tmp/1c-query-language.md) — **справочник по языку запросов 1С (SDBL)**: синтаксис, секции (`ВЫБРАТЬ`/`ИЗ`/`ГДЕ`/`СГРУППИРОВАТЬ`/`ИТОГИ`), соединения, временные таблицы, встроенные и агрегатные функции, операторы условий, таблица ключевых слов рус/англ, именование таблиц.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — общий план проекта, фазы и статусы.
 - [`docs/superpowers/specs/`](docs/superpowers/specs/) — дизайн-документы (спеки) по итерациям.
 - [`docs/superpowers/plans/`](docs/superpowers/plans/) — планы реализации.
-- [`DESCRIPTION.md`](DESCRIPTION.md) — исходные требования и контекст.
+- [Исходные требования и контекст](#исходные-требования-и-контекст) — исходное ТЗ проекта (см. ниже).

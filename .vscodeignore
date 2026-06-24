@@ -1,7 +1,9 @@
 .vscode/**
+.github/**
 src/**
 test/**
 scripts/**
+tooling/**
 tmp/**
 docs/**
 node_modules/**

@@ -54,6 +54,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
+    "package": "vsce package --out query-console-1c.vsix",
     "build": "npm run build:extension && npm run build:webview",
     "build:extension": "esbuild src/extension/extension.ts --bundle --outfile=out/extension/extension.js --platform=node --format=cjs --external:vscode --sourcemap",
     "build:cli": "esbuild src/cli/parseMetadata.ts --bundle --outfile=out/cli/parseMetadata.js --platform=node --format=cjs",
@@ -87,6 +88,7 @@
     "@types/react-dom": "^18.3.0",
     "@types/vscode": "^1.90.0",
     "@vitest/coverage-v8": "^1.6.1",
+    "@vscode/vsce": "^3.2.0",
     "@xmldom/xmldom": "^0.9.5",
     "esbuild": "^0.21.0",
     "react": "^18.3.0",
