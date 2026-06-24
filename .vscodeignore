@@ -8,6 +8,8 @@ tmp/**
 docs/**
 node_modules/**
 out/webview/**/*.map
+.env
+.env.*
 tsconfig*.json
 vitest.config.ts
 playwright.config.ts

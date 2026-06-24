@@ -3,6 +3,10 @@
   "displayName": "1C: Query Constructor",
   "description": "Visual query constructor for 1C",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AlekseyUAM/query_console_vscode.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
