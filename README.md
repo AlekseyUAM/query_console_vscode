@@ -86,3 +86,7 @@
 
 Архитектура, структура кода, сборка из исходников, установка vsix, парсер метаданных (CLI), тесты и
 процесс релиза — в [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+
+## [![Инфостарт](https://infostart.ru/bitrix/templates/sandbox_empty/assets/tpl/abo/img/logo.svg)](https://infostart.ru/1c/articles/2724730/)
+
+- Обзорная статья: [Конструктор запросов 1С прямо в VS Code — без Конфигуратора и EDT](https://infostart.ru/1c/articles/2724730/).
