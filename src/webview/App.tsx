@@ -4,7 +4,9 @@ import { ConstructorView } from './components/ConstructorView';
 import { postToHost, onHostMessage } from './bridge';
 import { initialState, reducer, assembleBatch, stripBatchComments } from './state/queryStore';
 import { generateBatch } from '../core/query/sdblGenerator';
-import { tryParseBatch, validateBatchText } from '../core/query/validateBatch';
+import { tryOpenBatch, validateBatchText } from '../core/query/validateBatch';
+import { buildResolverFromTables } from '../core/metadata/buildModelResolver';
+import type { MetaTable } from '../core/metadata/types';
 
 const BTN: React.CSSProperties = {
   padding: '4px 12px',
@@ -33,12 +35,18 @@ export function App(): React.ReactElement {
   // запрос НЕ открывается пустым конструктором, а показывает ошибку с номером строки.
   const [loadError, setLoadError] = useState<string | null>(null);
   const expectModelRef = React.useRef(false);
+  // 8.4: таблицы метаданных для локальной семантической проверки открытия/ОК.
+  // Резолвер строится из них только при непустом списке (иначе — fail-open: undefined).
+  const metaTablesRef = React.useRef<MetaTable[]>([]);
+  const buildResolver = () =>
+    metaTablesRef.current.length ? buildResolverFromTables(metaTablesRef.current) : undefined;
 
   useEffect(() => {
     const unsub = onHostMessage(msg => {
       if (msg.type === 'init') {
         expectModelRef.current = msg.hasInitialQuery;
       } else if (msg.type === 'metadataTree') {
+        metaTablesRef.current = msg.tables;
         dispatch({ type: 'SET_METADATA', tables: msg.tables });
         // Нет входного запроса — конструктор готов сразу после метаданных.
         if (!expectModelRef.current) setLoading(false);
@@ -47,11 +55,12 @@ export function App(): React.ReactElement {
       } else if (msg.type === 'refreshResult') {
         setRefreshState({ ok: msg.ok, message: msg.message });
       } else if (msg.type === 'loadModel') {
-        // Открытие из текста и проверка при «ОК» (7.8.10) используют ЕДИНЫЙ разбор
-        // `tryParseBatch`: текст разобрался — загружаем модель; иначе показываем
-        // синтаксическую ошибку (с номером строки) вместо пустого конструктора. В
-        // любом случае снимаем оверлей загрузки (7.8.2).
-        const r = tryParseBatch(msg.text, { preserveComments: true });
+        // Открытие из текста и проверка при «ОК» (7.8.10) используют ЕДИНЫЙ разбор.
+        // 8.4: `tryOpenBatch` добавляет к синтаксису локальную семантическую проверку
+        // (существование таблиц по кэшу). Текст корректен — загружаем модель; иначе
+        // показываем ошибку (синтаксическую или семантическую) вместо пустого
+        // конструктора. В любом случае снимаем оверлей загрузки (7.8.2).
+        const r = tryOpenBatch(msg.text, buildResolver(), { preserveComments: true });
         if (r.ok) { dispatch({ type: 'LOAD_BATCH', doc: r.doc }); setLoadError(null); }
         else setLoadError(r.error);
         setLoading(false);
@@ -118,7 +127,7 @@ export function App(): React.ReactElement {
         onExpandRef={ref => postToHost({ type: 'expandRef', ref })}
         toolbar={cacheToolbar}
         onOk={() => {
-          const v = validateBatchText(batchText);
+          const v = validateBatchText(batchText, buildResolver());
           if (!v.ok) { setOkError(v.error); return; }
           setOkError(null);
           handleInsert(batchText);
@@ -140,7 +149,7 @@ export function App(): React.ReactElement {
           }}
         >
           <div style={{ color: 'var(--vscode-errorForeground, #f44747)', fontSize: 14, fontWeight: 600 }}>
-            Не удалось открыть запрос: синтаксическая ошибка
+            Не удалось открыть запрос
           </div>
           <div style={{ color: 'var(--vscode-errorForeground, #f44747)', fontSize: 13, whiteSpace: 'pre-wrap', maxWidth: 640 }}>
             {loadError}

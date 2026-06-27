@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { validateBatchText, tryParseBatch } from '../../src/core/query/validateBatch';
+import { validateBatchText, tryParseBatch, tryOpenBatch } from '../../src/core/query/validateBatch';
 import { parseBatch } from '../../src/core/query/sdblParser';
+import { buildResolverFromTables } from '../../src/core/metadata/buildModelResolver';
+import type { MetaTable } from '../../src/core/metadata/types';
 
 describe('validateBatchText (7.8.10)', () => {
   // Критерий «ОК» должен совпадать с открытием конструктором из текста: запрос
@@ -80,5 +82,54 @@ describe('validateBatchText (7.8.10)', () => {
       expect(validateBatchText(text).ok).toBe(parseOk);
       expect(tryParseBatch(text).ok).toBe(parseOk);
     }
+  });
+});
+
+describe('tryOpenBatch / validateBatchText с резолвером (8.4)', () => {
+  const ВАЛЮТЫ: MetaTable = {
+    kind: 'Справочник', name: 'Валюты', fullName: 'Справочник.Валюты', fields: [],
+  };
+  const resolver = buildResolverFromTables([ВАЛЮТЫ]);
+  const good = 'ВЫБРАТЬ Т.Ссылка КАК С ИЗ Справочник.Валюты КАК Т';
+  const bad = 'ВЫБРАТЬ Т.Ссылка КАК С ИЗ Справочник.Валюты1 КАК Т';
+
+  it('хорошая таблица с резолвером → ok с doc', () => {
+    const r = tryOpenBatch(good, resolver);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.doc.members.length).toBe(1);
+  });
+
+  it('несуществующая таблица с резолвером → not ok с семантическим сообщением', () => {
+    const r = tryOpenBatch(bad, resolver);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain('Таблица не найдена');
+      expect(r.error).toContain('Справочник.Валюты1');
+    }
+  });
+
+  it('без резолвера — прежнее поведение (семантика не проверяется)', () => {
+    expect(tryOpenBatch(bad).ok).toBe(true);
+    expect(tryOpenBatch(bad, undefined).ok).toBe(true);
+  });
+
+  it('синтаксическая ошибка ловится прежде семантики', () => {
+    const r = tryOpenBatch('ВЫБРАТЬ ИЗ ИЗ', resolver);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).not.toContain('Таблица не найдена');
+  });
+
+  it('validateBatchText с резолвером: несуществующая таблица → ok:false', () => {
+    const r = validateBatchText(bad, resolver);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('Таблица не найдена');
+  });
+
+  it('validateBatchText с резолвером: хорошая таблица → ok:true', () => {
+    expect(validateBatchText(good, resolver).ok).toBe(true);
+  });
+
+  it('validateBatchText без резолвера — прежнее поведение', () => {
+    expect(validateBatchText(bad).ok).toBe(true);
   });
 });
