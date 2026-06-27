@@ -14,8 +14,13 @@
   // inside the container for cluster session administration (kill hung sessions
   // via RAS on host.docker.internal:1545). Mounted at the same path so rac's
   // rpath to its sibling .so files (core83.so, etc.) resolves.
+  // Bind-mount the whole host 1C platform tree (read-only) at the same path, so it
+  // is version-independent (no specific version in the path → survives platform
+  // updates) and rac's rpath to its sibling .so files resolves. post-create.sh
+  // picks the concrete version: ONEC_PLATFORM_DIR from .env if set there, else the
+  // newest installed version under this dir.
   "mounts": [
-    "source=/opt/1cv8/x86_64/8.3.27.2130,target=/opt/1cv8/x86_64/8.3.27.2130,type=bind,readonly"
+    "source=/opt/1cv8/x86_64,target=/opt/1cv8/x86_64,type=bind,readonly"
   ],
 
   // Runs on the HOST before the container is created: copies the sibling repos

@@ -18,9 +18,27 @@ cat > "${CLAUDE_DIR}/settings.json" <<'JSON'
 JSON
 
 # Expose the bind-mounted host 1C `rac` on PATH for cluster session admin
-# (kill hung sessions via RAS on host.docker.internal:1545). The platform dir is
-# bind-mounted read-only from the host (see devcontainer.json "mounts").
-RAC_BIN="/opt/1cv8/x86_64/8.3.27.2130/rac"
+# (kill hung sessions via RAS on host.docker.internal:1545). The whole platform
+# tree is bind-mounted read-only from the host (see devcontainer.json "mounts").
+# Choose the concrete platform version:
+#   1. ONEC_PLATFORM_DIR from the project .env, if set there;
+#   2. otherwise auto-detect the newest installed version under /opt/1cv8/x86_64.
+PLATFORM_ROOT="/opt/1cv8/x86_64"
+PROJECT_ENV="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.env"
+if [ -f "${PROJECT_ENV}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${PROJECT_ENV}"
+    set +a
+fi
+if [ -z "${ONEC_PLATFORM_DIR:-}" ]; then
+    ONEC_PLATFORM_DIR="$(ls -d "${PLATFORM_ROOT}"/*/ 2>/dev/null | sort -V | tail -n1)"
+    ONEC_PLATFORM_DIR="${ONEC_PLATFORM_DIR%/}"
+    echo "[devcontainer] ONEC_PLATFORM_DIR not set in .env; auto-detected ${ONEC_PLATFORM_DIR:-<none>}"
+else
+    echo "[devcontainer] ONEC_PLATFORM_DIR from .env: ${ONEC_PLATFORM_DIR}"
+fi
+RAC_BIN="${ONEC_PLATFORM_DIR}/rac"
 if [ -x "${RAC_BIN}" ]; then
     sudo ln -sf "${RAC_BIN}" /usr/local/bin/rac
     echo "[devcontainer] rac linked: /usr/local/bin/rac -> ${RAC_BIN}"
