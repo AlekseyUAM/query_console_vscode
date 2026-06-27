@@ -2,7 +2,7 @@
   "name": "query-console-1c",
   "displayName": "1C: Query Constructor",
   "description": "Visual query constructor for 1C",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "AlekseyYudanov",
   "author": {
     "name": "Aleksey Yudanov",
