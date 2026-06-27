@@ -1,7 +1,6 @@
 # Парсер метаданных → YAML: дизайн
 
 Дата: 2026-06-01
-Задача: `tasks/task1_parser/DESCRIPTION.md`
 
 ## Цель
 

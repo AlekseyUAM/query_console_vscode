@@ -55,7 +55,6 @@ query_console_vscode/
 │   ├── e2e/                  # Playwright e2e для webview
 │   ├── fixtures/             # мини-выгрузка cf + tree-sitter.wasm
 │   └── helpers/              # assertValidSdbl (валидатор SDBL на tree-sitter)
-├── tasks/                    # описания отдельных задач
 ├── .devcontainer/           # dev-контейнер (node:22 + Claude Code CLI)
 ├── package.json             # манифест расширения + npm-скрипты
 └── tsconfig*.json, vitest.config.ts, playwright.config.ts
