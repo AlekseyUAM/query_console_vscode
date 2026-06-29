@@ -3,6 +3,7 @@
   "displayName": "1C: Query Constructor",
   "description": "Visual query constructor for 1C",
   "version": "0.1.1",
+  "license": "MIT",
   "publisher": "AlekseyYudanov",
   "author": {
     "name": "Aleksey Yudanov",

@@ -90,3 +90,7 @@
 ## [<img src="images/infostart.png" alt="Инфостарт" width="184">](https://infostart.ru/1c/articles/2724730/)
 
 - Обзорная статья: [Конструктор запросов 1С прямо в VS Code — без Конфигуратора и EDT](https://infostart.ru/1c/articles/2724730/).
+
+## Лицензия
+
+Проект распространяется под лицензией [MIT](LICENSE).
